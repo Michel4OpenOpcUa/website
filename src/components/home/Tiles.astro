@@ -1,0 +1,67 @@
+---
+// A grid of short "spec plate" tiles: [{ label, title, body, href? }]
+interface Tile {
+	label?: string;
+	title: string;
+	body: string;
+	href?: string;
+}
+interface Props {
+	tiles: Tile[];
+	dashed?: boolean;
+}
+const { tiles, dashed = false } = Astro.props;
+---
+
+<div class:list={['ot-tiles', { dashed }]}>
+	{tiles.map((tile) => {
+		const Tag = tile.href ? 'a' : 'div';
+		return (
+			<Tag class="ot-tile" href={tile.href}>
+				{tile.label && <span class="ot-label">{tile.label}</span>}
+				<h3>{tile.title}</h3>
+				<p>{tile.body}</p>
+			</Tag>
+		);
+	})}
+</div>
+
+<style>
+	.ot-tiles {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+		gap: 1rem;
+	}
+	.ot-tile {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 1.1rem 1.2rem;
+		border: 1px solid var(--sl-color-gray-5);
+		border-top: 3px solid var(--sl-color-accent);
+		border-radius: 0.25rem;
+		background: var(--sl-color-black);
+		color: inherit;
+		text-decoration: none;
+		min-width: 0;
+	}
+	.dashed .ot-tile {
+		border-style: dashed;
+		border-top: 3px solid var(--ot-wire);
+		background: transparent;
+	}
+	a.ot-tile:hover {
+		border-color: var(--sl-color-accent);
+	}
+	h3 {
+		margin: 0;
+		font-size: var(--sl-text-xl);
+		font-weight: 600;
+		color: var(--sl-color-white);
+	}
+	p {
+		margin: 0;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-2);
+	}
+</style>

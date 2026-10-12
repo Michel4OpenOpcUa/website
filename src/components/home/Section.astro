@@ -1,0 +1,48 @@
+---
+interface Props {
+	label: string;
+	title: string;
+	id?: string;
+}
+const { label, title, id } = Astro.props;
+---
+
+<section class="ot-section not-content" id={id}>
+	<div class="ot-section-head">
+		<span class="ot-label">{label}</span>
+		<h2>{title}</h2>
+	</div>
+	<div class="ot-section-body"><slot /></div>
+</section>
+
+<style>
+	.ot-section {
+		margin-top: 4rem;
+	}
+	.ot-section-head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.4rem 1rem;
+		padding-bottom: 0.6rem;
+		border-bottom: 2px solid var(--sl-color-white);
+		margin-bottom: 1.5rem;
+	}
+	.ot-section-head .ot-label {
+		color: var(--sl-color-accent);
+	}
+	h2 {
+		margin: 0;
+		font-size: var(--sl-text-h2);
+		font-weight: 600;
+		color: var(--sl-color-white);
+		line-height: 1.1;
+	}
+	.ot-section-body :global(p) {
+		max-width: 65ch;
+		color: var(--sl-color-gray-2);
+	}
+	.ot-section-body :global(p + p) {
+		margin-top: 1rem;
+	}
+</style>

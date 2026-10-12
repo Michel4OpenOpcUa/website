@@ -1,0 +1,123 @@
+---
+name: "IEC 60870-5-104"
+standard: "IEC 60870-5-104"
+summary: "Telecontrol between grid control centres, substations and generation or storage assets."
+order: 4
+facts:
+  - { label: 'Transport', value: 'TCP, optional TLS' }
+  - { label: 'Default port', value: '2404' }
+  - { label: 'Library', value: 'go-iec104' }
+  - { label: 'CLI', value: 'iec104ctl' }
+docs: /docs/protocols/iec-104/
+---
+
+import Callout from '../../components/Callout.astro';
+
+
+
+IEC 60870-5-104 (IEC 104) is the TCP/IP telecontrol protocol of power system SCADA. A **controlling station** (the control centre) talks to **controlled stations** (substations, RTUs, generation and storage assets) on TCP port 2404. Each station has a **common address**, and each data point an **information object address**. The control centre runs interrogations, receives spontaneous events, and sends commands, often with select-before-operate.
+
+## Where you meet it
+
+- Links between grid control centres and substations
+- Solar parks, wind farms and battery storage connected to a grid operator
+- RTUs and gateways in distribution and transmission networks
+
+## Quickstart
+
+### From the command line
+
+Download `iec104ctl` from [GitHub Releases](https://github.com/otfabric/iec104ctl/releases). No station at hand? Start a simulated one:
+
+```sh
+iec104ctl server start
+```
+
+and talk to it from another terminal:
+
+```sh
+# What does this station hold? (general interrogation)
+iec104ctl client interrogate --ip 127.0.0.1 --ca 1
+
+# Watch events and measured values as they arrive, until Ctrl-C
+iec104ctl client monitor --ip 127.0.0.1 --interrogate
+
+# Operate a disconnector with select-before-operate
+iec104ctl client command --ip 127.0.0.1 --type double --ioa 5001 --value off --mode sbo
+
+# Is the link alive, and how fast?
+iec104ctl client ping --ip 127.0.0.1
+```
+
+### From Go
+
+```sh
+go get github.com/otfabric/go-iec104
+```
+
+Connect, interrogate and synchronize the clock:
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/otfabric/go-iec104/asdu"
+	"github.com/otfabric/go-iec104/client"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// Dial connects and sends STARTDT. Every ASDU the station sends
+	// reaches the handler, in order.
+	c, err := client.Dial(ctx, "10.0.0.5:2404",
+		client.WithReconnect(client.Reconnect{}),
+		client.WithHandler(client.HandlerFunc(func(a *asdu.ASDU) {
+			for _, obj := range a.Objects {
+				if m, ok := obj.(asdu.MeasuredFloat); ok {
+					fmt.Printf("%s ioa=%d value=%g quality=%s\n", a.Cause, m.IOA, m.Value, m.Quality)
+				}
+			}
+		})))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+
+	// General interrogation of station 1.
+	data, err := c.Interrogate(ctx, 1, asdu.QOIStation)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("interrogation returned %d ASDUs\n", len(data))
+
+	if err := c.ClockSync(ctx, 1, time.Now()); err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+
+## What go-iec104 supports
+
+| | |
+|---|---|
+| Roles | Controlling station (client) and controlled station (server) |
+| Client | STARTDT/STOPDT, general and counter interrogation, read, clock sync, commands with select-before-operate, test command, automatic reconnect |
+| Server | Many sessions, routing by type identification, redundancy groups with an acknowledged event queue |
+| Link layer | Full APCI state machine: I/S/U frames, `k`/`w` windows, `t0`–`t3` timers |
+| Security | TLS (IEC 62351-3). IEC 62351-5 application-layer security is not implemented. |
+| Dependencies | Go standard library only |
+
+<Callout type="caution">
+`iec104ctl client command` operates switchgear and changes set points. Only use it on stations and networks you own or are authorized to test, and rehearse against `iec104ctl server start` first.
+</Callout>
+
+## Interoperability
+
+[iec104-interop](https://github.com/otfabric/iec104-interop) tests go-iec104 against MZ Automation lib60870-C, OpenMUC j60870 and wendy512/iec104, as both client and server. It has not been tested against certified test equipment.

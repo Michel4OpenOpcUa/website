@@ -1,0 +1,112 @@
+---
+name: "Modbus"
+standard: "Modbus Application Protocol V1.1b3"
+summary: "The most widely deployed protocol in industrial automation: meters, inverters, batteries, drives and PLCs."
+order: 1
+facts:
+  - { label: 'Transports', value: 'TCP, RTU, ASCII, TLS, UDP' }
+  - { label: 'Default port', value: '502 (TCP), 802 (TLS)' }
+  - { label: 'Library', value: 'go-modbus' }
+  - { label: 'CLI', value: 'modbusctl' }
+icon: go-modbus
+docs: /docs/protocols/modbus/
+---
+
+import Callout from '../../components/Callout.astro';
+
+
+
+Modbus is the most widely deployed protocol in industrial automation. It dates from 1979, it is simple, and almost every energy meter, solar inverter, battery system, drive and PLC speaks it. A client (master) reads and writes four data tables on a server (slave): **coils** and **discrete inputs** (bits), and **input registers** and **holding registers** (16-bit words).
+
+## Where you meet it
+
+- Energy meters, solar inverters and battery systems, often with a [SunSpec](https://sunspec.org) register map on top
+- PLCs, drives and remote I/O on the plant floor
+- RS-485 field buses (Modbus RTU) and serial-to-Ethernet gateways
+
+## Quickstart
+
+### From the command line
+
+Download `modbusctl` from [GitHub Releases](https://github.com/otfabric/modbusctl/releases), then:
+
+```sh
+# What is this device? (FC43 Device Identification + FC17 Report Server ID)
+modbusctl client identify --ip 192.168.1.10 --server-id
+
+# Which register blocks are readable? (adaptive scan, saved to MCAP)
+modbusctl client scan --ip 192.168.1.10 --algo smart --start 0 --end 5000 --output scan.mcap
+
+# Poll four holding registers every second until Ctrl-C
+modbusctl client poll --ip 192.168.1.10 --start 100 --count 4
+
+# Serve the scan results as a simulated device on port 1502
+modbusctl server static --input scan.mcap --port 1502
+```
+
+Addresses are raw Modbus PDU addresses (0–65535), not "4xxxx" register labels.
+
+### From Go
+
+```sh
+go get github.com/otfabric/go-modbus
+```
+
+Read four holding registers from unit 1 over Modbus TCP:
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/otfabric/go-modbus"
+)
+
+func main() {
+	client, err := modbus.NewClient(modbus.NewConfig(
+		modbus.TransportConfig{URL: "tcp://192.168.1.10:502", DialTimeout: 5 * time.Second},
+		modbus.ExecutionConfig{Timeout: 3 * time.Second},
+		modbus.ObservabilityConfig{},
+	))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := client.Open(); err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	regs, err := client.ReadRegisters(ctx, 1, 100, 4, modbus.HoldingRegister)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(regs)
+}
+```
+
+
+## What go-modbus supports
+
+| | |
+|---|---|
+| Transports | Modbus TCP, RTU and ASCII (RS-232/RS-485), TLS (MBAPS), UDP, RTU-over-TCP, RTU-over-UDP, ASCII-over-TCP |
+| Roles | Client and server |
+| Function codes | Coils, discrete inputs, input and holding registers, mask write, read/write multiple, FIFO, file records, diagnostics, device identification (FC43/14) |
+| Typed values | `uint16`–`uint64`, `float32/64`, strings, BCD, IP addresses, timestamps, with explicit byte and word order |
+| SunSpec | Marker detection and model-chain discovery; full point decoding in [go-sunspec](https://github.com/otfabric/go-sunspec) |
+| Go version | 1.23 or later |
+
+<Callout type="caution">
+UDP framing is not part of the official Modbus specification. It is provided because vendors use it, but validate it against your device before relying on it in production. `modbusctl client write` changes real values: test against `modbus-simulator` or `modbusctl server` first.
+</Callout>
+
+## Interoperability
+
+[modbus-interop](https://github.com/otfabric/modbus-interop) runs go-modbus against libmodbus (C), PyModbus (Python), digitalpetri/modbus (Java), NModbus (C#) and tokio-modbus (Rust), as both client and server.

@@ -1,1 +1,59 @@
-@import "tailwindcss";
+/* Starlight (docs) theme: maps the shared brand tokens onto Starlight and Tailwind. */
+@layer base, starlight, theme, components, utilities;
+
+@import '@astrojs/starlight-tailwind';
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import './tokens.css';
+
+@theme {
+  --font-sans: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  --font-display: 'Barlow Semi Condensed', 'Arial Narrow', Arial, sans-serif;
+
+  --color-accent-50: #eef8f8;
+  --color-accent-100: #dcefef;
+  --color-accent-200: #b4e1e2;
+  --color-accent-300: #7fd0d3;
+  --color-accent-400: #3fc1c6;
+  --color-accent-500: #159ea3;
+  --color-accent-600: #0a7c80;
+  --color-accent-700: #0b6467;
+  --color-accent-800: #0b4f52;
+  --color-accent-900: #123a3d;
+  --color-accent-950: #082a2c;
+
+  --color-gray-50: #f4f6f8;
+  --color-gray-100: #e6eaee;
+  --color-gray-200: #d9dfe4;
+  --color-gray-300: #b7c1ca;
+  --color-gray-400: #94a3b0;
+  --color-gray-500: #74838f;
+  --color-gray-600: #5a6875;
+  --color-gray-700: #2a3743;
+  --color-gray-800: #18222c;
+  --color-gray-900: #11181f;
+  --color-gray-950: #0b1015;
+}
+
+/* Unlayered so it wins over the plugin defaults: teal differs between light and dark. */
+:root {
+  --sl-color-accent-low: var(--ot-accent-soft);
+  --sl-color-accent: var(--ot-accent);
+  --sl-color-accent-high: var(--ot-accent-strong);
+  --sl-color-bg-nav: var(--ot-header-bg);
+}
+:root[data-theme='light'] {
+  --sl-color-black: #ffffff;
+  --sl-color-white: #17212b;
+}
+
+h1, h2, h3, h4,
+.sl-markdown-content :is(h1, h2, h3, h4) {
+  font-family: var(--ot-font-display);
+  letter-spacing: -0.005em;
+}
+
+.not-content a:not([class*='sl-']) {
+  color: var(--sl-color-text-accent);
+}

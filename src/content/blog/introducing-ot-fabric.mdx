@@ -1,0 +1,49 @@
+---
+title: Introducing OT Fabric
+description: Open-source protocol libraries and tools for industrial data, built by people and AI agents together.
+date: 2026-10-12
+authors: [OT Fabric]
+tags: [announcement, roadmap]
+featured: true
+cover:
+  alt: Each protocol has a library, a CLI built on it, and an interop suite that tests it
+  image: ../../assets/blog/protocol-stack.svg
+---
+
+Industrial data is trapped behind legacy protocols, vendor boundaries and one-off integrations. OT Fabric is our answer: an open, tested foundation for talking to the devices that run factories, grids and buildings.
+
+## What is available today
+
+Seven protocols, each with the same three parts, as the diagram above shows:
+
+- **A pure Go library**, with no cgo and, for most protocols, no dependencies outside the standard library.
+- **A command-line tool** for commissioning, troubleshooting and scripting, with JSON output and stable exit codes.
+- **An interoperability suite** that runs the library against independent implementations in containers.
+
+Reading four holding registers from a Modbus TCP device looks like this:
+
+```go title="main.go" {1}
+regs, err := client.ReadRegisters(ctx, 1, 100, 4, modbus.HoldingRegister)
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Println(regs)
+```
+
+Or, without writing any code:
+
+```sh frame="terminal"
+modbusctl client poll --ip 192.168.1.10 --start 100 --count 4
+```
+
+## Built by people and AI agents
+
+OT Fabric is built by engineers and AI coding agents working together. Engineers bring the protocol knowledge and own every decision; agents bring speed and breadth. What keeps that honest is the same bar for everything we ship: public code, public tests, and interop suites that check it against other implementations.
+
+## Where we go next
+
+- Full coverage of all relevant OT protocols
+- IT2OT gateways and data connectors
+- OT MCP servers, so AI agents can discover, read and work with industrial devices safely
+
+Browse the [project catalog](/projects/), start with a [protocol guide](/protocols/), or open an issue on [GitHub](https://github.com/otfabric).

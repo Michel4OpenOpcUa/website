@@ -1,0 +1,335 @@
+[
+	{
+		"id": "go-modbus",
+		"name": "go-modbus",
+		"repo": "go-modbus",
+		"category": "library",
+		"protocols": [
+			"modbus",
+			"sunspec"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-modbus",
+		"description": "Modbus client and server: TCP, RTU, ASCII, TLS and UDP, typed register codecs, pooling and retries.",
+		"icon": "go-modbus"
+	},
+	{
+		"id": "go-opcua",
+		"name": "go-opcua",
+		"repo": "go-opcua",
+		"category": "library",
+		"protocols": [
+			"opc-ua"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-opcua",
+		"description": "OPC UA client and server: secure channels, subscriptions, events, methods and historical access.",
+		"icon": "go-opcua"
+	},
+	{
+		"id": "go-bacnet",
+		"name": "go-bacnet",
+		"repo": "go-bacnet",
+		"category": "library",
+		"protocols": [
+			"bacnet"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-bacnet",
+		"description": "BACnet/IP client: discovery, properties, COV and alarms, routed networks and foreign-device registration."
+	},
+	{
+		"id": "go-iec104",
+		"name": "go-iec104",
+		"repo": "go-iec104",
+		"category": "library",
+		"protocols": [
+			"iec-104"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-iec104",
+		"description": "IEC 60870-5-104 controlling and controlled station, with the full APCI state machine and redundancy groups."
+	},
+	{
+		"id": "go-iec61850",
+		"name": "go-iec61850",
+		"repo": "go-iec61850",
+		"category": "library",
+		"protocols": [
+			"iec-61850"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-iec61850",
+		"description": "IEC 61850 client and server with logical nodes, reports, controls and SCL as first-class Go types.",
+		"icon": "go-iec61850"
+	},
+	{
+		"id": "go-mms",
+		"name": "go-mms",
+		"repo": "go-mms",
+		"category": "library",
+		"protocols": [
+			"iec-61850"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-mms",
+		"description": "MMS (ISO 9506) client and server, the transport underneath IEC 61850.",
+		"icon": "go-mms"
+	},
+	{
+		"id": "go-s7comm",
+		"name": "go-s7comm",
+		"repo": "go-s7comm",
+		"category": "library",
+		"protocols": [
+			"s7"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-s7comm",
+		"description": "Siemens S7 client: read and write DBs, inputs, outputs and markers, discovery and SZL diagnostics.",
+		"icon": "go-s7comm"
+	},
+	{
+		"id": "go-sunspec",
+		"name": "go-sunspec",
+		"repo": "go-sunspec",
+		"category": "library",
+		"protocols": [
+			"sunspec",
+			"modbus"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-sunspec",
+		"description": "SunSpec over Modbus: discovers 112 built-in models and decodes typed, scaled values. Includes the sunspecctl CLI.",
+		"icon": "go-sunspec"
+	},
+	{
+		"id": "modbusctl",
+		"name": "modbusctl",
+		"repo": "modbusctl",
+		"category": "cli",
+		"protocols": [
+			"modbus",
+			"sunspec"
+		],
+		"status": "available",
+		"description": "Identify, fingerprint, scan, poll, decode and write Modbus devices. Record to MCAP and replay as a simulator.",
+		"icon": "go-modbus"
+	},
+	{
+		"id": "modbus-simulator",
+		"name": "modbus-simulator",
+		"repo": "modbus-simulator",
+		"category": "cli",
+		"protocols": [
+			"modbus"
+		],
+		"status": "available",
+		"description": "Deterministic, stateful Modbus TCP device simulator driven by JSON fixtures, for integration tests.",
+		"icon": "go-modbus"
+	},
+	{
+		"id": "opcuactl",
+		"name": "opcuactl",
+		"repo": "opcuactl",
+		"category": "cli",
+		"protocols": [
+			"opc-ua"
+		],
+		"status": "available",
+		"description": "Discover, browse, read, write, call methods, monitor, read history and export from OPC UA servers.",
+		"icon": "go-opcua"
+	},
+	{
+		"id": "bacnetctl",
+		"name": "bacnetctl",
+		"repo": "bacnetctl",
+		"category": "cli",
+		"protocols": [
+			"bacnet"
+		],
+		"status": "available",
+		"description": "Discover BACnet devices, list point lists, read, write at priority, monitor COV and inspect alarms."
+	},
+	{
+		"id": "iec104ctl",
+		"name": "iec104ctl",
+		"repo": "iec104ctl",
+		"category": "cli",
+		"protocols": [
+			"iec-104"
+		],
+		"status": "available",
+		"description": "Interrogate, monitor and command IEC 104 stations, transfer files, or simulate an RTU from YAML."
+	},
+	{
+		"id": "iec61850ctl",
+		"name": "iec61850ctl",
+		"repo": "iec61850ctl",
+		"category": "cli",
+		"protocols": [
+			"iec-61850"
+		],
+		"status": "available",
+		"description": "Browse IED data models, read and write, operate controls, subscribe to reports and parse SCL.",
+		"icon": "go-iec61850"
+	},
+	{
+		"id": "s7commctl",
+		"name": "s7commctl",
+		"repo": "s7commctl",
+		"category": "cli",
+		"protocols": [
+			"s7"
+		],
+		"status": "available",
+		"description": "Siemens S7 command-line client for ISO-on-TCP (port 102).",
+		"icon": "go-s7comm"
+	},
+	{
+		"id": "go-cotp",
+		"name": "go-cotp",
+		"repo": "go-cotp",
+		"category": "transport",
+		"protocols": [
+			"s7",
+			"iec-61850"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-cotp",
+		"description": "COTP TP0 transport service over RFC 1006, plus a full X.224 TPDU codec.",
+		"icon": "go-cotp"
+	},
+	{
+		"id": "go-tpkt",
+		"name": "go-tpkt",
+		"repo": "go-tpkt",
+		"category": "transport",
+		"protocols": [
+			"s7",
+			"iec-61850"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-tpkt",
+		"description": "TPKT framing for RFC 1006 and RFC 2126 transport profiles.",
+		"icon": "go-tpkt"
+	},
+	{
+		"id": "go-serial",
+		"name": "go-serial",
+		"repo": "go-serial",
+		"category": "transport",
+		"protocols": [
+			"modbus"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-serial",
+		"description": "Cross-platform serial ports for RS-232 and RS-485, with a Modbus RTU preset.",
+		"icon": "go-serial"
+	},
+	{
+		"id": "go-otfp",
+		"name": "go-otfp",
+		"repo": "go-otfp",
+		"category": "discovery",
+		"protocols": [],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-otfp",
+		"description": "OT protocol fingerprinting from transport framing and handshake behaviour, without application-layer requests.",
+		"icon": "go-otfp"
+	},
+	{
+		"id": "modbus-interop",
+		"name": "modbus-interop",
+		"repo": "modbus-interop",
+		"category": "interop",
+		"protocols": [
+			"modbus"
+		],
+		"status": "available",
+		"description": "Modbus TCP reference stacks: libmodbus, PyModbus, digitalpetri, NModbus and tokio-modbus.",
+		"icon": "go-modbus"
+	},
+	{
+		"id": "opcua-interop",
+		"name": "opcua-interop",
+		"repo": "opcua-interop",
+		"category": "interop",
+		"protocols": [
+			"opc-ua"
+		],
+		"status": "available",
+		"description": "OPC UA reference clients and servers based on open62541 and Eclipse Milo.",
+		"icon": "go-opcua"
+	},
+	{
+		"id": "bacnet-interop",
+		"name": "bacnet-interop",
+		"repo": "bacnet-interop",
+		"category": "interop",
+		"protocols": [
+			"bacnet"
+		],
+		"status": "available",
+		"description": "BACnet/IP reference devices: BACnet Stack, BACpypes3, BACnet4J, System.IO.BACnet and Worldiety."
+	},
+	{
+		"id": "iec104-interop",
+		"name": "iec104-interop",
+		"repo": "iec104-interop",
+		"category": "interop",
+		"protocols": [
+			"iec-104"
+		],
+		"status": "available",
+		"description": "IEC 104 reference stations: lib60870, OpenMUC j60870 and wendy512."
+	},
+	{
+		"id": "mms-interop",
+		"name": "mms-interop",
+		"repo": "mms-interop",
+		"category": "interop",
+		"protocols": [
+			"iec-61850"
+		],
+		"status": "available",
+		"description": "MMS and IEC 61850 adapter images for libiec61850 and IEC61850bean.",
+		"icon": "go-iec61850"
+	},
+	{
+		"id": "snap7-interop",
+		"name": "snap7-interop",
+		"repo": "snap7-interop",
+		"category": "interop",
+		"protocols": [
+			"s7"
+		],
+		"status": "available",
+		"description": "Fixture-driven Snap7 servers (native and pure Python) for testing S7 clients.",
+		"icon": "go-s7comm"
+	},
+	{
+		"id": "ui-apps",
+		"name": "UI apps",
+		"category": "ui",
+		"protocols": [],
+		"status": "planned",
+		"description": "Graphical tools built on the same libraries. None are public yet."
+	},
+	{
+		"id": "ot-mcp-servers",
+		"name": "OT MCP servers",
+		"category": "mcp",
+		"protocols": [],
+		"status": "planned",
+		"description": "A structured, safe way for AI agents to discover, read and work with industrial devices."
+	},
+	{
+		"id": "it2ot-gateways-and-connectors",
+		"name": "IT2OT gateways and connectors",
+		"category": "gateway",
+		"protocols": [],
+		"status": "planned",
+		"description": "Move OT data safely into the IT, cloud and analytics systems that need it."
+	}
+]

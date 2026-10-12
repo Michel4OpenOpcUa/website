@@ -1,0 +1,34 @@
+---
+// Privacy-friendly YouTube embed for blog posts: <YouTube id="dQw4w9WgXcQ" title="..." />
+interface Props {
+	id: string;
+	title: string;
+	start?: number;
+}
+
+const { id, title, start } = Astro.props;
+const src = `https://www.youtube-nocookie.com/embed/${id}${start ? `?start=${start}` : ''}`;
+---
+
+<div class="ot-embed not-content">
+	<iframe
+		src={src}
+		title={title}
+		loading="lazy"
+		allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+		referrerpolicy="strict-origin-when-cross-origin"
+		allowfullscreen></iframe>
+</div>
+
+<style>
+	.ot-embed {
+		aspect-ratio: 16 / 9;
+		margin-block: 1.5rem;
+	}
+	iframe {
+		width: 100%;
+		height: 100%;
+		border: 0;
+		border-radius: 0.25rem;
+	}
+</style>

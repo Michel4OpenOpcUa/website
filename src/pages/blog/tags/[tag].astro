@@ -1,0 +1,22 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHeader from '../../../components/site/PageHeader.astro';
+import PostList from '../../../components/blog/PostList.astro';
+import TagList from '../../../components/blog/TagList.astro';
+import { getPosts, getTags } from '../../../data/blog';
+
+export async function getStaticPaths() {
+	return (await getTags()).map(([tag]) => ({ params: { tag } }));
+}
+
+const { tag } = Astro.params;
+const posts = (await getPosts()).filter((post) => post.data.tags.includes(tag));
+---
+
+<BaseLayout title={`#${tag}`} description={`OT Fabric blog posts tagged ${tag}.`}>
+	<PageHeader label="Blog" title={`#${tag}`} lead={`${posts.length} post${posts.length === 1 ? '' : 's'} tagged ${tag}.`} />
+	<div class="ot-container">
+		<TagList current={tag} />
+		<PostList posts={posts} />
+	</div>
+</BaseLayout>

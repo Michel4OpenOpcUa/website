@@ -1,0 +1,93 @@
+---
+import { getEntry, render } from 'astro:content';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/site/PageHeader.astro';
+import ProjectGrid from '../../components/ProjectGrid.astro';
+import { getProtocols, projectsFor, type Protocol } from '../../data/projects';
+
+export async function getStaticPaths() {
+	const protocols = await getProtocols();
+	return protocols.map((protocol) => ({ params: { id: protocol.id }, props: { protocol } }));
+}
+
+interface Props {
+	protocol: Protocol;
+}
+const { protocol } = Astro.props;
+const { Content } = await render(protocol);
+const projects = await projectsFor(protocol.id);
+// Link to the detailed docs only once they exist.
+const hasDocs = Boolean(await getEntry('docs', `docs/protocols/${protocol.id}`));
+---
+
+<BaseLayout title={protocol.data.name} description={protocol.data.summary}>
+	<PageHeader label={protocol.data.standard} title={protocol.data.name} lead={protocol.data.summary}>
+		<dl class="facts">
+			{protocol.data.facts.map((fact) => (
+				<div>
+					<dt class="ot-label">{fact.label}</dt>
+					<dd>{fact.value}</dd>
+				</div>
+			))}
+		</dl>
+	</PageHeader>
+
+	<div class="ot-container layout">
+		<article class="ot-prose">
+			<Content />
+		</article>
+		<aside class="side">
+			{protocol.data.docs && hasDocs && (
+				<a class="ot-btn primary" href={protocol.data.docs}>Read the {protocol.data.name} docs →</a>
+			)}
+			<a class="ot-btn" href="/protocols/">All protocols</a>
+		</aside>
+	</div>
+
+	<div class="ot-container">
+		<h2 class="projects-title">OT Fabric projects for {protocol.data.name}</h2>
+		<ProjectGrid projects={projects} />
+	</div>
+</BaseLayout>
+
+<style>
+	.facts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1rem 2.5rem;
+		margin: 2rem 0 0;
+	}
+	.facts dt {
+		margin-bottom: 0.35rem;
+	}
+	.facts dd {
+		margin: 0;
+		font-family: var(--ot-font-mono);
+		font-size: 0.9rem;
+		color: var(--ot-fg-strong);
+	}
+	.layout {
+		display: grid;
+		gap: 2rem;
+	}
+	.side {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.75rem;
+	}
+	@media (min-width: 64rem) {
+		.layout {
+			grid-template-columns: minmax(0, 46rem) 1fr;
+		}
+		.side {
+			position: sticky;
+			top: 6rem;
+			align-self: start;
+		}
+	}
+	.projects-title {
+		margin: 4rem 0 1.25rem;
+		font-size: 1.8rem;
+	}
+</style>

@@ -1,0 +1,36 @@
+---
+// Self-hosted video for blog posts. Put files in public/videos/ and use
+// <Video src="/videos/demo.mp4" poster="/videos/demo.jpg" caption="..." />
+interface Props {
+	src: string;
+	poster?: string;
+	caption?: string;
+	autoplay?: boolean;
+}
+
+const { src, poster, caption, autoplay = false } = Astro.props;
+const type = src.endsWith('.webm') ? 'video/webm' : 'video/mp4';
+---
+
+<figure class="ot-video not-content">
+	<video controls={!autoplay} autoplay={autoplay} muted={autoplay} loop={autoplay} playsinline preload="metadata" poster={poster}>
+		<source src={src} type={type} />
+	</video>
+	{caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<style>
+	.ot-video {
+		margin: 1.5rem 0;
+	}
+	video {
+		width: 100%;
+		border-radius: 0.25rem;
+		background: var(--sl-color-gray-6);
+	}
+	figcaption {
+		margin-top: 0.5rem;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+	}
+</style>

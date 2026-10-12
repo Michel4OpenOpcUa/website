@@ -1,0 +1,49 @@
+---
+// Light/dark switch for website pages. Shares the 'starlight-theme' storage key
+// with the docs, so the choice carries across the whole site.
+---
+
+<button type="button" class="ot-theme" aria-label="Toggle dark mode" title="Toggle dark mode">
+	<svg class="sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+	<svg class="moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+</button>
+
+<script>
+	document.querySelectorAll<HTMLButtonElement>('.ot-theme').forEach((button) => {
+		button.addEventListener('click', () => {
+			const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+			document.documentElement.dataset.theme = next;
+			try {
+				localStorage.setItem('starlight-theme', next);
+			} catch {}
+		});
+	});
+</script>
+
+<style>
+	.ot-theme {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		border: 1px solid var(--ot-line);
+		border-radius: 999px;
+		background: transparent;
+		color: var(--ot-fg);
+		cursor: pointer;
+	}
+	.ot-theme:hover {
+		color: var(--ot-accent);
+		border-color: var(--ot-accent);
+	}
+	.moon {
+		display: none;
+	}
+	:global([data-theme='light']) .ot-theme .sun {
+		display: none;
+	}
+	:global([data-theme='light']) .ot-theme .moon {
+		display: block;
+	}
+</style>

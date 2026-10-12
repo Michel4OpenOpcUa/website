@@ -1,0 +1,85 @@
+---
+name: "SunSpec"
+standard: "SunSpec Information Models over Modbus"
+summary: "Standard register maps for solar inverters, meters, batteries and other DER equipment, read over Modbus."
+order: 7
+facts:
+  - { label: 'Transport', value: 'Any Modbus transport' }
+  - { label: 'Base address', value: '0, 40000 or 50000' }
+  - { label: 'Library', value: 'go-sunspec' }
+  - { label: 'CLI', value: 'sunspecctl (in go-sunspec)' }
+icon: go-sunspec
+docs: /docs/protocols/sunspec/
+---
+
+import Callout from '../../components/Callout.astro';
+
+SunSpec is not a wire protocol of its own. It is a set of standard **models** (register maps) that distributed energy resources expose over Modbus: inverters, meters, batteries, string combiners and more. A device starts its map with the `SunS` marker at a base address, followed by a chain of models, each identified by a number (for example 103 for a three-phase inverter). Values carry **scale factors**, so a raw register becomes watts, volts or amps only after decoding.
+
+## Where you meet it
+
+- Solar inverters and hybrid inverters
+- Battery storage systems and their energy management
+- Revenue and production meters on DER sites
+
+## Quickstart
+
+### From the command line
+
+`sunspecctl` ships with go-sunspec. Download it from [GitHub Releases](https://github.com/otfabric/go-sunspec/releases), then:
+
+```sh
+# Is this a SunSpec device, and at which base address?
+sunspecctl detect --url tcp://192.168.1.100:502
+
+# Which SunSpec models does it implement?
+sunspecctl models --url tcp://192.168.1.100:502
+```
+
+`modbusctl client sunspec probe` gives a quick check from the Modbus CLI too.
+
+### From Go
+
+```sh
+go get github.com/otfabric/go-sunspec
+```
+
+Discover the device and print the scaled points of a three-phase inverter model (abridged from the go-sunspec README):
+
+```go title="main.go"
+client, _ := modbus.New(modbus.Config{URL: "tcp://192.168.1.100:502"})
+if err := client.Open(); err != nil {
+	log.Fatal(err)
+}
+defer client.Close()
+
+device, err := sunspec.Discover(ctx, client, &sunspec.DiscoverOptions{UnitID: 1})
+if err != nil {
+	log.Fatal(err) // errors.Is(err, sunspec.ErrNotSunSpec) when the device is not SunSpec
+}
+
+inverter, err := device.ReadModelByID(ctx, 103) // three-phase inverter
+if err != nil {
+	log.Fatal(err)
+}
+for _, p := range inverter.Group.Points {
+	if p.Implemented && p.ScaledValue != nil {
+		fmt.Printf("%s = %g %s\n", p.Name, *p.ScaledValue, p.Units)
+	}
+}
+```
+
+## What go-sunspec supports
+
+| | |
+|---|---|
+| Discovery | Finds the `SunS` marker at common base addresses and walks the model chain |
+| Models | 112 built in: inverters, meters, nameplate and settings, multiple MPPT, DER (701–715), storage (801–809), environmental sensors, string combiners |
+| Decoding | Every SunSpec point type, scale factors applied, unimplemented points flagged, enums and bitfields by name |
+| Unknown models | Discovered and returned with raw registers |
+| Transports | Every go-modbus transport: TCP, RTU, ASCII, TLS, UDP and serial bridges |
+| Go version | 1.23 or later |
+
+<Callout type="caution">
+SunSpec control models (settings, DER curves) change how an inverter or battery behaves on the grid. Read first, and only write to equipment you are authorized to operate.
+</Callout>

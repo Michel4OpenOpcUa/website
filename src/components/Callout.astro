@@ -1,0 +1,37 @@
+---
+// Short highlighted note for website pages and blog posts.
+interface Props {
+	type?: 'note' | 'caution';
+	title?: string;
+}
+const { type = 'note', title } = Astro.props;
+---
+
+<aside class:list={['ot-callout', type]}>
+	{title && <p class="ot-callout-title">{title}</p>}
+	<slot />
+</aside>
+
+<style>
+	.ot-callout {
+		margin-block: 1.5rem;
+		padding: 0.9rem 1.1rem;
+		border-inline-start: 3px solid var(--ot-accent);
+		background: var(--ot-accent-soft);
+		border-radius: 0 0.25rem 0.25rem 0;
+	}
+	.ot-callout.caution {
+		border-inline-start-color: #d9a400;
+		background: color-mix(in srgb, #d9a400 14%, transparent);
+	}
+	.ot-callout :global(p) {
+		margin: 0;
+	}
+	.ot-callout :global(p + p) {
+		margin-top: 0.5rem;
+	}
+	.ot-callout-title {
+		font-weight: 600;
+		color: var(--ot-fg-strong);
+	}
+</style>

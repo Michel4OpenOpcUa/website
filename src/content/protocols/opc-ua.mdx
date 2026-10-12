@@ -1,0 +1,116 @@
+---
+name: "OPC UA"
+standard: "IEC 62541"
+summary: "The interoperability standard of industrial automation, with a browsable address space and built-in security."
+order: 2
+facts:
+  - { label: 'Transport', value: 'UA-TCP (opc.tcp)' }
+  - { label: 'Default port', value: '4840' }
+  - { label: 'Library', value: 'go-opcua' }
+  - { label: 'CLI', value: 'opcuactl' }
+icon: go-opcua
+docs: /docs/protocols/opc-ua/
+---
+
+import Callout from '../../components/Callout.astro';
+
+
+
+OPC Unified Architecture (OPC UA) is the interoperability standard of industrial automation. A server exposes an **address space**: a graph of nodes (objects, variables, methods) identified by NodeIds. Clients browse that graph, read and write values, call methods, and subscribe to data changes and events, over secure channels with X.509 certificates.
+
+## Where you meet it
+
+- PLCs and controllers from most major vendors
+- SCADA, MES and historian servers
+- Industrial gateways that translate fieldbus protocols into a single OPC UA model
+
+## Quickstart
+
+### From the command line
+
+Download `opcuactl` from [GitHub Releases](https://github.com/otfabric/opcuactl/releases), then:
+
+```sh
+# List endpoints and their security configurations
+opcuactl discover endpoints -e opc.tcp://localhost:4840
+
+# Browse the address space
+opcuactl browse children -e opc.tcp://localhost:4840
+
+# Read a value (anonymous / None, fine for lab servers)
+opcuactl get value -e opc.tcp://localhost:4840 -n i=2258
+
+# Monitor live value changes
+opcuactl monitor value -e opc.tcp://localhost:4840 -n i=2258
+```
+
+For production servers, connect securely with endpoint auto-selection:
+
+```sh
+opcuactl get value -e opc.tcp://plc.example:4840 -n i=2258 \
+  --auth username --username operator --password "$OPCUACTL_PASSWORD" \
+  --security-policy auto --security-mode auto \
+  --cert ./pki/client.pem --key ./pki/client.key \
+  --trusted-cert ./pki/server-ca.pem
+```
+
+### From Go
+
+```sh
+go get github.com/otfabric/go-opcua
+```
+
+Read the server's current time:
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/otfabric/go-opcua"
+	"github.com/otfabric/go-opcua/ua"
+)
+
+func main() {
+	ctx := context.Background()
+
+	c, err := opcua.NewClient("opc.tcp://localhost:4840")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := c.Connect(ctx); err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close(ctx)
+
+	v, err := c.Node(ua.MustParseNodeID("i=2258")).Value(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Server time:", v.Value())
+}
+```
+
+
+## What go-opcua supports
+
+| | |
+|---|---|
+| Roles | Client and server |
+| Transport | UA-TCP (`opc.tcp://`), including reverse connect. HTTPS and WebSockets are not supported. |
+| Encoding | OPC UA Binary on the wire; JSON and XML for values |
+| Security | None, Sign and SignAndEncrypt; RSA policies from Basic128Rsa15 to Aes256Sha256RsaPss, and ECC nistP256, nistP384 and curve25519 |
+| Services | Browse, read, write, subscriptions, events, method calls, historical access |
+| Not implemented | PubSub; brainpool and curve448 ECC policies |
+| Go version | 1.26 or later |
+
+<Callout type="caution">
+`opcuactl write value` changes process values and `call method` runs server-side logic. Know what a node controls before you write to it, and use `--dry-run` to validate a write first.
+</Callout>
+
+## Interoperability
+
+[opcua-interop](https://github.com/otfabric/opcua-interop) runs go-opcua in all applicable client and server directions against open62541 (C) and Eclipse Milo (Java).

@@ -1,0 +1,71 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/site/PageHeader.astro';
+import ProtocolMatrix from '../../components/ProtocolMatrix.astro';
+import { getProtocols } from '../../data/projects';
+
+const protocols = await getProtocols();
+---
+
+<BaseLayout title="Protocols" description="The OT protocols OT Fabric supports, with the library, CLI and interop suite for each.">
+	<PageHeader
+		label="Protocols"
+		title="Every protocol, the same toolkit"
+		lead="Each protocol gets a pure Go library, a command-line tool built on it, and an interoperability suite that tests it against independent implementations."
+	/>
+	<div class="ot-container">
+		<div class="cards">
+			{protocols.map((p) => (
+				<a class="card" href={`/protocols/${p.id}/`}>
+					{p.data.icon && <img src={`/icons/${p.data.icon}.svg`} alt="" width="40" height="40" />}
+					<span class="ot-label">{p.data.standard}</span>
+					<h2>{p.data.name}</h2>
+					<p>{p.data.summary}</p>
+				</a>
+			))}
+		</div>
+
+		<h2 class="matrix-title">At a glance</h2>
+		<ProtocolMatrix />
+	</div>
+</BaseLayout>
+
+<style>
+	.cards {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+		gap: 1rem;
+	}
+	.card {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 1.25rem;
+		border: 1px solid var(--ot-line);
+		border-top: 3px solid var(--ot-accent);
+		border-radius: 0.25rem;
+		text-decoration: none;
+		color: inherit;
+		background: var(--ot-bg);
+	}
+	.card:hover {
+		border-color: var(--ot-accent);
+	}
+	.card img {
+		width: 2.5rem;
+		height: 2.5rem;
+	}
+	.card h2 {
+		margin: 0;
+		font-size: 1.5rem;
+	}
+	.card p {
+		margin: 0;
+		color: var(--ot-muted);
+		font-size: 0.95rem;
+	}
+	.matrix-title {
+		margin: 3.5rem 0 1rem;
+		font-size: 1.8rem;
+	}
+</style>

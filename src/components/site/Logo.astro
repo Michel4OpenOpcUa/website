@@ -1,0 +1,44 @@
+---
+// Brand mark with the wordmark. Light and dark artwork swap with the theme.
+import light from '../../assets/logo-light.svg';
+import dark from '../../assets/logo-dark.svg';
+
+interface Props {
+	size?: number;
+	showName?: boolean;
+}
+const { size = 32, showName = true } = Astro.props;
+---
+
+<a href="/" class="ot-logo" aria-label="OT Fabric home">
+	<img class="ot-logo-light" src={light.src} width={size} height={size} alt="" />
+	<img class="ot-logo-dark" src={dark.src} width={size} height={size} alt="" />
+	{showName && <span><b>OT</b> Fabric</span>}
+</a>
+
+<style>
+	.ot-logo {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.6rem;
+		text-decoration: none;
+		color: var(--ot-fg-strong);
+		white-space: nowrap;
+	}
+	.ot-logo span {
+		font: 500 1.45rem/1 var(--ot-font-display);
+		letter-spacing: 0.01em;
+	}
+	.ot-logo b {
+		font-weight: 700;
+	}
+	.ot-logo-light {
+		display: none;
+	}
+	:global([data-theme='light']) .ot-logo-light {
+		display: block;
+	}
+	:global([data-theme='light']) .ot-logo-dark {
+		display: none;
+	}
+</style>

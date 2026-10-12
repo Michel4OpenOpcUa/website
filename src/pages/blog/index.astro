@@ -1,0 +1,17 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/site/PageHeader.astro';
+import PostList from '../../components/blog/PostList.astro';
+import TagList from '../../components/blog/TagList.astro';
+import { getPosts } from '../../data/blog';
+
+const posts = await getPosts();
+---
+
+<BaseLayout title="Blog" description="Release notes, protocol deep dives and how OT Fabric is built.">
+	<PageHeader label="Blog" title="Notes from the fabric" lead="Release notes, protocol deep dives and how OT Fabric is built, by people and AI agents together." />
+	<div class="ot-container">
+		<TagList />
+		<PostList posts={posts} />
+	</div>
+</BaseLayout>

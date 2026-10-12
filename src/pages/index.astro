@@ -1,0 +1,188 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Section from '../components/home/Section.astro';
+import Tiles from '../components/home/Tiles.astro';
+import ProtocolMatrix from '../components/ProtocolMatrix.astro';
+import PostList from '../components/blog/PostList.astro';
+import { getPosts } from '../data/blog';
+import light from '../assets/logo-light.svg';
+import dark from '../assets/logo-dark.svg';
+
+const latest = (await getPosts()).slice(0, 2);
+---
+
+<BaseLayout>
+	<section class="hero">
+		<div class="ot-container hero-inner">
+			<div class="hero-copy">
+				<span class="ot-label">Open source · MIT · Pure Go</span>
+				<h1>Unified data for industrial operations.</h1>
+				<p>
+					Built by people and AI agents together, OT Fabric creates open-source protocol libraries and tools that break down
+					operational technology (OT) data silos, so industrial data is easy to discover, access and use across systems,
+					sites and teams.
+				</p>
+				<div class="hero-actions">
+					<a class="ot-btn primary" href="/docs/getting-started/">Get started →</a>
+					<a class="ot-btn" href="/projects/">Browse projects</a>
+					<a class="ot-btn ghost" href="https://github.com/otfabric">GitHub</a>
+				</div>
+			</div>
+			<div class="hero-art" aria-hidden="true">
+				<img class="art-dark" src={dark.src} alt="" width="280" height="280" />
+				<img class="art-light" src={light.src} alt="" width="280" height="280" />
+			</div>
+		</div>
+	</section>
+
+	<div class="ot-container">
+		<Section label="01 · What we build" title="Open building blocks for industrial connectivity">
+			<Tiles
+				tiles={[
+					{ label: 'Libraries', title: 'Protocol libraries', body: 'Pure Go clients and servers for Modbus, OPC UA, BACnet/IP, IEC 60870-5-104, IEC 61850, Siemens S7 and SunSpec. No cgo.', href: '/projects/#library' },
+					{ label: 'CLI', title: 'Command-line tools', body: 'One tool per protocol to discover, read, write and diagnose devices in the field, with JSON output for scripts and CI.', href: '/projects/#cli' },
+					{ label: 'Discovery', title: 'Protocol fingerprinting', body: 'go-otfp detects which OT protocols are running on a network from transport framing alone.', href: '/projects/go-otfp/' },
+					{ label: 'Interop', title: 'Interoperability testing', body: 'Every protocol is tested against independent stacks in public, Dockerized suites.', href: '/projects/#interop' },
+				]}
+			/>
+		</Section>
+
+		<Section label="02 · Protocols" title="What you can connect today">
+			<p>Every library, CLI and interop suite is MIT-licensed and public on GitHub.</p>
+			<ProtocolMatrix />
+		</Section>
+
+		<Section label="03 · Why" title="Industrial data should not stay trapped">
+			<p>
+				There is enormous potential in connecting the devices that run our factories, grids and buildings. Energy shows it
+				most clearly: a sustainable, decentralized grid only works when solar inverters, batteries, meters and substations
+				exchange data reliably.
+			</p>
+			<p>
+				Yet that data is locked inside PLCs, RTUs, meters, inverters and building controllers. Every device speaks its own
+				protocol, documentation is often incomplete, and integrations are rebuilt from scratch for every site and vendor. We
+				think the foundation for industrial connectivity should be open, well tested and reusable, so that nobody has to
+				solve the same protocol problem twice.
+			</p>
+		</Section>
+
+		<Section label="04 · How we build" title="Built with AI agents">
+			<p>
+				OT Fabric is built by people and AI agents working together. We are heading toward a reality where LLMs write
+				better code and deliver more secure software, and we build for that reality today. Engineers bring the domain
+				knowledge of real OT systems, set direction and own every decision. Agents bring speed, breadth and attention to
+				detail.
+			</p>
+			<p>
+				Speed alone is not the goal. Industrial protocols leave no room for "mostly works", so everything we ship is held to
+				the same bar: public code, public tests and <a href="/projects/#interop">interoperability suites</a> that check it
+				against other implementations.
+			</p>
+		</Section>
+
+		<Section label="05 · Who it's for" title="Made for people who connect real equipment">
+			<Tiles
+				tiles={[
+					{ title: 'Energy and electricity startups', body: 'Building the software that connects solar, storage, EV charging, grid and DER equipment. Open, tested stacks let a small team integrate real hardware fast.' },
+					{ title: 'OT and automation engineers', body: 'Commission, troubleshoot and maintain field devices with one CLI per protocol.' },
+					{ title: 'System integrators', body: 'Connect equipment from many vendors across many sites with the same toolkit.' },
+					{ title: 'Data and software teams', body: 'Get reliable, typed access to industrial devices from modern Go code.' },
+				]}
+			/>
+		</Section>
+
+		<Section label="06 · Where we're heading" title="Roadmap">
+			<Tiles
+				dashed
+				tiles={[
+					{ label: 'Planned', title: 'Every relevant OT protocol', body: 'Full coverage, so any industrial device can be reached with the same open, tested toolkit.' },
+					{ label: 'Planned', title: 'IT2OT gateways and connectors', body: 'Move OT data safely into the IT, cloud and analytics systems that need it.' },
+					{ label: 'Planned', title: 'OT MCP servers', body: 'A structured, safe way for AI agents to discover, read and work with industrial devices.' },
+				]}
+			/>
+		</Section>
+
+		{latest.length > 0 && (
+			<Section label="07 · From the blog" title="Latest posts">
+				<PostList posts={latest} />
+				<p><a href="/blog/">All posts →</a></p>
+			</Section>
+		)}
+
+		<Section label="08 · Get involved" title="Bring your own agent">
+			<p>
+				Try a CLI, open an issue, or contribute a fix, written by you, your AI agent or both of you. Everything is
+				MIT-licensed unless a repository says otherwise.
+			</p>
+			<div class="hero-actions">
+				<a class="ot-btn primary" href="/docs/contributing/">Contributing guide</a>
+				<a class="ot-btn" href="https://github.com/otfabric">GitHub</a>
+			</div>
+		</Section>
+	</div>
+</BaseLayout>
+
+<style>
+	.hero {
+		padding-block: 4rem 2rem;
+		background:
+			radial-gradient(ellipse at 80% 40%, var(--ot-accent-soft), transparent 55%),
+			repeating-linear-gradient(90deg, color-mix(in srgb, var(--ot-line) 60%, transparent) 0 1px, transparent 1px 48px),
+			repeating-linear-gradient(0deg, color-mix(in srgb, var(--ot-line) 60%, transparent) 0 1px, transparent 1px 48px);
+		border-bottom: 1px solid var(--ot-line);
+	}
+	.hero-inner {
+		display: grid;
+		gap: 2rem;
+		align-items: center;
+	}
+	.hero-copy .ot-label {
+		color: var(--ot-accent);
+	}
+	h1 {
+		margin: 0.8rem 0 0;
+		font-size: clamp(2.6rem, 7vw, 4.4rem);
+		font-weight: 700;
+	}
+	.hero-copy p {
+		max-width: 40rem;
+		margin: 1.25rem 0 0;
+		font-size: 1.15rem;
+		color: var(--ot-muted);
+	}
+	.hero-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin-top: 2rem;
+	}
+	.hero-art {
+		display: none;
+		text-align: center;
+	}
+	.hero-art img {
+		width: 18rem;
+		max-width: 100%;
+		height: auto;
+	}
+	.art-light {
+		display: none;
+	}
+	:global([data-theme='light']) .art-light {
+		display: block;
+	}
+	:global([data-theme='light']) .art-dark {
+		display: none;
+	}
+	@media (min-width: 50rem) {
+		.hero {
+			padding-block: 6rem 4rem;
+		}
+		.hero-inner {
+			grid-template-columns: 1.6fr 1fr;
+		}
+		.hero-art {
+			display: block;
+		}
+	}
+</style>

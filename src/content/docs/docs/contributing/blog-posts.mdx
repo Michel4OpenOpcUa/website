@@ -1,0 +1,74 @@
+---
+title: Writing blog posts
+description: How to add a post to the OT Fabric blog, with images, video and code.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Blog posts live in `src/content/blog/` in the [website repository](https://github.com/otfabric/website). Each post is one `.md` or `.mdx` file. Use `.mdx` when you need components such as video.
+
+## Front matter
+
+```yaml
+---
+title: Reading SunSpec inverters with go-sunspec
+description: One sentence for search results and social cards.
+date: 2026-10-12
+authors: [OT Fabric]      # one or more names
+tags: [modbus, sunspec, energy]
+cover:
+  alt: Rooftop solar array
+  image: ../../assets/blog/sunspec-cover.jpg
+featured: false          # pin to the top of the blog
+draft: false             # true keeps it out of the build
+---
+```
+
+## Images
+
+Put images in `src/assets/blog/` and use relative paths. Astro optimizes them at build time.
+
+```md
+![Register map of a SunSpec inverter](../../assets/blog/register-map.png)
+```
+
+## Video and callouts
+
+Three components are available in `.mdx` posts:
+
+```mdx
+import YouTube from '../../components/YouTube.astro';
+import Video from '../../components/Video.astro';
+import Callout from '../../components/Callout.astro';
+
+<YouTube id="VIDEO_ID" title="modbusctl scan walkthrough" />
+
+<Callout type="caution" title="Before you write">
+  Test against a simulator first.
+</Callout>
+
+<Video src="/videos/scan.mp4" poster="/videos/scan.jpg" caption="An adaptive scan in progress" />
+```
+
+Self-hosted files go in `public/videos/`. Keep them short and compressed; prefer YouTube for anything longer than a minute.
+
+## Code
+
+Fenced code blocks are highlighted with Expressive Code. Add a title, mark lines, or show a terminal frame:
+
+````md
+```go title="main.go" {3}
+regs, err := client.ReadRegisters(ctx, 1, 100, 4, modbus.HoldingRegister)
+if err != nil {
+	log.Fatal(err)
+}
+```
+
+```sh frame="terminal"
+modbusctl client poll --ip 192.168.1.10 --start 100 --count 4
+```
+````
+
+<Aside>
+Follow the voice of the rest of the site: name the protocol, version and transport, show a working example, and be honest about what is supported.
+</Aside>

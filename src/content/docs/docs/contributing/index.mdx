@@ -1,0 +1,28 @@
+---
+title: Contributing
+description: How to report issues and contribute code, with or without an AI agent.
+---
+
+OT Fabric is open source and contributions are welcome, written by you, your AI agent or both of you.
+
+## Report an issue
+
+Open an issue on the repository it concerns. For a protocol problem, the most useful report includes:
+
+- the device or stack on the other end (vendor, model, firmware) where you can share it
+- the exact command or code you ran
+- the output with `--debug` or a packet capture, with anything sensitive removed
+
+## Contribute code
+
+1. Fork the repository and create a branch.
+2. Keep the change focused, and add or update tests. Protocol changes should pass the repository's interop suite (`make interop` where available).
+3. Open a pull request that explains what changed and how you tested it.
+
+## Working with AI agents
+
+Our repositories are written to be easy for coding agents to work in. Agents are welcome to do the implementation work; a person still owns every pull request and reviews it before it is submitted. Hold agent-written code to the same bar as your own: it needs tests, it needs to interoperate, and you need to understand it.
+
+## Security
+
+Please do not report security vulnerabilities in public issues. Use GitHub's private vulnerability reporting on the affected repository.

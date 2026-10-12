@@ -1,0 +1,114 @@
+---
+name: "BACnet/IP"
+standard: "ISO 16484-5, Annex J"
+summary: "The standard protocol of building automation: HVAC, lighting, access control and energy metering."
+order: 3
+facts:
+  - { label: 'Transport', value: 'UDP over IPv4' }
+  - { label: 'Default port', value: '47808' }
+  - { label: 'Library', value: 'go-bacnet' }
+  - { label: 'CLI', value: 'bacnetctl' }
+docs: /docs/protocols/bacnet/
+---
+
+import Callout from '../../components/Callout.astro';
+
+
+
+BACnet is the standard protocol of building automation (ISO 16484-5). Each device holds **objects** (analog inputs, binary outputs, schedules, trend logs and more), and each object has **properties** such as its present value, units and status. BACnet/IP (Annex J) carries it over UDP port 47808, with BBMDs and routers joining networks across subnets.
+
+## Where you meet it
+
+- HVAC controllers, chillers, air handlers and VAV boxes
+- Lighting, access control and fire panels
+- Building energy meters and building management systems (BMS)
+
+## Quickstart
+
+### From the command line
+
+Download `bacnetctl` from [GitHub Releases](https://github.com/otfabric/bacnetctl/releases), then:
+
+```sh
+# Which devices are on this network?
+bacnetctl discover
+
+# Its point list: every object with value, unit, status and description
+bacnetctl objects --device 192.168.1.20 --values
+
+# One value
+bacnetctl read --device 192.168.1.20 analog-input:1 present-value
+
+# Watch two points change, until Ctrl-C
+bacnetctl monitor --device 192.168.1.20 analog-input:1 binary-input:3
+
+# Override a setpoint at operator priority, then hand it back
+bacnetctl write --device 192.168.1.20 analog-value:1 present-value 22.5 --priority 8
+bacnetctl release --device 192.168.1.20 analog-value:1 --priority 8
+```
+
+Objects are written as `type:instance` (`analog-input:1`, or `ai:1`) and properties by name (`present-value`, or `pv`).
+
+### From Go
+
+```sh
+go get github.com/otfabric/go-bacnet@latest
+```
+
+Discover devices and print their names:
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/otfabric/go-bacnet"
+	"github.com/otfabric/go-bacnet/client"
+)
+
+func main() {
+	c, err := client.New() // binds UDP port 47808
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+
+	ctx := context.Background()
+	devices, err := c.Discover(ctx, client.DiscoveryOptions{Window: 3 * time.Second})
+	if err != nil {
+		log.Fatal(err)
+	}
+	name := bacnet.PropertyReference{Identifier: bacnet.PropertyObjectName}
+	for _, d := range devices {
+		val, err := c.ReadProperty(ctx, d.Target(), d.DeviceID(), name)
+		if err != nil {
+			fmt.Printf("device %d at %s: %v\n", d.Instance, d.Address, err)
+			continue
+		}
+		fmt.Printf("device %d at %s: %s\n", d.Instance, d.Address, val.Character.Value)
+	}
+}
+```
+
+
+## What go-bacnet supports
+
+| | |
+|---|---|
+| Role | Client only |
+| Transport | BACnet/IP (Annex J) over IPv4, routed networks, foreign-device registration, segmentation |
+| Services | Who-Is / I-Am discovery, read and write properties, COV and alarm notifications, file transfer, object management |
+| Dependencies | Go standard library only |
+| Go version | 1.23 or later |
+
+<Callout type="note" title="Status">
+go-bacnet is tested on every change against five independent open-source BACnet stacks, and its requests are checked against Wireshark's dissector. It has not yet been validated against physical controllers, and the API is v0.
+</Callout>
+
+## Interoperability
+
+[bacnet-interop](https://github.com/otfabric/bacnet-interop) provides Dockerized devices from BACnet Stack (C), BACpypes3 (Python), BACnet4J (Java), System.IO.BACnet (C#) and Worldiety (Go), including BBMD and routed-network scenarios.

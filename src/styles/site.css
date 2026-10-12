@@ -1,0 +1,108 @@
+/* Website pages (everything outside /docs/). Shares tokens with the docs theme. */
+@import './tokens.css';
+
+/* Starlight-compatible variables so shared components render the same on both sides. */
+:root {
+  --sl-color-white: var(--ot-fg-strong);
+  --sl-color-gray-1: #d9dfe4;
+  --sl-color-gray-2: #b7c1ca;
+  --sl-color-gray-3: var(--ot-muted);
+  --sl-color-gray-4: #5a6875;
+  --sl-color-gray-5: var(--ot-line);
+  --sl-color-gray-6: var(--ot-surface);
+  --sl-color-black: var(--ot-bg);
+  --sl-color-accent-low: var(--ot-accent-soft);
+  --sl-color-accent: var(--ot-accent);
+  --sl-color-accent-high: var(--ot-accent-strong);
+  --sl-color-text-accent: var(--ot-accent);
+  --sl-font: var(--ot-font-body);
+  --sl-font-mono: var(--ot-font-mono);
+  --sl-text-sm: 0.875rem;
+  --sl-text-base: 1rem;
+  --sl-text-lg: 1.125rem;
+  --sl-text-xl: 1.25rem;
+  --sl-text-h3: 1.5rem;
+  --sl-text-h2: 2rem;
+  color-scheme: dark;
+}
+:root[data-theme='light'] {
+  --sl-color-gray-1: #2a3743;
+  --sl-color-gray-2: #2a3743;
+  --sl-color-gray-4: #94a3b0;
+  --sl-color-text-accent: var(--ot-accent);
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--ot-bg);
+  color: var(--ot-fg);
+  font: 1rem/1.65 var(--ot-font-body);
+}
+img, svg, video { max-width: 100%; height: auto; }
+a { color: var(--ot-accent); }
+h1, h2, h3, h4 {
+  font-family: var(--ot-font-display);
+  color: var(--ot-fg-strong);
+  line-height: 1.1;
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+code, kbd, pre { font-family: var(--ot-font-mono); }
+:not(pre) > code {
+  font-size: 0.875em;
+  padding: 0.1em 0.35em;
+  border-radius: 0.2rem;
+  background: var(--ot-surface);
+  border: 1px solid var(--ot-line);
+}
+
+.ot-container {
+  width: 100%;
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+@media (min-width: 50rem) {
+  .ot-container { padding-inline: 2rem; }
+}
+
+/* Long-form text: blog posts, About, protocol pages. */
+.ot-prose { max-width: 46rem; }
+.ot-prose > * + * { margin-top: 1rem; }
+.ot-prose h2 { font-size: 1.9rem; margin-top: 2.5rem; }
+.ot-prose h3 { font-size: 1.35rem; margin-top: 2rem; }
+.ot-prose p, .ot-prose li { color: var(--ot-fg); }
+.ot-prose ul, .ot-prose ol { padding-inline-start: 1.25rem; }
+.ot-prose li + li { margin-top: 0.35rem; }
+.ot-prose table { width: 100%; border-collapse: collapse; font-size: 0.9rem; display: block; overflow-x: auto; }
+.ot-prose th, .ot-prose td { text-align: left; padding: 0.55rem 0.8rem 0.55rem 0; border-bottom: 1px solid var(--ot-line); vertical-align: top; }
+.ot-prose th { font-weight: 600; color: var(--ot-fg-strong); }
+.ot-prose img { border-radius: 0.25rem; }
+.ot-prose blockquote { margin-inline: 0; padding-inline-start: 1rem; border-inline-start: 3px solid var(--ot-accent); color: var(--ot-muted); }
+
+/* Buttons */
+.ot-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.15rem;
+  border-radius: 999px;
+  font-weight: 500;
+  text-decoration: none;
+  border: 1px solid var(--ot-line);
+  color: var(--ot-fg-strong);
+}
+.ot-btn:hover { border-color: var(--ot-accent); }
+.ot-btn.primary { background: var(--ot-accent); border-color: var(--ot-accent); color: var(--ot-bg); }
+.ot-btn.primary:hover { filter: brightness(1.08); }
+.ot-btn.ghost { border-color: transparent; }
+
+.not-content a:not(.ot-tile):not(.ot-btn) { color: var(--ot-accent); }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}

@@ -1,0 +1,17 @@
+---
+// Layout for standalone Markdown/MDX pages in src/pages (About and similar).
+import BaseLayout from './BaseLayout.astro';
+import PageHeader from '../components/site/PageHeader.astro';
+
+interface Props {
+	frontmatter: { title: string; description?: string; label?: string; lead?: string };
+}
+const { frontmatter } = Astro.props;
+---
+
+<BaseLayout title={frontmatter.title} description={frontmatter.description}>
+	<PageHeader label={frontmatter.label} title={frontmatter.title} lead={frontmatter.lead ?? frontmatter.description} />
+	<div class="ot-container">
+		<article class="ot-prose"><slot /></article>
+	</div>
+</BaseLayout>

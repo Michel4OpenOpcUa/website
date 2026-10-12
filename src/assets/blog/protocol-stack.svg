@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" font-family="IBM Plex Sans, Segoe UI, sans-serif" role="img" aria-label="Each OT Fabric protocol has a library, a CLI built on it, and an interop suite that tests the library against reference stacks">
+  <rect width="720" height="300" fill="#F4F6F8"/>
+  <g font-size="13" fill="#17212B">
+    <rect x="40" y="30" width="330" height="56" rx="4" fill="#FFFFFF" stroke="#D9DFE4"/>
+    <text x="60" y="54" font-weight="600" font-size="15">CLI</text>
+    <text x="60" y="74" fill="#5A6875">modbusctl · opcuactl · bacnetctl · iec104ctl</text>
+    <rect x="40" y="110" width="330" height="56" rx="4" fill="#FFFFFF" stroke="#0A7C80" stroke-width="2"/>
+    <text x="60" y="134" font-weight="600" font-size="15">Library</text>
+    <text x="60" y="154" fill="#5A6875">go-modbus · go-opcua · go-bacnet · go-iec104</text>
+    <rect x="40" y="190" width="330" height="56" rx="4" fill="#FFFFFF" stroke="#D9DFE4"/>
+    <text x="60" y="214" font-weight="600" font-size="15">Transports</text>
+    <text x="60" y="234" fill="#5A6875">go-serial · go-tpkt · go-cotp · TCP/UDP</text>
+    <rect x="430" y="110" width="250" height="56" rx="4" fill="#FFFFFF" stroke="#B35A1F" stroke-width="2" stroke-dasharray="6 4"/>
+    <text x="450" y="134" font-weight="600" font-size="15">Interop suite</text>
+    <text x="450" y="154" fill="#5A6875">Dockerized reference stacks</text>
+  </g>
+  <g stroke="#5A6875" stroke-width="2" fill="none">
+    <path d="M205 86 V110"/><path d="M205 166 V190"/>
+    <path d="M370 138 H430" stroke="#B35A1F" stroke-dasharray="4 4"/>
+  </g>
+  <text x="400" y="128" font-size="12" fill="#B35A1F" text-anchor="middle" font-family="IBM Plex Mono, monospace">tests</text>
+  <text x="40" y="280" font-size="12" fill="#5A6875" font-family="IBM Plex Mono, monospace">BUILT ON · TESTED AGAINST</text>
+</svg>

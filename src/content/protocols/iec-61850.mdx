@@ -1,0 +1,111 @@
+---
+name: "IEC 61850 / MMS"
+standard: "IEC 61850-8-1 over MMS (ISO 9506)"
+summary: "The data model and communication standard for substation automation, carried over MMS on TCP port 102."
+order: 5
+facts:
+  - { label: 'Transport', value: 'MMS over ISO-on-TCP' }
+  - { label: 'Default port', value: '102' }
+  - { label: 'Libraries', value: 'go-iec61850, go-mms' }
+  - { label: 'CLI', value: 'iec61850ctl' }
+icon: go-iec61850
+docs: /docs/protocols/iec-61850/
+---
+
+import Callout from '../../components/Callout.astro';
+
+IEC 61850 describes a substation as a model: an **IED** (intelligent electronic device) holds **logical devices**, each with **logical nodes** such as `MMXU` (measurements) or `XCBR` (circuit breaker), which hold **data objects** and **data attributes** grouped by functional constraint (`MX`, `ST`, `CO`, `CF` and so on). On the wire, client/server communication is mapped onto MMS (Manufacturing Message Specification). Devices and their configuration are described in **SCL** files (`.icd`, `.cid`, `.scd`).
+
+## Where you meet it
+
+- Protection relays, bay controllers and merging units in substations
+- Battery storage, solar and wind plants connected at medium and high voltage
+- Gateways between station buses and SCADA
+
+## Quickstart
+
+### From the command line
+
+Download `iec61850ctl` from [GitHub Releases](https://github.com/otfabric/iec61850ctl/releases), or `go install github.com/otfabric/iec61850ctl@latest`, then:
+
+```sh
+# List logical devices
+iec61850ctl list lds --host 192.0.2.10
+
+# Read a measurement (FC MX)
+iec61850ctl get object --host 192.0.2.10 \
+  --object MNSREF615LD0/FMMXU1.Hz.mag.f --fc MX
+
+# Subscribe to a buffered report (Ctrl+C to stop)
+iec61850ctl subscribe report --host 192.0.2.10 \
+  --ld MNSREF615LD0 --ln LLN0 --report rcbMeasFlt01 --type BR \
+  --show-values --interrogation
+
+# Parse SCL offline
+iec61850ctl scl parse --input device.cid --flatten
+
+# Run a local MMS server from SCL
+iec61850ctl server start --scl device.cid --host 0.0.0.0 --port 102
+```
+
+### From Go
+
+```sh
+go get github.com/otfabric/go-iec61850
+```
+
+List logical devices and read one attribute by its IEC 61850 reference:
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/otfabric/go-iec61850"
+)
+
+func main() {
+	ctx := context.Background()
+
+	client, err := iec61850.Dial(ctx, "10.0.0.1:102", iec61850.DialOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close(ctx)
+
+	devices, err := client.ListLogicalDevices(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, ld := range devices {
+		fmt.Println(ld.Name)
+	}
+
+	ref, _ := iec61850.ParseRef("PROT1LD/MMXU1.TotW.mag.f[MX]")
+	val, err := client.Read(ctx, ref)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(val)
+}
+```
+
+## What the libraries support
+
+| | |
+|---|---|
+| go-iec61850 | Client and SCL-driven server; browse, typed reads and writes, datasets, buffered and unbuffered reports, controls (direct, SBO, SBOw), files, journals, SCL parsing and validation |
+| go-mms | MMS client and server: variable access, named variable lists, file and journal services, information reports. The v1 API is stable. |
+| Not covered | GOOSE and Sampled Values (IEC 61850-8-1 GSE and 9-2); MMS semaphore, event and program invocation services |
+| Go version | 1.24 or later for go-iec61850 |
+
+<Callout type="caution">
+`iec61850ctl` can operate controllable objects such as breakers and switches. Rehearse against `iec61850ctl server start` with your SCL file before you connect to a live IED.
+</Callout>
+
+## Interoperability
+
+[mms-interop](https://github.com/otfabric/mms-interop) publishes adapter images for libiec61850 and IEC61850bean. The MMS and IEC 61850 interop tests live in go-mms and go-iec61850 and run against those images.

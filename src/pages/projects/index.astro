@@ -1,0 +1,16 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/site/PageHeader.astro';
+import ProjectCatalog from '../../components/ProjectCatalog.astro';
+---
+
+<BaseLayout title="Projects" description="Every OT Fabric library, CLI tool, building block and interoperability suite, plus what is on the roadmap.">
+	<PageHeader
+		label="Projects"
+		title="Project catalog"
+		lead="All projects are public on GitHub and MIT-licensed unless a repository says otherwise. Entries marked Planned are on the roadmap and have no public repository yet."
+	/>
+	<div class="ot-container">
+		<ProjectCatalog />
+	</div>
+</BaseLayout>

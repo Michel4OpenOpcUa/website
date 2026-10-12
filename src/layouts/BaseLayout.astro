@@ -1,0 +1,59 @@
+---
+import '../styles/site.css';
+import SiteHeader from '../components/site/SiteHeader.astro';
+import SiteFooter from '../components/site/SiteFooter.astro';
+import { site } from '../data/site';
+
+interface Props {
+	title?: string;
+	description?: string;
+	image?: string;
+	type?: 'website' | 'article';
+}
+
+const { title, description = site.description, image, type = 'website' } = Astro.props;
+const fullTitle = title ? `${title} | ${site.name}` : `${site.name}: unified data for industrial operations`;
+const canonical = new URL(Astro.url.pathname, Astro.site ?? site.url);
+---
+
+<!doctype html>
+<html lang="en" data-theme="dark">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{fullTitle}</title>
+		<meta name="description" content={description} />
+		<link rel="canonical" href={canonical} />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link rel="sitemap" href="/sitemap-index.xml" />
+		<link rel="alternate" type="application/rss+xml" title="OT Fabric blog" href="/blog/rss.xml" />
+		<meta name="theme-color" content="#17212B" />
+		<meta property="og:title" content={fullTitle} />
+		<meta property="og:description" content={description} />
+		<meta property="og:type" content={type} />
+		<meta property="og:url" content={canonical} />
+		<meta property="og:site_name" content={site.name} />
+		{image && <meta property="og:image" content={new URL(image, Astro.site ?? site.url)} />}
+		<script is:inline>
+			(() => {
+				let theme;
+				try {
+					theme = localStorage.getItem('starlight-theme');
+				} catch {}
+				if (theme !== 'light' && theme !== 'dark') {
+					theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+				}
+				document.documentElement.dataset.theme = theme;
+			})();
+		</script>
+		<slot name="head" />
+	</head>
+	<body>
+		<a class="sr-only" href="#main">Skip to content</a>
+		<SiteHeader />
+		<main id="main">
+			<slot />
+		</main>
+		<SiteFooter />
+	</body>
+</html>

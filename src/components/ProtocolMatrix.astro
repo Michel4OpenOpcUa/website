@@ -1,0 +1,84 @@
+---
+import { getProjects, getProtocols } from '../data/projects';
+
+const projects = (await getProjects()).filter((p) => p.data.status === 'available');
+const protocols = await getProtocols();
+
+const rows = protocols.map((protocol) => {
+	// A project belongs to the row of its primary (first) protocol.
+	const of = (category: string) =>
+		projects.filter((p) => p.data.category === category && p.data.protocols[0] === protocol.id);
+	return { protocol, libraries: of('library'), clis: of('cli'), interop: of('interop') };
+});
+---
+
+<div class="ot-matrix not-content">
+	<table>
+		<thead>
+			<tr>
+				<th scope="col">Protocol</th>
+				<th scope="col">Library</th>
+				<th scope="col">CLI</th>
+				<th scope="col">Interop suite</th>
+			</tr>
+		</thead>
+		<tbody>
+			{rows.map((row) => (
+				<tr>
+					<th scope="row"><a href={`/protocols/${row.protocol.id}/`}>{row.protocol.data.name}</a></th>
+					{[row.libraries, row.clis, row.interop].map((items, column) => (
+						<td>
+							{items.length === 0
+								? column === 1 && row.protocol.id === 'sunspec'
+									? <code>sunspecctl</code>
+									: <span class="ot-none">–</span>
+								: items.map((p, i) => <>{i > 0 && ', '}<a href={`/projects/${p.id}/`}><code>{p.data.name}</code></a></>)}
+						</td>
+					))}
+				</tr>
+			))}
+		</tbody>
+	</table>
+</div>
+
+<style>
+	.ot-matrix {
+		overflow-x: auto;
+	}
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.9rem;
+	}
+	th,
+	td {
+		text-align: left;
+		padding: 0.65rem 0.9rem 0.65rem 0;
+		border-bottom: 1px solid var(--ot-line);
+		white-space: nowrap;
+	}
+	thead th {
+		font: 500 0.72rem/1 var(--ot-font-mono);
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		color: var(--ot-muted);
+	}
+	tbody th {
+		font-weight: 600;
+	}
+	tbody th a {
+		color: var(--ot-fg-strong) !important;
+	}
+	td a {
+		text-decoration: none;
+	}
+	code {
+		font-size: 0.85em;
+		background: none;
+		border: 0;
+		padding: 0;
+	}
+	.ot-none {
+		color: var(--ot-muted);
+	}
+</style>

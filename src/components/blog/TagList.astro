@@ -1,0 +1,47 @@
+---
+import { getTags } from '../../data/blog';
+
+interface Props {
+	current?: string;
+}
+const { current } = Astro.props;
+const tags = await getTags();
+---
+
+<nav class="ot-tagnav" aria-label="Blog tags">
+	<a href="/blog/" aria-current={current ? undefined : 'page'}>All posts</a>
+	{tags.map(([tag, count]) => (
+		<a href={`/blog/tags/${tag}/`} aria-current={tag === current ? 'page' : undefined}>#{tag} <span>{count}</span></a>
+	))}
+	<a href="/blog/rss.xml" class="rss">RSS</a>
+</nav>
+
+<style>
+	.ot-tagnav {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin-bottom: 2rem;
+	}
+	a {
+		font: 500 0.8rem/1 var(--ot-font-mono);
+		padding: 0.45rem 0.7rem;
+		border: 1px solid var(--ot-line);
+		border-radius: 999px;
+		text-decoration: none;
+		color: var(--ot-fg);
+	}
+	a[aria-current='page'] {
+		background: var(--ot-accent);
+		border-color: var(--ot-accent);
+		color: var(--ot-bg);
+	}
+	span {
+		opacity: 0.7;
+	}
+	.rss {
+		margin-inline-start: auto;
+		color: var(--ot-wire);
+		border-color: currentColor;
+	}
+</style>

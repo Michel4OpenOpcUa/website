@@ -1,0 +1,39 @@
+---
+import { isActive, nav } from '../../data/site';
+
+interface Props {
+	class?: string;
+}
+const { class: className } = Astro.props;
+const path = Astro.url.pathname;
+---
+
+<ul class:list={['ot-navlinks', className]}>
+	{nav.map((link) => (
+		<li>
+			<a href={link.href} aria-current={isActive(path, link.href) ? 'page' : undefined}>{link.label}</a>
+		</li>
+	))}
+</ul>
+
+<style>
+	.ot-navlinks {
+		display: flex;
+		gap: 1.5rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.ot-navlinks li {
+		margin: 0;
+	}
+	.ot-navlinks a {
+		font: 500 0.95rem/1 var(--ot-font-body);
+		color: var(--ot-fg);
+		text-decoration: none;
+	}
+	.ot-navlinks a:hover,
+	.ot-navlinks a[aria-current='page'] {
+		color: var(--ot-accent);
+	}
+</style>

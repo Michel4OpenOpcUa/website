@@ -1,0 +1,102 @@
+---
+name: "Siemens S7"
+standard: "S7 communication over ISO-on-TCP (RFC 1006)"
+summary: "Classic S7 communication with Siemens PLCs, for reading and writing data blocks, inputs, outputs and markers."
+order: 6
+facts:
+  - { label: 'Transport', value: 'S7 over COTP and TPKT' }
+  - { label: 'Default port', value: '102' }
+  - { label: 'Library', value: 'go-s7comm' }
+  - { label: 'CLI', value: 's7commctl' }
+icon: go-s7comm
+docs: /docs/protocols/s7/
+---
+
+import Callout from '../../components/Callout.astro';
+
+S7 communication is the protocol Siemens PLCs speak on port 102. It runs on a stack of ISO transports: TPKT framing (RFC 1006), then COTP (ISO 8073, class 0), then the S7 PDUs themselves. A client connects to a CPU by **rack** and **slot**, then reads and writes memory **areas**: data blocks (`DB`), inputs (`I`), outputs (`Q`) and markers (`M`). OT Fabric builds this stack from [go-tpkt](https://github.com/otfabric/go-tpkt), [go-cotp](https://github.com/otfabric/go-cotp) and [go-s7comm](https://github.com/otfabric/go-s7comm).
+
+## Where you meet it
+
+- Siemens PLCs on factory floors and in process plants
+- Utility and building systems controlled by Siemens CPUs
+- Legacy integrations where OPC UA is not enabled on the PLC
+
+## Quickstart
+
+### From the command line
+
+```sh
+# Find S7 devices on a subnet
+s7commctl discover --cidr 192.168.1.0/24 --format json
+
+# Which rack/slot combinations does a target accept?
+s7commctl probe rackslot --ip 192.168.1.10 --format table
+
+# What is it? (SZL-based identification)
+s7commctl identify --ip 192.168.1.10 --rack 0 --slot 1 --format json
+
+# Read 16 bytes from DB1
+s7commctl read --ip 192.168.1.10 --area DB --db 1 --offset 0 --size 16 --format hex
+```
+
+Reads are safe by default. Writes need `--dangerous`, and ask for confirmation unless you pass `--force`.
+
+### From Go
+
+```sh
+go get github.com/otfabric/go-s7comm
+```
+
+Read 16 bytes from DB1:
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/otfabric/go-s7comm/client"
+)
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	c := client.New("192.168.0.10", client.WithRackSlot(0, 1))
+	if err := c.Connect(ctx); err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+
+	result, err := c.ReadDB(ctx, 1, 0, 16)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := result.Err(); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("DB1.DBB0..15 = % X\n", result.Data)
+}
+```
+
+## What go-s7comm supports
+
+| | |
+|---|---|
+| Role | Client |
+| Areas | Read and write DB, inputs, outputs and markers, plus native single-bit reads and writes |
+| Discovery | CIDR scans with rack/slot probing, readable-range scans |
+| Diagnostics | SZL-based identification, block listing, block metadata and upload |
+| Go version | 1.23 or later |
+
+<Callout type="note">
+Identification fields vary between PLC families and firmware, and block upload depends on the PLC's capabilities and protection level.
+</Callout>
+
+## Interoperability
+
+[snap7-interop](https://github.com/otfabric/snap7-interop) runs two independent Snap7 servers (native and pure Python) from the same compiled fixtures, covering data blocks, markers, inputs and outputs, typed values and bit access.

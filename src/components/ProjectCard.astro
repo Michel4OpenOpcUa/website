@@ -1,0 +1,130 @@
+---
+import { repoUrl, type Project } from '../data/projects';
+
+interface Props {
+	project: Project;
+	protocolNames: Record<string, string>;
+}
+
+const { project, protocolNames } = Astro.props;
+const { data } = project;
+const labels = data.protocols.map((id) => protocolNames[id] ?? id);
+const href = data.status === 'available' ? `/projects/${project.id}/` : undefined;
+---
+
+<article
+	class:list={['ot-project', { 'is-planned': data.status === 'planned' }]}
+	data-category={data.category}
+	data-protocols={data.protocols.join(' ')}
+>
+	<header>
+		{data.icon && <img class="ot-icon" src={`/icons/${data.icon}.svg`} alt="" width="32" height="32" />}
+		<h3>{href ? <a href={href}>{data.name}</a> : data.name}</h3>
+		{data.status === 'planned' && <span class="ot-badge">Planned</span>}
+	</header>
+	<p>{data.description}</p>
+	{data.install && <code class="ot-install">{data.install}</code>}
+	<footer>
+		{labels.length > 0 && (
+			<ul class="ot-tags" aria-label="Protocols">
+				{labels.map((label) => <li>{label}</li>)}
+			</ul>
+		)}
+		{data.repo && <a class="ot-repo" href={repoUrl(data.repo)}>GitHub</a>}
+	</footer>
+</article>
+
+<style>
+	.ot-project {
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+		padding: 1rem 1.1rem;
+		border: 1px solid var(--ot-line);
+		border-radius: 0.25rem;
+		background: var(--ot-bg);
+		min-width: 0;
+	}
+	.ot-project[hidden] {
+		display: none;
+	}
+	.ot-project.is-planned {
+		border-style: dashed;
+		background: transparent;
+	}
+	header {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+	}
+	.ot-icon {
+		flex: none;
+		width: 2rem;
+		height: 2rem;
+	}
+	h3 {
+		margin: 0;
+		font-size: 1.15rem;
+		font-weight: 600;
+	}
+	h3 a {
+		color: var(--ot-fg-strong) !important;
+		text-decoration: none;
+	}
+	h3 a:hover {
+		color: var(--ot-accent) !important;
+	}
+	p {
+		margin: 0;
+		font-size: 0.875rem;
+		line-height: 1.55;
+		color: var(--ot-muted);
+	}
+	.ot-install {
+		display: block;
+		font-size: 0.75rem;
+		overflow-x: auto;
+		white-space: nowrap;
+		padding: 0.3rem 0.45rem;
+		background: var(--ot-surface);
+		border: 1px solid var(--ot-line);
+		border-radius: 0.2rem;
+	}
+	footer {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-top: auto;
+	}
+	.ot-tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.ot-tags li {
+		margin: 0;
+		font: 500 0.7rem/1 var(--ot-font-mono);
+		padding: 0.25rem 0.4rem;
+		border-radius: 0.2rem;
+		background: var(--ot-accent-soft);
+		color: var(--ot-accent-strong);
+	}
+	.ot-repo {
+		font-size: 0.8rem;
+		flex: none;
+	}
+	.ot-badge {
+		margin-inline-start: auto;
+		font: 500 0.68rem/1 var(--ot-font-mono);
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		color: var(--ot-wire);
+		border: 1px solid currentColor;
+		border-radius: 0.2rem;
+		padding: 0.2rem 0.35rem;
+	}
+</style>

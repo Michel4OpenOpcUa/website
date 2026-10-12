@@ -1,0 +1,80 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHeader from '../../components/site/PageHeader.astro';
+import ProjectGrid from '../../components/ProjectGrid.astro';
+import { categories, getProjects, getProtocols, repoUrl, type Project } from '../../data/projects';
+
+export async function getStaticPaths() {
+	const projects = (await getProjects()).filter((p) => p.data.status === 'available');
+	return projects.map((project) => ({ params: { id: project.id }, props: { project } }));
+}
+
+interface Props {
+	project: Project;
+}
+const { project } = Astro.props;
+const { data } = project;
+const category = categories.find((c) => c.id === data.category)!;
+const protocols = (await getProtocols()).filter((p) => data.protocols.includes(p.id as never));
+const related = (await getProjects()).filter(
+	(p) => p.id !== project.id && p.data.status === 'available' && p.data.protocols.some((id) => data.protocols.includes(id)),
+);
+const releases = data.category === 'cli' ? `${repoUrl(data.repo!)}/releases` : undefined;
+---
+
+<BaseLayout title={data.name} description={data.description}>
+	<PageHeader label={category.label} title={data.name} lead={data.description}>
+		<div class="actions">
+			<a class="ot-btn primary" href={repoUrl(data.repo!)}>View on GitHub</a>
+			{releases && <a class="ot-btn" href={releases}>Download a release</a>}
+			{data.install?.startsWith('go get') && (
+				<a class="ot-btn" href={`https://pkg.go.dev/github.com/otfabric/${data.repo}`}>API reference</a>
+			)}
+		</div>
+	</PageHeader>
+
+	<div class="ot-container ot-prose">
+		{data.install && (
+			<>
+				<h2>Install</h2>
+				<pre><code>{data.install}</code></pre>
+			</>
+		)}
+		{protocols.length > 0 && (
+			<>
+				<h2>Protocols</h2>
+				<ul>
+					{protocols.map((p) => <li><a href={`/protocols/${p.id}/`}>{p.data.name}</a>: {p.data.summary}</li>)}
+				</ul>
+			</>
+		)}
+		<p>The README on <a href={repoUrl(data.repo!)}>GitHub</a> has the full feature list, examples and changelog.</p>
+	</div>
+
+	{related.length > 0 && (
+		<div class="ot-container">
+			<h2 class="related">Related projects</h2>
+			<ProjectGrid projects={related} />
+		</div>
+	)}
+</BaseLayout>
+
+<style>
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin-top: 1.75rem;
+	}
+	pre {
+		padding: 0.9rem 1rem;
+		border: 1px solid var(--ot-line);
+		border-radius: 0.25rem;
+		background: var(--ot-surface);
+		overflow-x: auto;
+	}
+	.related {
+		margin: 4rem 0 1.25rem;
+		font-size: 1.8rem;
+	}
+</style>

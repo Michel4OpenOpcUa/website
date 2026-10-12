@@ -1,0 +1,54 @@
+/*
+ * OT Fabric brand tokens, shared by the website pages and the Starlight docs.
+ * Slate base, teal "thread" accent, copper "wire" secondary. Swap colours here.
+ */
+@import '@fontsource/barlow-semi-condensed/500.css';
+@import '@fontsource/barlow-semi-condensed/600.css';
+@import '@fontsource/barlow-semi-condensed/700.css';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/400-italic.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+:root {
+  --ot-font-display: 'Barlow Semi Condensed', 'Arial Narrow', Arial, sans-serif;
+  --ot-font-body: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --ot-font-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  /* Dark (default) */
+  --ot-bg: #11181f;
+  --ot-surface: #18222c;
+  --ot-line: #2a3743;
+  --ot-fg: #e6eaee;
+  --ot-fg-strong: #ffffff;
+  --ot-muted: #94a3b0;
+  --ot-accent: #3fc1c6;
+  --ot-accent-soft: #123a3d;
+  --ot-accent-strong: #dcefef;
+  --ot-wire: #e08a4e;
+  --ot-header-bg: #18222c;
+}
+
+:root[data-theme='light'] {
+  --ot-bg: #ffffff;
+  --ot-surface: #f4f6f8;
+  --ot-line: #d9dfe4;
+  --ot-fg: #2a3743;
+  --ot-fg-strong: #17212b;
+  --ot-muted: #5a6875;
+  --ot-accent: #0a7c80;
+  --ot-accent-soft: #dcefef;
+  --ot-accent-strong: #0b4f52;
+  --ot-wire: #b35a1f;
+  --ot-header-bg: #f4f6f8;
+}
+
+/* Small uppercase mono label used across components. */
+.ot-label {
+  font: 500 0.72rem/1 var(--ot-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ot-muted);
+}

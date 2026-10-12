@@ -1,0 +1,49 @@
+---
+title: Getting started
+description: How the OT Fabric projects fit together, and the fastest way to talk to your first device.
+---
+
+import { LinkCard, CardGrid, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+OT Fabric is a set of small, independent projects. Each protocol has the same shape:
+
+| Layer | What it is | Example |
+|---|---|---|
+| **Library** | A pure Go client (and usually server) for the protocol | `go-modbus` |
+| **CLI** | A command-line tool built on that library | `modbusctl` |
+| **Interop suite** | Dockerized reference stacks the library is tested against | `modbus-interop` |
+
+Shared transports such as [go-serial](https://github.com/otfabric/go-serial), [go-tpkt](https://github.com/otfabric/go-tpkt) and [go-cotp](https://github.com/otfabric/go-cotp) sit underneath, and [go-otfp](https://github.com/otfabric/go-otfp) tells you which protocols a device speaks in the first place.
+
+## Pick your path
+
+<Tabs>
+  <TabItem label="I want to look at a device">
+    Download the CLI for your protocol from its GitHub Releases page. Binaries are available for Linux (x86-64, ARM64, ARMv7), macOS and Windows, with SHA-256 checksums. No Go toolchain is needed.
+
+    ```sh
+    # Example: what is this Modbus device?
+    modbusctl client identify --ip 192.168.1.10 --server-id
+    ```
+  </TabItem>
+  <TabItem label="I want to write code">
+    Add the library to a Go module:
+
+    ```sh
+    go get github.com/otfabric/go-modbus
+    ```
+
+    Each protocol page has a short, complete example to start from.
+  </TabItem>
+</Tabs>
+
+<Aside type="caution" title="Use on equipment you are authorized to test">
+These tools send real requests to real equipment. Start with read-only commands, and try writes against a simulator before you connect to a live PLC, RTU or controller.
+</Aside>
+
+## Next steps
+
+<CardGrid>
+  <LinkCard title="Protocols" description="How each protocol works, with quickstarts for the library and the CLI." href="/protocols/" />
+  <LinkCard title="Project catalog" description="Every library, CLI, building block and interop suite." href="/projects/" />
+</CardGrid>

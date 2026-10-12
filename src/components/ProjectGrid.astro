@@ -1,0 +1,22 @@
+---
+import ProjectCard from './ProjectCard.astro';
+import { getProtocols, type Project } from '../data/projects';
+
+interface Props {
+	projects: Project[];
+}
+const { projects } = Astro.props;
+const protocolNames = Object.fromEntries((await getProtocols()).map((p) => [p.id, p.data.name]));
+---
+
+<div class="ot-grid not-content">
+	{projects.map((project) => <ProjectCard project={project} protocolNames={protocolNames} />)}
+</div>
+
+<style>
+	.ot-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+		gap: 1rem;
+	}
+</style>
