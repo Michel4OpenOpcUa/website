@@ -36,7 +36,8 @@
 		],
 		"status": "available",
 		"install": "go get github.com/otfabric/go-bacnet",
-		"description": "BACnet/IP client: discovery, properties, COV and alarms, routed networks and foreign-device registration."
+		"description": "BACnet/IP client: discovery, properties, COV and alarms, routed networks and foreign-device registration.",
+		"icon": "go-bacnet"
 	},
 	{
 		"id": "go-iec104",
@@ -48,7 +49,8 @@
 		],
 		"status": "available",
 		"install": "go get github.com/otfabric/go-iec104",
-		"description": "IEC 60870-5-104 controlling and controlled station, with the full APCI state machine and redundancy groups."
+		"description": "IEC 60870-5-104 controlling and controlled station, with the full APCI state machine and redundancy groups.",
+		"icon": "go-iec104"
 	},
 	{
 		"id": "go-iec61850",
@@ -149,7 +151,8 @@
 			"bacnet"
 		],
 		"status": "available",
-		"description": "Discover BACnet devices, list point lists, read, write at priority, monitor COV and inspect alarms."
+		"description": "Discover BACnet devices, list point lists, read, write at priority, monitor COV and inspect alarms.",
+		"icon": "go-bacnet"
 	},
 	{
 		"id": "iec104ctl",
@@ -160,7 +163,8 @@
 			"iec-104"
 		],
 		"status": "available",
-		"description": "Interrogate, monitor and command IEC 104 stations, transfer files, or simulate an RTU from YAML."
+		"description": "Interrogate, monitor and command IEC 104 stations, transfer files, or simulate an RTU from YAML.",
+		"icon": "go-iec104"
 	},
 	{
 		"id": "iec61850ctl",
@@ -271,7 +275,8 @@
 			"bacnet"
 		],
 		"status": "available",
-		"description": "BACnet/IP reference devices: BACnet Stack, BACpypes3, BACnet4J, System.IO.BACnet and Worldiety."
+		"description": "BACnet/IP reference devices: BACnet Stack, BACpypes3, BACnet4J, System.IO.BACnet and Worldiety.",
+		"icon": "go-bacnet"
 	},
 	{
 		"id": "iec104-interop",
@@ -282,7 +287,8 @@
 			"iec-104"
 		],
 		"status": "available",
-		"description": "IEC 104 reference stations: lib60870, OpenMUC j60870 and wendy512."
+		"description": "IEC 104 reference stations: lib60870, OpenMUC j60870 and wendy512.",
+		"icon": "go-iec104"
 	},
 	{
 		"id": "mms-interop",
