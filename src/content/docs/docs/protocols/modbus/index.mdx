@@ -1,0 +1,112 @@
+---
+title: Modbus
+description: How Modbus works (data model, addressing, framing, transports and security) and which OT Fabric projects implement it.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+Modbus is a request and response protocol for reading and writing data in industrial devices. A client sends a request to one server, the server answers once, and that is the whole conversation. There are no subscriptions, no unsolicited reports and no built-in object model. That simplicity is why almost every energy meter, solar inverter, battery system, drive and PLC speaks it.
+
+This page explains the protocol as the OT Fabric projects implement it. The reference throughout is the **Modbus Application Protocol Specification V1.1b3**, which is the version go-modbus documents its coverage against.
+
+## Vocabulary
+
+| Term | Meaning |
+|---|---|
+| Client / master | The side that sends requests. A SCADA system, gateway, data logger or `modbusctl`. |
+| Server / slave | The side that answers. A meter, inverter, PLC or simulator. |
+| Unit ID | One byte that names the server a request is for. On a serial bus it is the device address. go-modbus documents 1-247 for unit IDs, with 255 as broadcast. |
+| Function code (FC) | One byte in the request that says what to do: read coils (FC01), write registers (FC16), read device identification (FC43/14) and so on. |
+| PDU | Protocol data unit: function code plus data. It is the same on every transport. |
+| ADU | Application data unit: the PDU wrapped in transport framing (an MBAP header on TCP, an address and CRC on RTU, an address and LRC on ASCII). |
+| Exception | A well-formed error answer. The server returns the function code with the high bit set and an exception code such as 0x02 (Illegal Data Address). |
+
+## Data model
+
+A Modbus server exposes four tables. Each table has its own 16-bit address space, so address 100 in the coils table and address 100 in the holding registers table are different things.
+
+| Table | Unit | Access | Read FC | Write FC |
+|---|---|---|---|---|
+| Coils | 1 bit | read and write | FC01 | FC05 (one), FC15 (many) |
+| Discrete inputs | 1 bit | read only | FC02 | none |
+| Input registers | 16 bits | read only | FC04 | none |
+| Holding registers | 16 bits | read and write | FC03 | FC06 (one), FC16 (many) |
+
+A register is always 16 bits on the wire, sent big-endian. Anything larger (a 32-bit integer, a float, a 64-bit energy counter, a string) spans several consecutive registers, and the protocol says nothing about the order of those registers or bytes. One vendor sends the high word first, the next sends the low word first. This is the single most common source of wrong readings. go-modbus handles it with **codecs** that carry an explicit layout per value, for example `float32/layout:4321` for a big-endian float or `uint32/layout:2143` for word-swapped (CDAB) order.
+
+Requests have hard size limits set by the frame size. go-modbus enforces these before anything is sent:
+
+| Operation | Maximum quantity per request |
+|---|---|
+| Read coils or discrete inputs (FC01, FC02) | 2000 |
+| Read holding or input registers (FC03, FC04) | 125 |
+| Write multiple coils (FC15) | 1968 |
+| Write multiple registers (FC16) | 123 |
+| Read/write multiple registers (FC23) | read 125, write 121 |
+
+Beyond the four tables, the specification defines diagnostic and identification functions: Read Exception Status (FC07), Diagnostics (FC08, with sub-functions such as loopback and counter reads), Get Comm Event Counter and Log (FC11, FC12), Report Server ID (FC17), file records (FC20, FC21), Mask Write Register (FC22), Read FIFO Queue (FC24) and Read Device Identification (FC43 with MEI type 14). The specification labels FC07, FC08, FC11 and FC12 as serial line only, but gateways forward them over TCP in practice, and go-modbus allows every function code on every transport.
+
+## Addressing
+
+<Aside type="tip" title="Raw addresses, not 4xxxx labels">
+Device manuals often number holding registers from 40001 and input registers from 30001. Those are labels, not addresses. The value on the wire is a raw 16-bit address from 0 to 65535. go-modbus and modbusctl always use raw addresses: `--start 40001` in modbusctl means address 40001, not "register 1". If a manual says "40101", try address 100 first, then 101.
+</Aside>
+
+A request names a table (through the function code), a start address and a quantity. The range must stay inside 0 to 65535. A server answers an address it does not have with exception 2 (Illegal Data Address). Many devices have sparse maps with readable blocks separated by gaps, which is why a request for 125 registers can fail while two smaller ones succeed. The `modbusctl client scan` command exists to find those blocks.
+
+## Transports and framing
+
+The PDU is the same everywhere. What changes is how it is framed and carried.
+
+| Transport | Framing | Notes |
+|---|---|---|
+| Modbus TCP | MBAP header: transaction ID, protocol ID (0), length, unit ID | Standard port 502. The transaction ID matches a response to its request. |
+| Modbus over TLS (MBAPS) | MBAP inside TLS | Standard port 802. Mutual certificate authentication. |
+| Modbus RTU | Binary frame: address, PDU, CRC | Serial line, RS-232 or RS-485. |
+| Modbus ASCII | Text frame: address, PDU, LRC | Serial line, RS-232 or RS-485. Default 7 data bits in go-modbus. |
+| RTU or ASCII over TCP, RTU over UDP | Serial framing tunnelled over IP | Used by serial-to-Ethernet gateways. RTU over TCP has no standard port. |
+| Modbus UDP | MBAP over UDP | Not part of the specification. Vendors use different conventions. |
+
+On a serial bus only one request can be outstanding at a time, and a unit that is not present simply does not answer, so each missing unit costs one timeout. The specification default for serial lines is 19200 baud, 8 data bits, even parity, 1 stop bit, but many devices ship at 9600 8N1. Always check the device manual.
+
+On TCP the MBAP length field covers the unit ID, function code and payload, and must be between 2 and 254. A client should check the transaction ID, protocol ID, unit ID and function code of every response. go-modbus does all four, and it replaces a TCP connection after a timeout or framing error so that a late answer to an old request cannot be mistaken for the answer to a new one.
+
+## Sessions
+
+Modbus has no session layer. A TCP connection is just a pipe for requests and responses: there is no login and no handshake in the protocol itself (MBAPS adds a TLS handshake underneath). Servers may limit how many connections they accept and close idle ones; the go-modbus server, for example, has a `MaxClients` limit (default 10) and an idle timeout (default 120 s). A client that polls for a long time should expect to reconnect, and go-modbus reconnects on the next request by itself.
+
+## Security
+
+Modbus TCP, UDP, RTU and ASCII carry **no authentication and no encryption**. Anyone who can reach a device can read and write it, and anyone on the path can read or change the traffic. The usual controls are network ones: keep Modbus on isolated networks, never expose port 502 to the Internet, and use a VPN or a secured gateway across untrusted networks.
+
+Modbus Security (MBAPS, `tcp+tls://` in go-modbus) is the exception. It wraps the MBAP stream in TLS with mutual authentication: the client presents a certificate and verifies the server's, and the server verifies the client's against a trusted CA. go-modbus requires TLS 1.2 or later and passes the role from the client certificate's Modbus role extension to server handlers as `ClientRole`. Authorization based on that role is the application's job.
+
+<Aside type="caution" title="Writes move equipment">
+A write to a coil or holding register can start a motor, open a breaker or change an inverter setpoint. FC08 sub-functions can restart communications or force a device into listen-only mode. Know what an address controls before you write to it, and start with read-only commands or a simulator.
+</Aside>
+
+## Where Modbus is used
+
+- **Energy and solar.** Energy meters, PV inverters and battery systems. Many inverters, meters and batteries put a [SunSpec](/docs/protocols/sunspec/) register map on top of Modbus so that one client can read devices from different vendors.
+- **Plant floor.** PLCs, variable-speed drives, remote I/O and sensors, often on RS-485 buses.
+- **Gateways and IIoT.** Edge devices poll Modbus and forward the values to MQTT, databases or cloud platforms.
+
+## OT Fabric for Modbus
+
+| Project | What it is |
+|---|---|
+| [go-modbus](/projects/go-modbus/) | Pure Go client and server library: TCP, RTU, ASCII, TLS, UDP and tunnelled serial framing, typed codecs, pooling, retries, logging and metrics. |
+| [modbusctl](/projects/modbusctl/) | Command-line tool to identify, fingerprint, scan, decode, poll and write devices, record to MCAP and replay recordings as a simulated device. |
+| [modbus-simulator](/projects/modbus-simulator/) | Deterministic, stateful Modbus TCP device simulator driven by JSON fixtures, with request traces and trace assertions for CI. |
+| [modbus-interop](/projects/modbus-interop/) | Docker images of five reference Modbus TCP stacks (libmodbus, PyModbus, digitalpetri/modbus, NModbus, tokio-modbus) for interoperability testing. |
+| [go-serial](/projects/go-serial/) | Cross-platform serial port library with RS-485 support. The serial layer under go-modbus RTU and ASCII. |
+
+<CardGrid>
+  <LinkCard title="Go library" description="Connect, read, write, serve and handle errors with go-modbus." href="/docs/protocols/modbus/library/" />
+  <LinkCard title="modbusctl" description="Install the CLI and work with devices from the terminal." href="/docs/protocols/modbus/cli/" />
+  <LinkCard title="Testing and interop" description="Simulators, the interop suite and what has been validated." href="/docs/protocols/modbus/testing/" />
+  <LinkCard title="Source on GitHub" description="github.com/otfabric/go-modbus" href="https://github.com/otfabric/go-modbus" />
+</CardGrid>

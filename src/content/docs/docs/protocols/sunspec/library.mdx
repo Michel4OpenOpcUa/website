@@ -1,0 +1,261 @@
+---
+title: Go library
+description: Use go-sunspec to discover SunSpec models on a Modbus device and decode every point into typed, scaled values, over TCP, RTU or any go-modbus transport.
+sidebar:
+  label: Go library
+  order: 1
+---
+
+import { Aside, Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
+
+[go-sunspec](/projects/go-sunspec/) reads SunSpec devices over Modbus. It finds the `SunS` marker, walks the model chain, and decodes every point of the 112 compiled SunSpec models into typed values with scale factors and units applied. It is pure Go, read-only, and built on [go-modbus](/projects/go-modbus/), which supplies the transport.
+
+## Install
+
+```sh
+go get github.com/otfabric/go-sunspec
+```
+
+go-sunspec requires **Go 1.23** or later and go-modbus **v1.3.0** or later. The packages are `sunspec` (discovery, reading, decoding) and `sunspec/registry` (model metadata).
+
+## Connect and read
+
+You create and own the go-modbus client. go-sunspec only borrows it: `Device` holds a reference and never closes the connection.
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/otfabric/go-modbus"
+	"github.com/otfabric/go-sunspec"
+)
+
+func main() {
+	client, err := modbus.New(modbus.Config{
+		URL: "tcp://192.168.1.100:502",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := client.Open(); err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close()
+
+	ctx := context.Background()
+
+	device, err := sunspec.Discover(ctx, client, &sunspec.DiscoverOptions{UnitID: 1})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	results, err := device.ReadAll(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, dm := range results {
+		fmt.Printf("Model %d (%s)\n", dm.ModelID, dm.Name)
+		// Walk visits the model's top-level group and every nested group instance.
+		dm.Group.Walk(func(g *sunspec.DecodedGroup) {
+			for _, p := range g.Points {
+				if !p.Implemented {
+					continue
+				}
+				if p.ScaledValue != nil {
+					fmt.Printf("  %s = %g %s\n", p.Name, *p.ScaledValue, p.Units)
+				} else {
+					fmt.Printf("  %s = %v\n", p.Name, p.RawValue)
+				}
+			}
+		})
+	}
+}
+```
+
+### Transports
+
+Every go-modbus transport works unchanged. Only the client configuration differs.
+
+<Tabs>
+  <TabItem label="Modbus TCP">
+    ```go
+    client, err := modbus.New(modbus.Config{URL: "tcp://192.168.1.100:502"})
+    ```
+  </TabItem>
+  <TabItem label="RTU on RS-485">
+    ```go
+    client, err := modbus.New(modbus.Config{
+        URL:      "rtu:///dev/ttyUSB0",
+        Speed:    9600,
+        DataBits: 8,
+        Parity:   modbus.ParityNone,
+        StopBits: 1,
+    })
+    ```
+    Many SunSpec devices on RS-485 use 9600 8N1, which is not the go-modbus default (19200, no parity, 2 stop bits).
+  </TabItem>
+  <TabItem label="Serial gateway">
+    ```go
+    client, err := modbus.New(modbus.Config{URL: "rtuovertcp://192.168.1.50:4001"})
+    ```
+  </TabItem>
+</Tabs>
+
+Pass the device's Modbus address as `DiscoverOptions.UnitID`. On a serial bus that is the device address set on the inverter or meter.
+
+## Discovery
+
+```go
+// Is this a SunSpec device, and where?
+result, err := sunspec.Detect(ctx, client, opts)
+
+// Enumerate all models and return a Device ready for reading.
+device, err := sunspec.Discover(ctx, client, &sunspec.DiscoverOptions{
+	UnitID:        1,
+	BaseAddresses: []uint16{40000, 50000, 0},
+})
+```
+
+`DiscoverOptions` has `UnitID`, `RegType`, `BaseAddresses`, `MaxModels` and `MaxAddressSpan`. Nil options use the go-modbus SunSpec defaults: unit 1, holding registers, and the base addresses `0, 40000, 50000, 1, 39999, 40001, 49999, 50001`. Set `RegType` and `BaseAddresses` if the device keeps its map in input registers or at another address. `Detect` returns every probe attempt with its error, which shows what the device actually answered.
+
+`sunspec.Open` is an alias of `Discover`. Despite the name, it does not open the Modbus connection; call `client.Open()` first.
+
+## Reading models and points
+
+```go
+// All models at once.
+decoded, err := device.ReadAll(ctx)
+
+// One model by ID (103 = three-phase inverter).
+inverter, err := device.ReadModelByID(ctx, 103)
+
+// One point.
+inst := device.ModelByID(101)
+point, err := device.ReadPoint(ctx, *inst, "W")
+fmt.Printf("Power: %g W\n", *point.ScaledValue)
+```
+
+Reads longer than 125 registers are split into several Modbus requests for you.
+
+Each decoded point is a `DecodedPoint`:
+
+| Field | Meaning |
+|---|---|
+| `Name`, `Type`, `Units` | From the model definition |
+| `Implemented` | `false` when the device sent the type's "not implemented" sentinel |
+| `RawValue` | The value as read: integer, float, string, IP or MAC address |
+| `ScaledValue` | `RawValue × 10^scale factor` as `*float64`; `nil` for non-numeric points or when no scale factor applies |
+| `SFName`, `SFRawValue` | The scale factor point (or literal) and its value |
+| `Symbols` | Names of the active enum value or bitfield bits |
+| `RegisterOffset`, `RegisterCount` | Position in the model, counted from its ID register |
+
+Always check `Implemented` before using a value, and check `ScaledValue` for `nil` before dereferencing it. `DecodedPoint` implements `json.Marshaler`; NaN and infinite floats are encoded as `null`.
+
+### Groups
+
+A decoded model has the same tree shape as its definition. `DecodedModel.Group` is the top-level group; `Group.Groups` holds nested instances in register order.
+
+```go
+dm, _ := device.ReadModelByID(ctx, 705) // DER volt-var
+for _, crv := range dm.Group.GroupsNamed("Crv") { // crv.Index is 1, 2, ...
+	for _, pt := range crv.GroupsNamed("Pt") {
+		fmt.Println(crv.Index, pt.Index, *pt.Point("V").ScaledValue, *pt.Point("Var").ScaledValue)
+	}
+}
+
+w := dm.Point("W") // first point with that name anywhere in the model, or nil
+```
+
+`Point` looks at a group's own points, `FindPoint` also searches nested groups depth first, `GroupsNamed` returns the instances of one nested group, and `Walk` visits the whole tree. Scale factors are resolved through the tree, so a curve point scaled by `V_SF` finds it in the top-level group. Anything that could not be decoded is listed in `DecodedModel.Warnings`.
+
+### Offline decoding
+
+`DecodeModel` decodes a register slice with no I/O, which is useful for captures, simulators and tests:
+
+```go
+func DecodeModel(regs []uint16, meta *registry.ModelMeta, instanceAddr uint16) (*DecodedModel, error)
+```
+
+### Registry
+
+```go
+import "github.com/otfabric/go-sunspec/registry"
+
+registry.Known(103)      // true
+registry.ByID(103).Label // "Inverter (Three Phase)"
+registry.Count()         // 112
+all := registry.All()    // map[uint16]*ModelMeta (shallow copy)
+```
+
+The registry is generated from the official [sunspec/models](https://github.com/sunspec/models) JSON. A weekly workflow in the repository checks upstream for new and changed models.
+
+## Errors
+
+Use `errors.Is` and `errors.As`:
+
+| Situation | Reported as |
+|---|---|
+| No `SunS` marker at any probed base | `ErrNotSunSpec` |
+| Model ID not in the discovery result | `ErrUnknownModel` |
+| Point name not in the decoded model | `ErrPointNotFound` |
+| Register slice too short, or decode failure | `*DecodeError` wrapping `ErrDecode` |
+| Multi-chunk read failed part way | `ErrPartialRead`, wrapping the Modbus cause |
+| Model chain malformed or over its limit | `ErrModelChainInvalid`, `ErrModelChainLimitExceeded` (re-exported from go-modbus) |
+| Nil client, or a register range past 65535 | error wrapping `modbus.ErrUnexpectedParameters`; nothing is sent |
+| Unsupported point type | not an error: a warning on `DecodedModel`, raw registers kept |
+| Transport, timeout, Modbus exception | the go-modbus error, often wrapped |
+
+```go
+device, err := sunspec.Discover(ctx, client, opts)
+if errors.Is(err, sunspec.ErrNotSunSpec) {
+	// not a SunSpec device at the probed addresses
+}
+
+dm, err := device.ReadModelByID(ctx, 101)
+var dec *sunspec.DecodeError
+if errors.As(err, &dec) {
+	log.Printf("model %d point %s at offset %d: %s", dec.ModelID, dec.PointName, dec.Offset, dec.Message)
+}
+```
+
+`ErrUnknownModel` does not mean "no local schema". A model without a compiled definition is still discovered, with `ModelInstance.SchemaKnown` set to `false`, and `ReadModel` returns it with raw registers and a warning.
+
+Reads can be partial. `ReadAll` returns the models decoded so far together with the first error, and `ReadModel` can return a partial `DecodedModel` with a non-nil error after a transport failure. Inspect both return values.
+
+## Timeouts, retries, concurrency and observability
+
+go-sunspec defines no logger, metrics, retry or timeout settings of its own. Configure them on the go-modbus client (`Timeout`, `RetryPolicy`, `Logger`, `Metrics`, `MaxConns`) and they apply to every SunSpec read. `Device` methods are safe for concurrent use to the same extent as the underlying `*modbus.Client`. The registry is safe for concurrent reads; do not call `registry.Register`, which is for generated code only.
+
+## Limitations
+
+- **Read only.** go-sunspec does not write SunSpec control points. You can write registers with the same go-modbus client (`client.WriteRegisters`) using the address and offset from the discovered model, but go-sunspec does not help you encode or validate the value.
+- Only models in the compiled registry are decoded. Others come back as raw registers.
+- Treat decoded values as untrusted input. Validate ranges before using them for control decisions, and escape strings such as the manufacturer or serial number before putting them in HTML, SQL or shell commands.
+
+<Aside type="caution" title="Writing DER controls">
+If you write control registers yourself, remember that DER controls change the behaviour of equipment connected to the grid. Test against a simulator or a lab device first.
+</Aside>
+
+## SunSpec in go-modbus
+
+go-modbus has its own `sunspec` subpackage with `sunspec.Detect`, `sunspec.ReadModelHeaders` and `sunspec.Discover`. It reads through a `sunspec.Reader` interface and returns only the marker location and the model headers (ID, length, start and end address), not decoded points. Use it when you only need an inventory or fingerprint and want no extra dependency. `*modbus.Client` satisfies `sunspec.Reader` through a small adapter:
+
+```go
+// reader adapts *modbus.Client to the go-modbus sunspec.Reader interface.
+type reader struct{ client *modbus.Client }
+
+func (r reader) ReadRawBytes(ctx context.Context, unitID uint8, addr, byteCount uint16, regType sunspec.RegType) ([]byte, error) {
+	return r.client.ReadRegisterBytes(ctx, unitID, addr, byteCount, regType)
+}
+
+result, err := sunspec.Discover(ctx, reader{client}, &sunspec.Options{UnitID: 1, RegType: sunspec.HoldingRegister})
+```
+
+Here `sunspec` is `github.com/otfabric/go-modbus/sunspec`, not the go-sunspec package. See the [Modbus overview](/docs/protocols/modbus/) for the rest of go-modbus.
+
+<LinkCard title="go-sunspec on GitHub" href="https://github.com/otfabric/go-sunspec" description="Source, API.md and ERRORS.md." />

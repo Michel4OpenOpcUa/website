@@ -1,0 +1,127 @@
+---
+title: Siemens S7
+description: How S7comm works over ISO-on-TCP, from the TPKT and COTP layers to rack and slot, TSAPs, PDU size, memory areas, SZL and blocks.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+S7comm is the Siemens application protocol that engineering tools, HMIs (human-machine interfaces) and other controllers use to talk to classic SIMATIC S7 programmable logic controllers (PLCs). It runs over Ethernet as **ISO-on-TCP**: a stack of three thin transport layers on TCP port **102**, with S7comm on top.
+
+```text
+┌──────────────────────────────────────────────┐
+│  S7comm   setup communication, read/write    │
+│           variables, SZL, blocks, diagnostics│
+├──────────────────────────────────────────────┤
+│  COTP     ISO 8073 Class 0 transport:        │
+│           connect request/confirm, TSAPs,    │
+│           data TPDUs                         │
+├──────────────────────────────────────────────┤
+│  TPKT     RFC 1006 framing: version +        │
+│           length header around each TPDU     │
+└──────────────────────────────────────────────┘
+                 TCP port 102
+```
+
+This page covers the classic S7comm protocol. It does not cover the newer S7comm-plus protocol, or the optimized data blocks of S7-1200 and S7-1500 controllers.
+
+## The transport layers
+
+**TPKT** ([RFC 1006](https://datatracker.ietf.org/doc/html/rfc1006)) lets ISO transport traffic run over a TCP byte stream. Each packet has a four-octet header (version 3, a reserved octet, and a 16-bit length) followed by one transport protocol data unit (TPDU). A valid packet is between 7 and 65535 octets long. If TPKT framing breaks, the session ends before any S7 work happens. Tool messages like `read TPKT header: EOF` usually mean the peer closed the connection during the handshake.
+
+**COTP** (connection-oriented transport protocol, ISO 8073 / X.224) runs in **Class 0** (TP0) for S7. The client sends a connection request (CR) TPDU and the server answers with a connection confirm (CC). The CR carries two **TSAPs** (transport service access points), a local and a remote one, and both sides agree on a maximum TPDU size. After that, S7 messages travel in data (DT) TPDUs. A message larger than one TPDU is split into segments and reassembled on the other side. The complete reassembled unit is a TSDU (transport service data unit).
+
+**S7comm** starts with **Setup Communication**. The client offers a maximum PDU size and the number of parallel jobs it wants to run (AMQ, "max AMQ calling" and "max AMQ called"). The PLC answers with the values it accepts. Only then can the client send real jobs.
+
+## Rack, slot and TSAPs
+
+Siemens hardware is addressed by **rack** (a chassis, 0 to 7) and **slot** (a module position in that rack, 0 to 31). An S7-300 CPU usually sits in rack 0, slot 2. Other families and many soft PLCs use slot 0 or slot 1.
+
+The remote TSAP is where rack and slot end up on the wire. It is a 16-bit value: the high byte is the connection type (1 for PG, the programming device; 2 for OP, an operator panel; 3 for S7 basic communication), and the low byte packs rack and slot. Pick the wrong rack or slot and the PLC refuses the COTP connection or the setup.
+
+In practice, endpoints differ:
+
+- Some accept exactly one rack/slot pair.
+- Some accept many pairs and behave the same for all of them.
+- Gateways, protocol converters and simulators may accept setup for any pair, but not map it to a real CPU.
+
+So a successful setup is weaker evidence than a successful follow-up query. The OT Fabric tools keep the two apart: **setup accepted** means TCP, COTP and Setup Communication worked; **query confirmed** means a harmless read-only query (a system status list read or a CPU state request) also worked.
+
+## PDU size
+
+The negotiated **PDU size** is the largest S7 message, in bytes, that either side will send. Typical values are 240, 480 and 960. It limits how much data one read or write can carry, so a client splits larger requests into several jobs. A negotiated PDU size proves setup worked. It does not prove that every service is available.
+
+## Jobs and acknowledgements
+
+S7comm is request and response. The header field ROSCTR (remote operating service control) gives the message kind:
+
+| ROSCTR | Name | Meaning |
+|---|---|---|
+| 1 | Job | Request from the client |
+| 2 | Ack | Acknowledgement without data |
+| 3 | Ack-Data | Acknowledgement carrying data |
+| 7 | Userdata | Extended services such as SZL reads and block lists |
+
+Each request carries a PDU reference that the response echoes back. An Ack can carry an **error class and error code** in its header. A Read Var response also has a **return code per item**: `0xFF` means success, and codes such as `0x05` (address out of range) or `0x0A` (object not available) mean that one item was refused, even when the job as a whole succeeded.
+
+## Memory areas and addressing
+
+S7 variable access is organized into **areas**:
+
+| Area | Letter | Contents |
+|---|---|---|
+| Data blocks | DB | Structured program data. Each DB has a number, for example DB1. Usually the most useful area. |
+| Inputs | I (German: E) | The process image of field inputs |
+| Outputs | Q (German: A) | The process image of outputs the PLC drives |
+| Markers | M (also called merkers or flags) | Internal memory used by the PLC program |
+| Timers | T | Timer values |
+| Counters | C (German: Z) | Counter values |
+
+An address names an area, a DB number for data blocks, a byte offset and a size. Bits are addressed as byte and bit: `DB1.DBX10.3` is bit 3 of byte 10 in DB1. Bytes, words and double words are `DBB`, `DBW` and `DBD`. Multi-byte values are big-endian. A `REAL` is an IEEE 754 32-bit float. An S7 `STRING` has two header bytes (maximum length and current length) before the characters.
+
+Do not assume that an area is a flat block of memory. A PLC may expose only part of an area, return fewer bytes than asked for, or refuse some addresses. That is why OT Fabric reports a read as `success`, `short-read`, `empty-read` or `rejected` instead of a single success or failure.
+
+## SZL: the system status list
+
+The **SZL** (System-Zustands-Liste, system status list) is how a CPU describes itself. Each list has an ID and an index. Commonly read lists include the module identification (order number and firmware version), component identification (module name, serial number, plant ID), the CPU state (RUN, STOP, STARTUP or HOLD), the protection level and the diagnostic buffer (ID `0x00A0`).
+
+Not every device fills every field. Missing values do not mean the device is not a Siemens PLC. They may only mean that this model or firmware does not expose them.
+
+## Blocks
+
+A PLC program is made of **blocks**:
+
+| Block | Meaning |
+|---|---|
+| OB | Organization block, called by the operating system (for example the main cycle, OB1) |
+| FB | Function block, with its own instance data |
+| FC | Function, without persistent data |
+| DB | Data block |
+| SFB / SFC | System function blocks and system functions built into the CPU firmware |
+
+Clients can list blocks, read a block's metadata (language, size, timestamps) and **upload** a block, which copies it from the PLC to the client. Whether this works depends on the CPU family, the protection level and the access rights of the connection.
+
+## Security
+
+Classic S7comm has **no authentication and no encryption**. Any host that can reach TCP port 102 and knows a valid rack and slot can read memory and, unless the CPU's protection level blocks it, write memory. Protection levels set in the hardware configuration can restrict writes and block access, but they are not a replacement for network controls.
+
+<Aside type="caution">
+Writing to a running PLC changes the process it controls. Keep S7 traffic on segmented networks, allow only the hosts that need port 102, and never expose a PLC to the internet. Only connect to equipment you are authorized to work on, and test writes against a simulator first.
+</Aside>
+
+## Where S7 is used
+
+S7-300, S7-400, S7-1200 and S7-1500 controllers run machines, production lines and utility processes in manufacturing, water treatment, building services and energy. In energy systems they often control balance-of-plant equipment such as pumps, cooling, switchgear interlocks and combined heat and power units, and they sit next to the protocols that face the grid.
+
+## OT Fabric for Siemens S7
+
+<CardGrid>
+  <LinkCard title="go-s7comm" description="Pure Go S7 client: DB, I, Q and M reads and writes, native bit access, SZL, blocks, rack/slot probing." href="/projects/go-s7comm/" />
+  <LinkCard title="s7commctl" description="Command-line client: identify, read, write with safety controls, blocks, diagnostics, probing." href="/projects/s7commctl/" />
+  <LinkCard title="snap7-interop" description="Fixture-driven Snap7 servers (native and pure Python) for testing S7 clients." href="/projects/snap7-interop/" />
+  <LinkCard title="go-cotp and go-tpkt" description="The COTP Class 0 transport service and TPKT framing underneath go-s7comm." href="/projects/go-cotp/" />
+</CardGrid>
+
+Source code: [go-s7comm](https://github.com/otfabric/go-s7comm), [s7commctl](https://github.com/otfabric/s7commctl), [snap7-interop](https://github.com/otfabric/snap7-interop), [go-cotp](https://github.com/otfabric/go-cotp), [go-tpkt](https://github.com/otfabric/go-tpkt). Read on in the [Go library](/docs/protocols/s7/library/), [s7commctl](/docs/protocols/s7/cli/) and [testing and interop](/docs/protocols/s7/testing/) pages.

@@ -1,0 +1,112 @@
+---
+title: SunSpec
+description: How SunSpec Modbus works (the SunS marker, the model chain, point types, scale factors and groups) and which OT Fabric projects read it.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+SunSpec is an open standard from the [SunSpec Alliance](https://sunspec.org/) that defines how solar inverters, energy meters, batteries and other distributed energy resources (DER) lay out their data in Modbus registers. It is not a separate wire protocol. A SunSpec device is a Modbus server, and you read it with ordinary Modbus function codes. What SunSpec adds is a standard, self-describing register map, so the same client code can read an inverter from one manufacturer and a meter from another.
+
+If Modbus itself is new to you, read the [Modbus overview](/docs/protocols/modbus/) first. This page assumes you know what holding registers, unit IDs and function codes are.
+
+## Vocabulary
+
+| Term | Meaning |
+|---|---|
+| Base address | The register address where the SunSpec map starts. Common values are 0, 40000 and 50000. |
+| `SunS` marker | Two registers at the base address holding the ASCII text `SunS` (`0x5375`, `0x6E53`). Their presence identifies a SunSpec device. |
+| Model | A numbered block of registers with a layout defined by the SunSpec Alliance, such as model 1 (Common) or model 103 (three-phase inverter). |
+| Model chain | The sequence of models that follows the marker, one after the other, ending with an end model. |
+| Point | A named value inside a model, such as `W` (AC power) in an inverter model. |
+| Scale factor | A point of type `sunssf` that holds a power-of-ten exponent for other points. |
+| Group | A set of points inside a model, which may repeat (one instance per meter phase, MPPT tracker or curve) or nest. |
+
+## The register map
+
+A SunSpec map is a linked list laid out in consecutive registers:
+
+```text
+base + 0   0x5375 0x6E53            "SunS" marker
+base + 2   ID = 1     L = len       Common model header
+base + 4   ...                      Common model body (L registers)
+           ID = 103   L = len       next model header
+           ...                      next model body
+           ...
+           ID = 0xFFFF  L = 0       end model
+```
+
+A client finds the map in three steps:
+
+1. **Detect.** Read two registers at each candidate base address and look for the marker. go-modbus probes `0, 40000, 50000, 1, 39999, 40001, 49999, 50001` by default; the off-by-one neighbours cover deviations seen in real devices and gateways.
+2. **Walk.** Read the two-register header after the marker (model ID and length), skip the body, read the next header, and stop at the end model (`0xFFFF`, length 0).
+3. **Read.** Fetch the body of each model you care about and decode it with the model definition.
+
+Because a model body can exceed the 125-register limit of a single Modbus read, a client splits it into several reads. Discovery should also be bounded: go-modbus and go-sunspec cap the number of models and the address span so that a malformed chain cannot loop or run past address 65535.
+
+<Aside type="tip" title="Not detected?">
+Most SunSpec devices use holding registers, but some use input registers. Check the base address and register type in the device manual, check the Modbus unit ID (many inverters do not answer on unit 1), and check whether SunSpec or Modbus needs to be enabled in the device settings.
+</Aside>
+
+## Models
+
+The SunSpec Alliance publishes the model definitions as JSON in the [sunspec/models](https://github.com/sunspec/models) repository. go-sunspec compiles 112 of them:
+
+| Model IDs | Area |
+|---|---|
+| 1 | Common: manufacturer, model, serial number, version |
+| 101-103, 111-113 | Inverters: single, split and three phase (integer and float variants) |
+| 120-145 | Nameplate, settings, status, immediate controls, storage, volt-VAR, frequency-watt, ride-through curves, scheduling |
+| 160 | Multiple MPPT inverter extension |
+| 201-204, 211-214, 220 | Meters: single, split, wye and delta (integer and float), secure meter readings |
+| 302-308 | Irradiance, module temperature, inclinometer, GPS, meteorological |
+| 401-404 | String combiners |
+| 701-715 | DER models for IEEE 1547-2018: measurements, capacity, enter service, controls, volt-var, volt-watt, trip settings, frequency droop, watt-var, storage capacity |
+| 801-809 | Energy storage: battery base, lithium-ion bank, string and module, flow battery |
+| 63001-64415 | Test models and vendor models |
+
+Vendors can add their own models. A model the client has no definition for can still be discovered from its header and read as raw registers.
+
+## Points, types and scale factors
+
+Each point has a SunSpec type. The integer types (`int16` to `uint64`), accumulators (`acc16` to `acc64`), floats (`float32`, `float64`), `string`, enums (`enum16`, `enum32`), bitfields (`bitfield16` to `bitfield64`), addresses (`ipaddr`, `ipv6addr`, `eui48`) and `sunssf` all have defined encodings.
+
+**Scale factors.** Integer models do not send decimals. A point such as `W` is paired with a scale factor point such as `W_SF`, and the real value is `raw × 10^sf`. A raw `W` of 1234 with `W_SF` of -1 is 123.4 W. The float variants (111-113, 211-214) carry float values instead.
+
+**Not implemented.** A device that does not measure a point still has to fill its register. It does so with a type-specific sentinel: `0x8000` for `int16` and `sunssf`, `0xFFFF` for `uint16`, `enum16` and `bitfield16` (and their 32 and 64-bit equivalents), `0` for accumulators, NaN for floats, all NUL bytes for strings, the all-zero address for `ipaddr` and `ipv6addr`, and `FF:FF:FF:FF:FF:FF` for `eui48`. A client that ignores this reports 65535 W where it should report "no value".
+
+**Groups.** Some models repeat or nest groups of points. Model 160 has one `module` group per MPPT tracker. Model 705 (DER volt-var) has `Crv` curves, each holding `Pt` points. Model 707 nests three levels deep. The number of instances comes from the model: a fixed count, the value of a count point such as `NCrv`, or as many as the model length holds.
+
+## Transport and security
+
+SunSpec inherits everything from Modbus. Devices are reached over Modbus TCP (port 502) or Modbus RTU on RS-485, directly or through a serial-to-Ethernet gateway. Many SunSpec devices on RS-485 run at 9600 baud, 8 data bits, no parity, 1 stop bit.
+
+There is no security in SunSpec Modbus beyond what the transport offers. Plain Modbus has no authentication and no encryption. Keep inverter, meter and battery Modbus ports off the Internet and on isolated networks, and use Modbus over TLS (`tcp+tls://`) where the device supports it, or a VPN or secured gateway.
+
+<Aside type="caution" title="DER controls act on the grid">
+The settings and immediate-control models in the 120-145 range and the 7xx DER control models describe control points. Writing them changes how physical equipment connected to the grid behaves. The OT Fabric SunSpec tools are read-only.
+</Aside>
+
+## Where SunSpec is used
+
+- **Solar PV monitoring.** AC and DC power, energy, voltage, current, frequency and operating state from inverters, independent of the manufacturer.
+- **Energy metering.** Import and export energy and per-phase power from SunSpec meters (201-204, 211-214).
+- **Battery storage.** State of charge, capacity and status from storage models (124, 713, 801-809).
+- **Energy management and DER integration.** Controllers and dashboards that read many vendors' devices through one register model.
+
+## OT Fabric for SunSpec
+
+| Project | SunSpec support |
+|---|---|
+| [go-sunspec](/projects/go-sunspec/) | Go library and the `sunspecctl` CLI. Discovers models, decodes every point into typed, scaled values with units, handles groups, enums, bitfields and not-implemented values. Read-only. |
+| [go-modbus](/projects/go-modbus/) | The Modbus transport under go-sunspec. Its `sunspec` subpackage detects the marker and enumerates model headers, without point decoding. |
+| [modbusctl](/projects/modbusctl/) | `modbusctl client sunspec detect`, `models`, `map` and `probe` for transport-level discovery, and `client scan --algo sunspec` to capture every model to an MCAP file. |
+
+<CardGrid>
+  <LinkCard title="Go library" description="Discover and decode SunSpec devices with go-sunspec." href="/docs/protocols/sunspec/library/" />
+  <LinkCard title="sunspecctl" description="Detect, list, read and poll SunSpec devices from the terminal." href="/docs/protocols/sunspec/cli/" />
+  <LinkCard title="Testing" description="How go-sunspec is tested without hardware." href="/docs/protocols/sunspec/testing/" />
+  <LinkCard title="Source on GitHub" description="github.com/otfabric/go-sunspec" href="https://github.com/otfabric/go-sunspec" />
+</CardGrid>

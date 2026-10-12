@@ -1,0 +1,348 @@
+---
+title: Go library
+description: Using go-bacnet, the pure-Go BACnet/IP client library, to discover devices, read and write properties and subscribe to change of value.
+sidebar:
+  label: Go library
+  order: 1
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+[go-bacnet](https://github.com/otfabric/go-bacnet) is a pure-Go BACnet/IP **client** library. It discovers devices, reads and writes properties, subscribes to change-of-value (COV) and alarm notifications, transfers files and manages objects on BACnet/IP (Annex J) over IPv4. It handles routed networks, foreign-device registration and segmentation, and has no dependencies outside the Go standard library.
+
+<Aside type="caution" title="Status">
+Client only. go-bacnet is tested on every change against five open-source BACnet stacks in containers, and its requests are checked against Wireshark's dissector. It has **not been validated against physical controllers yet**. The API is v0 and can still change between minor versions; the release notes in `RELEASE.md` list every change.
+</Aside>
+
+**Not in scope:** a BACnet server or device object model, a BBMD server, MS/TP, BACnet/IPv6, BACnet/SC and BTL certification. BACnet/IP has no authentication or encryption and the library adds none.
+
+## Install
+
+```sh
+go get github.com/otfabric/go-bacnet@latest
+```
+
+Requires **Go 1.23** or newer.
+
+The module is split by protocol layer:
+
+| Package | Role |
+|---|---|
+| `bacnet` (root) | Leaf types: object identifiers, property references, addresses, application values, errors |
+| `bip` | BACnet/IP UDP endpoints (`bip.Endpoint`, a `netip.AddrPort`) |
+| `bvlc`, `npdu`, `apdu` | Codecs for the three framing layers |
+| `service` | Encode and decode of service payloads |
+| `client` | The supervisory runtime: socket, transactions, discovery, routing, COV |
+
+## The client and its socket
+
+One `client.Client` is one local BACnet/IP endpoint: one UDP socket. `client.New` validates the options, opens the socket and starts the receive loop. The client is safe for concurrent use; requests are multiplexed on the socket by invoke ID (up to 255 in flight). Create one client per local interface and keep it. `Close` is idempotent, fails pending requests with `bacnet.ErrClosed` and returns once all client goroutines have exited.
+
+The local port matters because of how BACnet discovery works:
+
+| Option | Binds | Use it for |
+|---|---|---|
+| `client.New()` (default) | UDP 47808 on all interfaces | Discovery: devices answer Who-Is with a broadcast to port 47808 |
+| `client.WithLocalAddr("0.0.0.0:0")` | Any free port | Talking to devices whose address you know; unicast requests work from any port |
+| `WithPort` | A given port | A network that does not use 47808 |
+| `WithInterface` | | Restricts broadcasts to one interface |
+| `WithForeignDevice(ForeignDeviceConfig{BBMD, TTL})` | | Registers with one BBMD to discover devices on another IP subnet |
+| `WithTransport` | | Replaces the UDP socket (tests, custom data links); the client owns it |
+
+Only one process on a host can bind port 47808. If `New` cannot bind, it returns the operating-system error, not `ErrInvalidConfig`.
+
+A foreign-device TTL must be a whole number of seconds and at least 2 s (0 selects the default of 60 s). `New` does not wait for the registration; `ForeignDeviceRegistered()` reports whether the last one succeeded. While registered, broadcasts go to the BBMD as Distribute-Broadcast-To-Network. `Close` does not unregister: the entry lapses with its TTL.
+
+## Discover devices and read their names
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/otfabric/go-bacnet"
+	"github.com/otfabric/go-bacnet/client"
+)
+
+func main() {
+	c, err := client.New() // binds UDP port 47808
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+
+	ctx := context.Background()
+	devices, err := c.Discover(ctx, client.DiscoveryOptions{Window: 3 * time.Second})
+	if err != nil {
+		log.Fatal(err)
+	}
+	name := bacnet.PropertyReference{Identifier: bacnet.PropertyObjectName}
+	for _, d := range devices {
+		val, err := c.ReadProperty(ctx, d.Target(), d.DeviceID(), name)
+		if err != nil {
+			fmt.Printf("device %d at %s: %v\n", d.Instance, d.Address, err)
+			continue
+		}
+		fmt.Printf("device %d at %s: %s\n", d.Instance, d.Address, val.Character.Value)
+	}
+}
+```
+
+`Discover` broadcasts a Who-Is and collects I-Am answers. With `DiscoveryOptions.Window` it returns after that time with a nil error; without it, it collects until the context ends and returns `ctx.Err()`. It returns the devices seen since the call started, in no particular order. `Devices()` returns the whole retained registry.
+
+A broadcast goes to the directed broadcast address of each local IPv4 subnet and to 255.255.255.255. The peers differ in which of the two they receive, so the client sends both. A device on another IP subnet, or with a misconfigured broadcast address, is reached only with a unicast `SendWhoIs(ctx, dest, broadcast, opts)` or through a BBMD with `WithForeignDevice`. `SendWhoHas` and `DiscoverObjects` do the same for objects (Who-Has / I-Have).
+
+`CharacterString.Value` holds the octets as received. Use `Text()` to get a Go string from devices that send UCS-2 or ISO 8859-1.
+
+## Read from a known address
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"net/netip"
+	"time"
+
+	"github.com/otfabric/go-bacnet"
+	"github.com/otfabric/go-bacnet/bip"
+	"github.com/otfabric/go-bacnet/client"
+)
+
+func main() {
+	c, err := client.New(client.WithLocalAddr("0.0.0.0:0")) // any free local port
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+
+	target := client.Target{Endpoint: bip.NewEndpoint(netip.MustParseAddrPort("192.168.1.20:47808"))}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// The wildcard instance asks the device for its own identifier.
+	id, err := c.ReadProperty(ctx, target, bacnet.AnyDevice(),
+		bacnet.PropertyReference{Identifier: bacnet.PropertyObjectIdentifier})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("device instance:", id.ObjectID.Instance)
+
+	av1 := bacnet.ObjectIdentifier{Type: bacnet.ObjectTypeAnalogValue, Instance: 1}
+	pv, err := c.ReadProperty(ctx, target, av1, bacnet.PropertyReference{Identifier: bacnet.PropertyPresentValue})
+	var remote *bacnet.ErrorResponse
+	switch {
+	case errors.As(err, &remote):
+		// The device answered with an Error PDU, e.g. object/unknown-object.
+		fmt.Println("device refused:", bacnet.ErrorClassName(remote.Class), bacnet.ErrorCodeName(remote.Code))
+	case errors.Is(err, bacnet.ErrTimeout):
+		fmt.Println("no answer")
+	case err != nil:
+		log.Fatal(err)
+	default:
+		fmt.Println("present-value:", pv.Real)
+	}
+}
+```
+
+<Aside type="note">
+The Device wildcard `bacnet.AnyDevice()` (instance 4194303) is not implemented by every stack. BACpypes3 and the Worldiety adapter answer `unknown-object`. Fall back to a unicast Who-Is to identify a device known only by address.
+</Aside>
+
+### Targets and routed devices
+
+Confirmed calls take a `client.Target`:
+
+| Device | `Address` | `Endpoint` |
+|---|---|---|
+| Directly reachable over BACnet/IP | Zero (filled in from the endpoint) or `LocalStation(mac)` | The device's IP and port |
+| Behind a BACnet router | `RemoteStation(network, mac)` | The router's IP and port |
+
+`DeviceObservation.Target()` builds the right form from a discovery result. `WhoIsRouterToNetwork(ctx, network)` learns routers, and `ResolveTarget(addr, direct)` fills in the router for a remote address from the route cache, or returns `client.ErrNoRoute`. `Target.MaxAPDU` overrides the request size limit; zero uses what the device announced in its I-Am, or 480 octets if it was never seen. Responses are accepted only from the path the target describes.
+
+### Reading many properties
+
+- `ReadPropertyMultiple` returns `[]service.ReadAccessResult`. A top-level error means the whole transaction failed. Per-property BACnet errors are in `PropertyResult.Err`, and other properties in the same reply may still have succeeded, so always inspect the results even when `err == nil`.
+- `ReadPropertyMultipleBatched` splits a read into as many transactions as the device's Max APDU requires and returns one result per input specification, in order. When the device aborts because the reply did not fit, it halves the batch and retries.
+- `ReadObjectList` reads the whole `object-list` and falls back to element-by-element reads when the device cannot return it in one reply.
+- `ReadRange` and `ReadRangeAll` read trend logs. `ReadRangeAll` pages until the device reports LAST_ITEM or a limit (`MaxItems`, `MaxBytes`, `MaxPages`) is reached. Do not treat a clear MORE_ITEMS flag as the end of a log.
+
+## Write with a priority
+
+<Aside type="caution" title="This changes the device">
+A write to `present-value` commands real equipment. Run this against a simulator or an interop container first, and know what the object controls.
+</Aside>
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"errors"
+	"log"
+	"net/netip"
+
+	"github.com/otfabric/go-bacnet"
+	"github.com/otfabric/go-bacnet/bip"
+	"github.com/otfabric/go-bacnet/client"
+)
+
+func main() {
+	c, err := client.New(client.WithLocalAddr("0.0.0.0:0"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+
+	target := client.Target{Endpoint: bip.NewEndpoint(netip.MustParseAddrPort("192.168.1.20:47808"))}
+	ao1 := bacnet.ObjectIdentifier{Type: bacnet.ObjectTypeAnalogOutput, Instance: 1}
+	ctx := context.Background()
+
+	// Command priority 8 of the priority array.
+	err = c.WritePriority(ctx, target, ao1, 8, bacnet.RealValue(21.5))
+	var unknown *bacnet.OutcomeUnknownError
+	if errors.As(err, &unknown) {
+		// Sent, not acknowledged: read the value back before writing again.
+		log.Fatalf("write may or may not have been applied: %v", err)
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Release the slot again.
+	if err := c.RelinquishPriority(ctx, target, ao1, 8); err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+A write is sent **exactly once**. If no answer arrives the device may or may not have applied it, and the call returns `*bacnet.OutcomeUnknownError`, never a plain timeout. This holds for every service that changes the device: WriteProperty, WritePropertyMultiple, the COV subscriptions, AcknowledgeAlarm, AtomicWriteFile, CreateObject, DeleteObject, the list services and device management. Read the value back before repeating a write that is not idempotent.
+
+`WritePropertyMultipleBatched` sends explicit batches and reports each as Completed, Failed or Unknown; it stops at the first batch that did not complete and never repeats one. A failed WritePropertyMultiple returns `*service.WritePropertyMultipleError` naming the first write that failed; the writes before it may already be applied.
+
+## Subscribe to change of value
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/netip"
+	"time"
+
+	"github.com/otfabric/go-bacnet"
+	"github.com/otfabric/go-bacnet/bip"
+	"github.com/otfabric/go-bacnet/client"
+)
+
+func main() {
+	c, err := client.New(client.WithLocalAddr("0.0.0.0:0"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+
+	target := client.Target{Endpoint: bip.NewEndpoint(netip.MustParseAddrPort("192.168.1.20:47808"))}
+	av1 := bacnet.ObjectIdentifier{Type: bacnet.ObjectTypeAnalogValue, Instance: 1}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	sub, err := c.SubscribeCOV(ctx, target, av1, client.COVOptions{Lifetime: 300})
+	if err != nil {
+		log.Fatal(err)
+	}
+	// Close cancels the subscription on the device.
+	defer sub.Close()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ev, ok := <-sub.Events():
+			if !ok {
+				return
+			}
+			if ev.Gap {
+				fmt.Println("notifications were dropped: the consumer is too slow")
+			}
+			if ev.Notification == nil {
+				continue // a state change: Active, Renewing, Degraded, Closed
+			}
+			for _, v := range ev.Notification.Values {
+				fmt.Printf("%v = %+v\n", v.Property.Identifier, v.Value)
+			}
+		}
+	}
+}
+```
+
+The client renews a subscription at half its lifetime. States run Pending, Active, Renewing or Degraded, then Expired or Closed. The event channel holds 16 events by default; on overflow the subscription becomes Degraded and the next delivered event has `Gap` set. `SubscribeCOVProperty` and `SubscribeCOVMultiple` (SubscribeCOVPropertyMultiple) work the same way. Client `Close` closes all subscriptions locally but does not cancel them on the devices.
+
+Event and alarm notifications are separate from COV. `WithEventNotificationHandler` runs synchronously on the receive path: return promptly and do not call client methods that wait for responses. For slow handlers use `WithEventDispatcher` (bounded worker pool) or `OpenEventStream` (bounded channel). `AcknowledgeAlarm`, `GetEventInformation`, `GetAlarmSummary` and `GetEnrollmentSummary` are typed helpers.
+
+## Errors
+
+Use `errors.Is` and `errors.As`; do not parse error strings.
+
+| Error | Meaning |
+|---|---|
+| `bacnet.ErrTimeout` | No answer to a read after APDU timeout times attempts |
+| `*bacnet.OutcomeUnknownError` | A side-effecting request was sent and not acknowledged; `Unwrap` returns the cause |
+| `*bacnet.ErrorResponse` | The device answered Error (class and code) |
+| `*bacnet.RejectError`, `*bacnet.AbortError` | The device answered Reject or Abort |
+| `bacnet.ErrClosed` | The client was closed |
+| `bacnet.ErrAPDUTooLarge` / `*bacnet.APDUTooLargeError` | The request exceeds the device's max APDU and segmentation is not permitted |
+| `bacnet.ErrMalformed` | Invalid encoding, or an invalid argument (nothing was sent) |
+| `bacnet.ErrInvalidConfig` | `client.New` was given an option it cannot run with |
+| `bacnet.ErrDeviceManagementDisabled` | DeviceCommunicationControl or ReinitializeDevice without opt-in |
+
+A remote error is a definite answer and is never wrapped in `OutcomeUnknownError`. An Abort with reason `segmentation-not-supported`, `buffer-overflow` or `apdu-too-long` means the reply did not fit: ask for less. Context cancellation and deadlines stay visible to `errors.Is` even when wrapped.
+
+```go
+c, err := client.New(client.WithSegmentWindow(0))
+// err: bacnet: invalid configuration: segment window 0 outside 1..127
+errors.Is(err, bacnet.ErrInvalidConfig) // true
+```
+
+## Timeouts, retries and concurrency
+
+| Setting | Default |
+|---|---|
+| APDU timeout | 3 s |
+| Retransmissions | 3, reads only; writes are never retransmitted |
+| Segment timeout | 2 s |
+| Segment window | 16 proposed when sending, 1 when receiving; `WithSegmentWindow` sets both (1..127) |
+| Device registry | 4096 observations, 8 paths per instance, 30 min TTL (`WithRegistryOptions`) |
+
+`WithTransactionOptions` sets the APDU timeout, retransmit count and segment timeout. A context deadline or cancellation ends a request earlier and affects no other request. A request that finds all 255 invoke IDs in use waits until its context ends.
+
+DeviceCommunicationControl, ReinitializeDevice and Write-BDT fail locally unless enabled with `WithDeviceManagementEnabled` or `WithNetworkManagementEnabled`. These services can mute or reboot a device.
+
+## Logging and diagnostics
+
+The client is silent by default. It never writes to `log.Default`, `slog.Default`, stdout or stderr.
+
+```go
+logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+c, err := client.New(client.WithLogger(logger.With("component", "bacnet")))
+```
+
+`WithDiagnosticFunc(func(client.Diagnostic))` reports the same events as structured values with a stable `Kind` (`transport`, `foreign_device`, `queue_drop`, `registry_eviction`, `duplicate_device_instance`, `router`, `malformed`, `unknown_invoke_id`, `wrong_source` and others). There is no metrics interface: count diagnostics by `Kind` if you need counters. Callbacks run synchronously on the receive loop, so return quickly and never call the same client from them. Diagnostics never carry property values, written values, file data or passwords, and there is no raw-frame hook: capture UDP 47808 with Wireshark instead.
+
+## Limitations
+
+- Client only: no device object model, no BBMD server, no multi-BBMD failover.
+- BACnet/IP over IPv4 only. No MS/TP, BACnet/IPv6 or BACnet/SC.
+- Some services have codec evidence only, because no open-source stack executes them: SubscribeCOVPropertyMultiple, COVNotificationMultiple, audit services and VT services. AuthRequest and the VT services are partial.
+- Tested against open-source stacks in containers; no physical controller results are recorded yet. See [Testing and interop](/docs/protocols/bacnet/testing/).
+
+<LinkCard title="go-bacnet on GitHub" description="README, API.md, ERRORS.md, OBSERVABILITY.md and docs/CLIENT_SUPPORT.md" href="https://github.com/otfabric/go-bacnet" />

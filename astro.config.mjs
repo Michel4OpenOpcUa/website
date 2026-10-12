@@ -47,6 +47,19 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Protocols',
+          items: [
+            { label: 'Overview', slug: 'docs/protocols' },
+            { label: 'Modbus', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/modbus' } }] },
+            { label: 'SunSpec', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/sunspec' } }] },
+            { label: 'OPC UA', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/opc-ua' } }] },
+            { label: 'BACnet/IP', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/bacnet' } }] },
+            { label: 'IEC 60870-5-104', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/iec-104' } }] },
+            { label: 'IEC 61850 / MMS', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/iec-61850' } }] },
+            { label: 'Siemens S7', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/s7' } }] },
+          ],
+        },
+        {
           label: 'Contributing',
           items: [
             { label: 'How to contribute', slug: 'docs/contributing' },

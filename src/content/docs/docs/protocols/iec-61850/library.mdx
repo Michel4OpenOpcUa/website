@@ -1,0 +1,432 @@
+---
+title: Go library
+description: Using go-iec61850 and go-mms to browse, read, write, subscribe to reports, operate controls and serve an SCL model from Go.
+sidebar:
+  label: Go library
+  order: 1
+---
+
+import { Aside, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+
+OT Fabric splits IEC 61850 over two Go libraries. Both are pure Go with no CGO and are MIT-licensed.
+
+| | [go-iec61850](https://github.com/otfabric/go-iec61850) | [go-mms](https://github.com/otfabric/go-mms) |
+|---|---|---|
+| Speaks | IEC 61850 (LD, LN, DO, DA, FC, datasets, RCBs, controls, SCL) | Generic MMS, ISO 9506 (domains, item IDs, named variable lists) |
+| Go version | 1.24 or later | 1.23 or later |
+| Client | Yes | Yes |
+| Server | SCL-driven, <Badge text="experimental API" variant="caution" /> | Yes, you register domains and variables |
+| Use it when | You talk to IEDs or simulate one. This is the right choice almost always. | You need raw MMS: a non-IEC 61850 MMS device, alternate access, wire-level tests, or a custom transport. |
+
+go-iec61850 is built on go-mms, and go-mms uses [go-cotp](https://github.com/otfabric/go-cotp) and [go-tpkt](https://github.com/otfabric/go-tpkt) for the transport. You can always reach the lower layer: `Client.MMS()` returns the underlying `*mms.Client`.
+
+## Install
+
+```sh
+go get github.com/otfabric/go-iec61850   # Go 1.24+
+go get github.com/otfabric/go-mms        # Go 1.23+, pulled in automatically by go-iec61850
+```
+
+## Connecting
+
+### Plain TCP
+
+`iec61850.Dial` opens TCP, runs the COTP, session, presentation, ACSE and MMS Initiate exchange, and returns a `*Client`. Port 102 is the standard MMS port.
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/otfabric/go-iec61850"
+)
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	client, err := iec61850.Dial(ctx, "10.0.0.1:102", iec61850.DialOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close(context.Background())
+
+	devices, err := client.ListLogicalDevices(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, ld := range devices {
+		fmt.Println(ld.Name)
+	}
+
+	ref, _ := iec61850.ParseRef("PROT1LD/MMXU1.TotW.mag.f[MX]")
+	val, err := client.Read(ctx, ref)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(val)
+}
+```
+
+`DialOptions` fields:
+
+| Field | Purpose |
+|---|---|
+| `MMS` | `mms.DialOptions`: ISO selectors and AP titles, ACSE password, MMS `MaxPDUSize` (default 65000), raw wire hook. |
+| `Logger` | `*slog.Logger`. Also passed to the MMS layer when `MMS.Logger` is nil. |
+| `IEDName` | Prepended to outgoing domain names and stripped from returned names, so your code uses bare LD names on servers that prefix domains with the IED name. |
+| `Cache` | `CacheNone` (default), `CacheExplicit` (filled by `RefreshCache`) or `CacheLazy` (filled on first access per LD). In memory only. |
+| `Strictness` | `RejectUnknownFC`, `VerifyReportCandidates`. |
+
+`Close` sends MMS Conclude. `Abort` drops the association immediately; use it for servers that do not answer Conclude (IEC61850bean is one).
+
+### Through a go-mms client (TLS, custom ISO parameters)
+
+When you need ISO-level options, dial with go-mms and wrap the result with `iec61850.NewClient`. The `transport/iso` package wires TPKT and COTP together and also offers `iso.WithTLSConfig` for TLS over TCP and `iso.WithLogger` for ISO-layer logging.
+
+```go
+import (
+	mms "github.com/otfabric/go-mms"
+	"github.com/otfabric/go-mms/transport/iso"
+	"github.com/otfabric/go-iec61850"
+)
+
+mmsClient, err := iso.Dial(ctx, "10.0.0.1:102",
+	iso.WithClientDialOptions(mms.DialOptions{
+		MMS: mms.MMSOptions{MaxPDUSize: 65000},
+	}),
+)
+if err != nil {
+	log.Fatal(err)
+}
+client, err := iec61850.NewClient(mmsClient, iec61850.ClientOptions{IEDName: "InteropIED"})
+```
+
+For tests or unusual links, implement the `mms.Transport` interface (`Read`, `Write`, `Close`) and pass it to `mms.NewClient`.
+
+## Browsing
+
+```go
+lns, _ := client.ListLogicalNodes(ctx, "InteropLD")
+dos, _ := client.ListDataObjects(ctx, "InteropLD", "GGIO1")
+
+root, err := client.TreeWithOptions(ctx, iec61850.TreeOptions{
+	LDFilter:   "InteropLD",
+	IncludeFCs: true,
+})
+
+refs, err := client.FindPaths(ctx, iec61850.FindQuery{
+	Pattern:   "*MMXU*",
+	MatchMode: iec61850.MatchGlob,
+	FC:        iec61850.FCMX,
+})
+```
+
+`Tree` walks the whole server and can be slow on large IEDs; scope it with `LDFilter` and `MaxDepth`. `GetVariableType` returns the MMS type spec for one reference.
+
+## References
+
+`ParseRef` accepts `LD/LN.DO.DA[FC]`. `Ref.ToMMS()` and `RefFromMMS()` convert to and from the MMS domain and `LN$FC$DO$DA` item ID.
+
+```go
+ref, _ := iec61850.ParseRef("IEDLD1/LLN0.Mod.stVal[ST]")
+fmt.Println(ref.LD, ref.LN, ref.Path, ref.FC) // IEDLD1 LLN0 [Mod stVal] ST
+```
+
+## Reading and writing
+
+`Read` returns an `*iec61850.Value` with typed accessors. There is no automatic coercion: calling `Int64()` on a `FLOAT32` returns an error.
+
+```go
+qRef, _ := iec61850.ParseRef("InteropLD/GGIO1.SPS1.q[ST]")
+qv, err := client.Read(ctx, qRef)
+if err != nil {
+	log.Fatal(err)
+}
+q, err := qv.Quality()
+if err == nil && !q.IsGood() {
+	log.Printf("validity=%v flags=%s", q.Validity(), q)
+}
+```
+
+`ReadMultiple` reads many references in one MMS PDU and returns a `ReadResult` per reference with its own `Err`. `ReadComponent` reads one component of a structure.
+
+`Write` takes an `*mms.Value`:
+
+```go
+ref, _ := iec61850.ParseRef("InteropLD/GGIO1.SetInt1.setVal[SP]")
+if err := client.Write(ctx, ref, mms.NewInteger(5)); err != nil {
+	log.Fatal(err)
+}
+```
+
+<Aside type="caution">
+Writes change live device configuration. Try them against a simulator first (`iec61850ctl server start` or the go-iec61850 server). Never write `CO` attributes directly; use the control API below.
+</Aside>
+
+## Datasets
+
+```go
+names, _ := client.ListDataSets(ctx, "InteropLD")
+ds, _ := client.GetDataSet(ctx, "InteropLD", names[0]) // ds.Members lists the FCDAs
+values, err := client.ReadDataSet(ctx, "InteropLD", names[0])
+for _, v := range values {
+	if v.Err != nil {
+		continue
+	}
+	fmt.Println(v.Member.Ref, v.Value)
+}
+```
+
+Use the dataset names exactly as `ListDataSets` returns them. `CreateDataSet` and `DeleteDataSet` work as a client against servers that allow dynamic datasets. The go-iec61850 server does not implement dynamic dataset creation or deletion.
+
+## Reports
+
+`SubscribeReport` handles the RCB lifecycle: optional URCB reservation, enable, optional general interrogation, delivery on a channel, and disable on `Close`.
+
+```go
+reports, _ := client.ListReports(ctx, ld)
+rcb, err := client.GetReportControlBlock(ctx, ld, reports[0])
+if err != nil {
+	log.Fatal(err)
+}
+
+sub, err := client.SubscribeReport(ctx, rcb.RptID, iec61850.SubscribeReportOptions{
+	QueueSize:      64,
+	OverflowPolicy: iec61850.OverflowDropNewest,
+	AutoEnable:     true,
+	GIOnSubscribe:  true,
+	ReserveURCB:    rcb.Type == iec61850.RCBUnbuffered,
+	LD:             ld,
+	RCBItemID:      reports[0],
+})
+if err != nil {
+	log.Fatal(err)
+}
+defer sub.Close()
+
+for ri := range sub.Reports() {
+	fmt.Printf("RptID=%s SeqNum=%d reasons=%v\n", ri.RptID, ri.SeqNum, ri.ReasonCodes)
+	for i, v := range ri.Values {
+		fmt.Printf("  [%d] %s\n", i, v)
+	}
+}
+```
+
+Each `ReportIndication` carries `SeqNum`, `EntryID`, `BufOvfl`, `Inclusion`, `DataReferences`, `Values` and `ReasonCodes`. Segmented reports are reassembled for you.
+
+The client queue defaults to 64. When it fills, `OverflowPolicy` decides: `OverflowDropNewest` (default), `OverflowDropOldest`, `OverflowBlock` (no loss, but stalls all report delivery) or `OverflowCallback` (calls `OnOverflow`). The server never learns about client-side drops.
+
+To configure an RCB yourself, `SetReportControlBlock` writes only the fields named in the mask. For a BRCB, write the last `EntryID` you received before enabling to resume, or set `PurgeBuf` to start clean:
+
+```go
+err := client.SetReportControlBlock(ctx, ld, rcbItemID, iec61850.RCBUpdate{
+	Fields:  iec61850.RCBFieldEntryID,
+	EntryID: lastEntryID, // 8 bytes; entries strictly after this one are replayed
+})
+```
+
+`TriggerGI`, `ReserveURCB` and `ReleaseURCB` are also available. EntryIDs from the go-iec61850 server reset on restart and after a purge, so do not cache them across server restarts.
+
+## Controls
+
+<Aside type="caution">
+Controls operate real plant: breakers, switches, tap changers. Read `ctlModel` first, run against a simulator, and coordinate with whoever owns the equipment before operating a live IED.
+</Aside>
+
+```go
+ref, _ := iec61850.ParseRef("InteropLD/GGIO1.SPCSO2")
+ref.FC = "" // control APIs manage the FC
+
+model, err := client.ReadCtlModel(ctx, ref)
+if err != nil || !model.IsControllable() {
+	log.Fatalf("not controllable: %v %v", model, err)
+}
+
+params := iec61850.OperateParams{CtlVal: iec61850.BoolCtlVal(true)}
+switch {
+case model.IsSBO() && model.IsEnhanced(): // SBOw
+	err = client.SelectWithValue(ctx, ref, params)
+case model.IsSBO(): // SBO normal
+	_, err = client.Select(ctx, ref)
+}
+if err == nil {
+	err = client.Operate(ctx, ref, params)
+}
+if err != nil {
+	if lae, lerr := client.ReadLastApplError(ctx, ref); lerr == nil {
+		log.Printf("rejected: addCause=%s", lae.AddCause)
+	}
+}
+```
+
+`OperateParams` also takes `Origin` (`OrCat`, `OrIdent`), `CtlNum`, `OperTm`, `Test` and `Check` (synchrocheck, interlock check). Use the same `CtlNum` for `SelectWithValue` and `Operate`. `Cancel` releases a selection. Value helpers: `BoolCtlVal`, `IntCtlVal`, `FloatCtlVal`, `EnumCtlVal`, `StringCtlVal`, `BspCtlVal`, `DpCtlVal`. CommandTermination monitoring and time-activated operate are not implemented.
+
+## Setting groups, journals, files
+
+The client also covers setting groups (`GetSettingGroupInfo`, `SelectActiveSG`, `SelectEditSG`, `SetEditSGValue`, `ConfirmEditSG`), journals (`ListJournals`, `ReadJournal`, `ReadJournalAfter`, and the auto-paginating `ReadJournalAll` / `ReadJournalAfterAll`) and files (`ListFiles`, `ReadFile`, `DownloadFile`, `DeleteFile`, `RenameFile`, `GetFileAttributes`, `ObtainFile`).
+
+## SCL files
+
+The `scl` package parses SCD, ICD, CID and IID files for schema editions 1.7, 2007B, 2007B4 and 2007C5, detected automatically.
+
+```go title="main.go"
+package main
+
+import (
+	"fmt"
+	"log"
+
+	"github.com/otfabric/go-iec61850/scl"
+	"github.com/otfabric/go-iec61850/scl/index"
+	"github.com/otfabric/go-iec61850/scl/validate"
+)
+
+func main() {
+	doc, err := scl.ParseFile("station.scd")
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, ied := range doc.IEDs {
+		fmt.Printf("IED: %s (%s)\n", ied.Name, ied.Manufacturer)
+	}
+
+	idx, idxDiags := index.Build(doc)
+	for _, d := range validate.All(doc, idx, idxDiags) {
+		fmt.Printf("[%s] %s: %s: %s\n", d.Severity, d.Code, d.Path, d.Message)
+	}
+}
+```
+
+`Summarize`, `Flatten` / `WriteCSV`, `ExportDataSets`, `ExportReports` and the `Find*` helpers cover inspection. `Generate` writes XML back out, but does not reproduce the original formatting and does not serialise GSE or SMV control blocks. There is no XSD schema validation, only semantic checks.
+
+## Server
+
+The server builds an MMS model from SCL and adds a report engine, control state machine, setting groups and journals. Its API is marked experimental.
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"log"
+
+	mms "github.com/otfabric/go-mms"
+	"github.com/otfabric/go-mms/transport/iso"
+	"github.com/otfabric/go-iec61850"
+	"github.com/otfabric/go-iec61850/scl"
+)
+
+func main() {
+	ctx := context.Background()
+
+	doc, err := scl.ParseFile("station.icd")
+	if err != nil {
+		log.Fatal(err)
+	}
+	model, err := iec61850.NewServerModelFromSCL(doc, "IED1", "")
+	if err != nil {
+		log.Fatal(err)
+	}
+	srv, err := iec61850.NewServer(model, iec61850.ServerOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	re := srv.EnableReports()
+	defer re.Stop()
+
+	err = srv.RegisterControl("InteropLD", "GGIO1.SPCSO1", iec61850.CtlModelDirectNormal,
+		iec61850.ControlHandler{
+			OnOperate: func(ctx context.Context, req iec61850.ControlRequest) error {
+				log.Printf("operate: %s ctlVal=%v", req.Ref, req.CtlVal)
+				return nil
+			},
+		})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Store keys are "LD/itemID"; SetValue triggers change-detection reports.
+	srv.SetValue(ctx, "InteropLD/GGIO1$ST$SPS1$stVal", mms.NewBoolean(true))
+
+	ln, err := iso.Listen(":102")
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Fatal(srv.ListenAndServe(ctx, ln))
+}
+```
+
+Control handlers get `OnSelect`, `OnOperate` and `OnCancel`. Selection is owned by the connection that made it and times out after `DefaultSelectTimeout` (30 s). Interlocking and synchrocheck are your handler's job. File services need a `ServerOptions.FileProvider`; there is no built-in filesystem provider. Known gaps: no dynamic datasets, no per-group SE/SG value banks, in-memory BRCB buffers and journals only, and the model is immutable after construction.
+
+## Using go-mms directly
+
+go-mms gives you MMS without IEC 61850 naming: `Identify`, `Status`, `Read` / `Write` by domain and item ID (with alternate access by component, index or range), named variable lists, `GetNameListAll`, `GetVariableAccessAttributes`, `OnInformationReport`, file and journal services.
+
+```go
+client, err := iso.Dial(ctx, "10.0.0.1:102",
+	iso.WithClientDialOptions(mms.DialOptions{MMS: mms.MMSOptions{MaxPDUSize: 65000}}),
+)
+if err != nil {
+	log.Fatal(err)
+}
+defer client.Close(ctx)
+
+id, _ := client.Identify(ctx)
+fmt.Println(id.Vendor, id.Model, id.Revision)
+
+res, err := client.Read(ctx, mms.ReadRequest{DomainID: "MyDomain", ItemID: "MyVariable"})
+```
+
+go-mms does not implement semaphore, event management, program invocation or client-side MMS Cancel services, and supports COTP class 0 over TCP only.
+
+## Errors
+
+go-iec61850 errors wrap sentinels for `errors.Is` and typed structs for `errors.As`. Lower-level go-mms errors stay in the chain.
+
+```go
+val, err := client.Read(ctx, ref)
+switch {
+case err == nil:
+	fmt.Println(val)
+case errors.Is(err, iec61850.ErrNotFound):
+	// object does not exist on this server
+case errors.Is(err, iec61850.ErrDataAccess):
+	// per-variable access failure, for example access denied
+case errors.Is(err, iec61850.ErrClosed), errors.Is(err, mms.ErrClosed):
+	// connection gone: reconnect
+case errors.Is(err, context.DeadlineExceeded):
+	// timed out: retry or widen the deadline
+default:
+	var se *mms.ServiceError
+	if errors.As(err, &se) {
+		log.Printf("MMS error class=%d code=%d", se.Class, se.Code)
+	}
+}
+```
+
+Control failures wrap `ErrControlFailed` plus `ErrSelectFailed`, `ErrOperateFailed` or `ErrCancelFailed`, and `ErrNotControllable` for status-only objects; extract details with `*iec61850.ControlError`. Other sentinels include `ErrInvalidReference`, `ErrTypeMismatch`, `ErrUnsupportedService`, `ErrSubscriptionClosed` and `ErrSCLParse`.
+
+## Timeouts, retries and concurrency
+
+- Every network call takes a `context.Context`. Use `context.WithTimeout` or `WithDeadline`: a cancel-only context may not unblock a pending transport read until data arrives or the connection closes.
+- Neither library documents automatic retry or reconnect. On `ErrClosed`, dial again and re-subscribe. The go-iec61850 server releases a URCB reservation when its connection drops.
+- `*iec61850.Client` is safe for concurrent use. go-mms correlates responses by invoke ID and serialises writes. The negotiated max-outstanding value is not enforced on the client, so bound concurrency yourself.
+- A go-mms server handles confirmed requests on one connection serially.
+- InformationReport handlers in go-mms run on the reader goroutine and must return quickly.
+
+## Logging and observability
+
+Pass a `*slog.Logger` in `DialOptions` or `ServerOptions`. With no logger nothing is emitted. Debug covers protocol flow, Info covers lifecycle and control operations, Warn covers report overflow and recoverable issues. The ISO layer logger (`iso.WithLogger`) is separate and only logs TLS and COTP handshake failures on the listener. For wire debugging, `mms.DialOptions.RawHook` sees every raw upper-layer packet on the client. There are no built-in metrics or tracing.
+
+## Limitations
+
+- MMS only. GOOSE and Sampled Values are out of scope.
+- Primary baseline is IEC 61850 Edition 2 (2007B). Edition 2.1 features are partially validated.
+- Not every ACSI service is mapped; CommandTermination and TimeActivatedOperate are missing.
+- Tested against libiec61850 and IEC61850bean; interoperability with physical IEDs has not been formally established. See [Testing and interop](/docs/protocols/iec-61850/testing/).

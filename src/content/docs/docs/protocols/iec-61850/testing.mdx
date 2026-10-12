@@ -1,0 +1,165 @@
+---
+title: Testing and interop
+description: How go-mms, go-iec61850 and iec61850ctl are tested against libiec61850 and IEC61850bean, and what has and has not been validated.
+sidebar:
+  label: Testing and interop
+  order: 3
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+OT Fabric tests its IEC 61850 stack against two independent implementations, in both directions: OT Fabric as client against a reference server, and a reference client against the OT Fabric server. This page lists the tools, how to run them, and exactly what the evidence covers.
+
+<Aside type="caution">
+Interoperability has been shown against two software stacks, libiec61850 and IEC61850bean. Interoperability with physical IEDs (protection relays, meters, bay controllers, RTUs) has not yet been formally established. Validate against your own devices, read-only first.
+</Aside>
+
+## Simulators you can run locally
+
+| Simulator | What it is | Good for |
+|---|---|---|
+| `iec61850ctl server start --scl file.icd` | The go-iec61850 server driven by any ICD, CID or SCD, with optional value seeding from a live device | Trying reads, reports and controls against your own model |
+| go-iec61850 `NewServer` | The same server embedded in your Go program, with `RegisterControl`, `SetValue` and the report engine | Test fixtures in Go code |
+| `libiec61850-ied-server` (mms-interop) | libiec61850 IED server loaded with the interop fixture | An independent C reference |
+| `iec61850bean-ied-server` (mms-interop) | IEC61850bean IED server loaded with the interop fixture | An independent Java reference |
+| `libiec61850-mms-server` (mms-interop) | Generic MMS server (no IEC 61850 model) | Raw MMS with go-mms |
+
+Self-tests where an OT Fabric client talks to an OT Fabric server are useful for smoke testing but are not interoperability evidence.
+
+## mms-interop
+
+[mms-interop](https://github.com/otfabric/mms-interop) owns the adapter images and fixtures, not the assertions. Assertions live in go-mms, go-iec61850 and iec61850ctl.
+
+The current adapter version is `0.1.4` with fixture revision `iec61850-v2`. Two images are published:
+
+| Image | Stack | Commands |
+|---|---|---|
+| `mms-interop-libiec61850` | [libIEC61850](https://libiec61850.com), built from a pinned release archive (GPLv3, runs in its own container, never linked into the Go libraries) | `libiec61850-mms-server`, `-mms-client`, `-ied-server`, `-ied-client`, `-ied-controller`, `-ied-reporter` |
+| `mms-interop-iec61850bean` | [IEC61850bean](https://www.beanit.com/iec-61850/) 1.x (Apache-2.0), an independent ASN.1/BER, ACSE and MMS implementation | `iec61850bean-ied-server`, `-ied-client`, `-ied-controller`, `-ied-reporter` |
+
+IEC61850bean is used only at the IEC 61850 layer; generic MMS interop is covered through libiec61850. Every adapter command supports `--capabilities` and `--version`. The authoritative command list is `fixtures/capabilities.json` in the repository.
+
+The IEC 61850 fixture is `fixtures/iec61850/interop.icd` plus `values.json`. It defines the IED `InteropIED` with the logical device `InteropLD`. Key objects:
+
+| Object | Purpose |
+|---|---|
+| `GGIO1.SPS1.stVal`, `Mod.stVal` | The two members of dataset `dsInterop` |
+| `MMXU1.TotW.mag.f` | MX float read |
+| `GGIO1.SPCSO1` / `SPCSO2` / `SPCSO3` | Direct, SBO and SBOw controls |
+| `GGIO1.SetInt1.setVal[SP]` | Writable scalar setting (ING) |
+| `urcb01`, `brcb01` in `LLN0` | Unbuffered and buffered RCBs |
+
+### Adapter contract
+
+A server adapter prints one readiness line on stdout before accepting connections, then the test connects:
+
+```json
+{"event":"ready","address":"0.0.0.0:102","fixture":"iec61850-v1","adapter":"libiec61850","version":"0.1.0"}
+```
+
+Client adapters print one JSON line per operation (`{"operation":"read","target":"interop/boolean","ok":true,"value":true}`). Diagnostics go to stderr. Fixed-sequence `*-ied-client` adapters exit `3` when any operation fails and `2` on connection failure.
+
+### Starting an adapter by hand
+
+<Tabs>
+  <TabItem label="Build locally">
+    ```sh
+    cd mms-interop
+    make build
+    docker run --rm -p 1102:1102 --entrypoint libiec61850-ied-server \
+      mms-interop-libiec61850:local --port 1102
+    ```
+  </TabItem>
+  <TabItem label="Digest-pinned (v0.1.4)">
+    ```sh
+    LIBIEC61850_IMAGE=ghcr.io/otfabric/mms-interop-libiec61850@sha256:9c29847dbd0523002b113a2fd1806cfb523bdd1610ae2e47f53b6156ec15fde7
+    docker run --rm -p 1102:1102 --entrypoint libiec61850-ied-server \
+      "$LIBIEC61850_IMAGE" --port 1102
+    ```
+  </TabItem>
+</Tabs>
+
+Then point iec61850ctl at it with `IEC61850_IED_NAME=InteropIED`:
+
+```sh
+export IEC61850_HOST=127.0.0.1 IEC61850_PORT=1102 IEC61850_IED_NAME=InteropIED
+iec61850ctl list lds --format json
+iec61850ctl get object --object InteropLD/MMXU1.TotW.mag.f --fc MX --format json
+```
+
+To drive the OT Fabric server with a reference client, start `iec61850ctl server start --host 0.0.0.0 --port 1102 ...` on the host and run the adapter with `--add-host=host.docker.internal:host-gateway --host host.docker.internal`.
+
+## Running the suites
+
+The external and reverse suites need Docker. Tests start each adapter with `docker run`, wait for the readiness line, run, and tear down. Nothing has to be running beforehand.
+
+<Tabs>
+  <TabItem label="go-mms">
+    ```sh
+    LIBIEC61850_IMAGE=mms-interop-libiec61850:local make interop
+    ```
+    Tests are behind `-tags=interop`. `MMS_SERVER_BINARY` and `MMS_CLIENT_BINARY` skip Docker and use local adapter binaries.
+  </TabItem>
+  <TabItem label="go-iec61850">
+    ```sh
+    LIBIEC61850_IMAGE=mms-interop-libiec61850:local \
+    IEC61850BEAN_IMAGE=mms-interop-iec61850bean:local \
+    make interop
+    ```
+    `IEC61850_FIXTURE_DIR` overrides the fixture path. Test names say the direction: `TestLibIECClient_*` (Go client, libiec61850 server), `TestLibIECServer_*` (Go server, libiec61850 client), `TestBeanClient_*`, `TestBeanServer_*`.
+  </TabItem>
+  <TabItem label="iec61850ctl">
+    ```sh
+    make build-nocheck
+    make e2e                                       # libiec61850, iec61850bean, self
+    IEC61850CTL_E2E_STACKS=server-libiec61850 make e2e
+    IEC61850CTL_E2E_STACKS=all make e2e            # every CI direction
+    make e2e-verify-fixtures                       # check fixture hashes against the lock file
+    ```
+    The e2e package runs the built binary as a black box. Mutating journeys use isolated adapter servers. `e2e/testdata/interop.lock.json` pins mms-interop `v0.1.4` by commit and image digest.
+  </TabItem>
+</Tabs>
+
+A test skipped without a registered limitation fails CI.
+
+## What has been validated
+
+### go-mms against libiec61850 (both directions)
+
+Associate and conclude, reconnect, Identify, Status, GetNameList, GetVariableAccessAttributes, reads of every fixture type (boolean, integer, unsigned, float32, visible-string, octet-string, bit-string, utc-time, array, structure), single and multi-variable writes, named variable list define, read and delete, and negative cases (unknown domain or variable, wrong type, read-only write).
+
+Not yet tested against a reference: InformationReport, file services and journal services.
+
+### go-iec61850 against libiec61850 and IEC61850bean
+
+| Area | Go → libIEC | libIEC → Go | Go → Bean | Bean → Go |
+|---|:-:|:-:|:-:|:-:|
+| Associate, browse LD/LN/DO, ST/MX/CF/DC reads | ✓ | ✓ | ✓ | ✓ |
+| Write and read-back | ✓ | ✓ | ✓ | ✓ |
+| Dataset list and read | ✓ | ✓ | ✓ | ✓ |
+| URCB reserve, enable, data-change report, disable | ✓ | ✓ | ✓ | ✓ |
+| URCB general interrogation | ✓ | ✓ | ✓ | not tested |
+| Direct control | ✓ | ✓ | ✓ | ✓ |
+| SBO (normal security) | ✓ | ✓ | ✓ | ✓ |
+| SBOw (enhanced security) | ✓ | ✓ | known gap | n/a |
+| Cancel | ✓ | ✓ | not tested | not tested |
+| Integrity period | not tested | not tested | not tested | not tested |
+| BRCB | not in matrix | not in matrix | not in matrix | not in matrix |
+
+CDC reads interop-tested: SPS, DPS, INS, ACT, SPC, DPC, MV and BCR. CMV, ENS and BSC are implemented but not interop-tested.
+
+IEC61850bean as a server does not expose `SBOw[CO]` as a writable attribute, so SBOw from a Go client to IEC61850bean is a registered expected failure. IEC61850bean's server also does not answer MMS Conclude; tests use Abort.
+
+### iec61850ctl end to end
+
+The CLI suite adds black-box journeys through the binary: browse and reads against expected values, datasets, RCB discovery, URCB GI subscription in JSONL, `control operate` on SPCSO1/2/3 with `--confirm-ref`, `set object` on `SetInt1.setVal[SP]` with `--verify`, and BRCB purge and resume by EntryID (required against libiec61850; best effort against IEC61850bean). In the reverse direction, libiec61850 and IEC61850bean controllers, reporters and readers run against `iec61850ctl server start`. Negative cases cover control mode mismatch, confirmation mismatch and `FC=CO` rejection.
+
+## Not yet validated
+
+- Physical IEDs from any vendor.
+- External BRCB interoperability in the go-iec61850 library matrix (covered by Go-only integration tests and by the CLI against libiec61850).
+- Integrity-period reporting against a reference stack.
+- Edition 2.1 (2007B4) features beyond those listed.
+- Dynamic dataset creation on the server, CommandTermination and TimeActivatedOperate (not implemented).
+- File and journal services in reverse (reference client to OT Fabric server).
+- Adapter fault injection such as mid-sequence disconnects.

@@ -1,0 +1,146 @@
+---
+title: BACnet/IP
+description: How BACnet/IP works (objects, properties, BVLC, NPDU, APDU, routing and BBMDs) and what OT Fabric provides for it.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import { Aside, Badge, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+BACnet (Building Automation and Control Network) is the open protocol of building automation, standardised as ANSI/ASHRAE 135 and ISO 16484-5. Air handling units, boilers, room controllers, lighting and meters use it to exchange typed values. BACnet/IP (Annex J of the standard) carries BACnet over IPv4 and UDP, by default on port **47808** (hexadecimal `0xBAC0`).
+
+This page explains the protocol as the OT Fabric projects use it. It is an orientation, not conformance language: for normative detail use a licensed copy of ANSI/ASHRAE 135.
+
+<Aside type="note" title="Scope of OT Fabric for BACnet">
+The OT Fabric BACnet projects are **clients only**. They discover devices and read, write and subscribe to them. They do not implement a BACnet device (server), a BBMD, MS/TP, BACnet/IPv6 or BACnet Secure Connect (BACnet/SC). They have been tested against five open-source BACnet stacks in containers and have **not yet been validated against physical controllers**.
+</Aside>
+
+## The data model: objects and properties
+
+A BACnet device does not expose a register map. It exposes **objects**, and each object has **properties**.
+
+- A **device** is one controller on the network. It has a **device instance**, a number from 0 to 4194302 that must be unique in the whole BACnet internetwork. The device is itself an object, `device,<instance>`, whose properties describe it: vendor, model, firmware, protocol revision, maximum APDU size, segmentation support, the services and object types it supports, and its `object-list`.
+- An **object** is one thing the device holds: an input, an output, a value, a schedule, a trend log, a file, a notification class. It is identified by a type and an instance number, for example `analog-input,3`. The pair is the **object identifier**.
+- A **property** is one fact about an object: `present-value`, `object-name`, `units`, `status-flags`, `description`. Some properties are arrays (indexed from 1, with index 0 holding the length) or lists.
+
+Values on the wire are typed with **application tags**: Null, Boolean, Unsigned, Signed, Real, Double, OctetString, CharacterString, BitString, Enumerated, Date, Time and ObjectIdentifier, plus constructed values built from them. A device refuses a write with the wrong type, so a client must know or look up the type a property holds.
+
+### Command priorities
+
+A **commandable** property, usually the `present-value` of an output or a value object, keeps a `priority-array` with 16 slots. The object takes the value of the highest non-empty slot (1 is the highest). Writing a value at a priority **commands** that slot. Writing NULL at the same priority **relinquishes** it. When every slot is empty, the object falls back to its `relinquish-default`. A value written at priority 8 (the conventional manual operator priority) overrides a control program writing at a lower priority until it is relinquished.
+
+## Stack layers on BACnet/IP
+
+A BACnet/IP datagram is peeled from the outside in:
+
+```text
+UDP datagram
+  └─ BVLC     BACnet Virtual Link Control (BACnet/IP framing)
+       └─ NPDU     Network Protocol Data Unit (routing, hop count, message type)
+            └─ APDU     Application Protocol Data Unit (service PDU)
+                 └─ service payload   (Who-Is, ReadProperty, ...)
+```
+
+| Layer | Role |
+|---|---|
+| **BVLC** | BACnet/IP framing: Original-Unicast-NPDU, Original-Broadcast-NPDU, Forwarded-NPDU, foreign-device registration, broadcast distribution table (BDT) and foreign device table (FDT) management, BVLC-Result |
+| **NPDU** | Local or routed delivery (destination network `DNET` and address `DADR`, source `SNET`/`SADR`), hop count, network-layer messages such as Who-Is-Router-To-Network |
+| **APDU** | Confirmed and unconfirmed requests, SimpleACK, ComplexACK, Error, Reject, Abort, SegmentACK |
+| **Service** | The payload: ReadProperty, WriteProperty, SubscribeCOV and the rest |
+
+### Confirmed and unconfirmed services
+
+**Unconfirmed** services such as Who-Is, I-Am and unconfirmed COV notifications are fire-and-forget: no invoke ID, no acknowledgement. **Confirmed** services such as ReadProperty, WriteProperty and SubscribeCOV carry an **invoke ID** (0 to 255). The requester waits for a matching answer:
+
+| Answer | Meaning |
+|---|---|
+| SimpleACK | Success without data (a write) |
+| ComplexACK | Success with data (a read) |
+| Error | The device understood and refused, with an error class and code such as `object` / `unknown-object` |
+| Reject | The request was malformed or the service is not recognised |
+| Abort | The transaction was ended, for example because a reply would not fit |
+
+There is no connection and no session. BACnet/IP is plain UDP: every device has one socket and sends datagrams to the others.
+
+### APDU size and segmentation
+
+Every device announces the largest APDU it accepts, between 50 and 1476 octets on BACnet/IP. A message larger than that has to be **segmented**: split into numbered segments that the receiver acknowledges with SegmentACK, in windows. A device announces whether it can send segments, receive them, both, or neither. A device that cannot segment answers a request whose reply would be too large with an Abort (`segmentation-not-supported` or `buffer-overflow`), and the client has to ask for less, for example by reading a long `object-list` element by element.
+
+## Discovery and addressing
+
+### Who-Is and I-Am
+
+A client finds devices with **Who-Is**, optionally limited to a range of device instances. Every matching device answers with **I-Am**: its device instance, maximum APDU size, segmentation support and vendor ID. Devices usually send the I-Am as a **broadcast to port 47808**, so a client must be bound to that port to hear the answers, and only one program on a host can hold it. **Who-Has** and **I-Have** do the same for an object, by name or identifier.
+
+### Addresses
+
+A BACnet address is not always an IP address and port:
+
+- A **local station** is reached directly over BACnet/IP at its IP and port.
+- A **remote station** sits on another BACnet network, behind a **BACnet router**. It is addressed by network number and MAC address (`DNET` + `DADR`), and the datagram goes to the router's IP and port. A device on an MS/TP (RS-485 field bus) segment is reached this way; its MAC is its station number.
+- **Local, remote and global broadcasts** are used for discovery and network messages.
+
+Clients learn routers with **Who-Is-Router-To-Network** and the **I-Am-Router-To-Network** replies.
+
+### BBMDs and foreign devices
+
+IP routers do not forward broadcasts, so a Who-Is stops at the edge of the IP subnet. A **BBMD** (BACnet/IP Broadcast Management Device) carries broadcasts between subnets as **Forwarded-NPDU** messages, using its broadcast distribution table. A host on a subnet without a BBMD can register with a remote BBMD as a **foreign device**, for a time-to-live (TTL) that it must renew. It then sends its broadcasts to the BBMD as Distribute-Broadcast-To-Network and receives forwarded broadcasts. The registration appears in the BBMD's foreign device table.
+
+## Change of value, alarms and events
+
+Instead of polling, a client can **subscribe to change of value (COV)** with SubscribeCOV (for an object) or SubscribeCOVProperty (for one property, with a COV increment). The device then sends a COV notification whenever the value changes by more than the increment. A subscription has a lifetime and must be renewed. Notifications can be confirmed or unconfirmed, and they are sent to the address the subscription came from.
+
+Alarms and events are a separate path. Objects with intrinsic reporting, or Event Enrollment objects, change **event state** (normal, offnormal, high-limit, fault ...) and send **EventNotification** to the recipients of their **Notification Class**. Clients query active events with GetEventInformation or GetAlarmSummary and acknowledge them with AcknowledgeAlarm, quoting the event's time stamp.
+
+Trend Log objects keep a buffer of records, read with **ReadRange** by position, sequence number or time.
+
+## Security
+
+BACnet/IP has **no authentication and no encryption**. Anyone who can reach a device on UDP 47808 can read it, write to it and restart it. Anyone on the path can read, forge or alter traffic, including Who-Is, I-Am, property responses and COV notifications. A device instance number is not an identity. The passwords of DeviceCommunicationControl and ReinitializeDevice travel in clear text.
+
+BACnet Secure Connect (BACnet/SC) is the secured variant of the standard; the OT Fabric projects do not implement it. Keep building automation traffic on isolated, trusted networks and never expose UDP 47808 to the Internet.
+
+<Aside type="caution">
+Writes to `present-value` start and stop fans, move valves and dampers and change setpoints. DeviceCommunicationControl can silence a device so its alarms are no longer delivered, and ReinitializeDevice restarts it. Only use BACnet tooling on devices and networks you own or are authorised to work on.
+</Aside>
+
+## Where BACnet is used
+
+BACnet is the open protocol of building automation: HVAC plant, room and zone controllers, lighting, access and life safety systems, and meters. A building management system (BMS) is typically a supervisory BACnet client that discovers the controllers, reads their points, trends them and commands setpoints.
+
+For energy work this is where building loads become visible and controllable. Energy meters, chillers, boilers and air handling units publish their consumption and state as BACnet objects, and energy management or demand response software reads trend logs and commands setpoints and schedules through the same services. Field buses such as MS/TP often sit behind BACnet/IP routers, which is why routed addressing matters even for an IP-only client.
+
+## Vocabulary
+
+| Term | Meaning |
+|---|---|
+| APDU | Application Protocol Data Unit: the service message |
+| NPDU | Network Protocol Data Unit: routing information around the APDU |
+| BVLC | BACnet Virtual Link Control: BACnet/IP framing |
+| BBMD | BACnet/IP Broadcast Management Device |
+| BDT, FDT | Broadcast distribution table, foreign device table of a BBMD |
+| COV | Change of value |
+| DNET, DADR | Destination network number and address in the NPDU |
+| Invoke ID | Number matching a confirmed request to its answer |
+| MS/TP | Master-Slave/Token-Passing, the RS-485 BACnet field bus |
+| Priority array | 16 command slots of a commandable property |
+
+## OT Fabric for BACnet
+
+<Badge text="Client only" variant="caution" /> <Badge text="Not yet validated on physical controllers" variant="caution" />
+
+| Project | What it is |
+|---|---|
+| **go-bacnet** | Pure-Go BACnet/IP client library, no dependencies outside the standard library |
+| **bacnetctl** | Command-line client for discovery, reads, writes, COV monitoring, alarms, trends, files and network diagnostics |
+| **bacnet-interop** | Dockerized reference stacks (bacnet-stack, BACpypes3, BACnet4J, Worldiety, System.IO.BACnet) with fixtures and routed and BBMD scenarios |
+
+<CardGrid>
+  <LinkCard title="go-bacnet" description="Client library. Project page." href="/projects/go-bacnet/" />
+  <LinkCard title="bacnetctl" description="Command-line client. Project page." href="/projects/bacnetctl/" />
+  <LinkCard title="bacnet-interop" description="Interop suite. Project page." href="/projects/bacnet-interop/" />
+  <LinkCard title="Source on GitHub" description="github.com/otfabric/go-bacnet, bacnetctl, bacnet-interop" href="https://github.com/otfabric/go-bacnet" />
+</CardGrid>
+
+Source code: [github.com/otfabric/go-bacnet](https://github.com/otfabric/go-bacnet), [github.com/otfabric/bacnetctl](https://github.com/otfabric/bacnetctl), [github.com/otfabric/bacnet-interop](https://github.com/otfabric/bacnet-interop). Protocol landing page: [/protocols/bacnet/](/protocols/bacnet/). New to OT Fabric? Start with [Getting started](/docs/getting-started/).

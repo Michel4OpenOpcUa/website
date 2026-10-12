@@ -1,0 +1,283 @@
+---
+title: bacnetctl
+description: Installing and using bacnetctl, the BACnet/IP command-line client for discovery, reads, writes, COV monitoring and network diagnostics.
+sidebar:
+  label: bacnetctl
+  order: 2
+---
+
+import { Aside, Tabs, TabItem, Steps, LinkCard } from '@astrojs/starlight/components';
+
+[bacnetctl](https://github.com/otfabric/bacnetctl) is a standalone BACnet/IP command-line client built on [go-bacnet](/docs/protocols/bacnet/library/). It discovers devices, reads and writes properties, lists objects, watches values with change of value (COV), reads alarms, trend logs and files, shows routers and BBMDs, and decodes captured frames offline. Output is text, a table or JSON, with stable exit codes.
+
+<Aside type="caution" title="Status and scope">
+bacnetctl is a **client only**: it does not simulate a BACnet device. Version 0.1.0 is tested automatically against a simulated device and was run by hand against five open-source BACnet stacks in containers. It has **not been run against physical devices**.
+</Aside>
+
+## Install
+
+Pre-built binaries for Linux (x86-64, ARM64, ARMv7), macOS (Apple Silicon, Intel) and Windows (x86-64, ARM64) are on the [GitHub Releases page](https://github.com/otfabric/bacnetctl/releases). Each release has a `bacnetctl-<version>-checksums.txt` with SHA-256 sums. No Go toolchain is needed.
+
+<Tabs>
+  <TabItem label="Linux">
+    ```sh
+    # 1. Find the latest version and your CPU architecture
+    VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/bacnetctl/releases/latest | sed 's|.*/v||')
+    case "$(uname -m)" in
+      x86_64)         ARCH=amd64 ;;
+      aarch64|arm64)  ARCH=arm64 ;;
+      armv7l)         ARCH=armv7 ;;
+      *) echo "Unsupported architecture: $(uname -m)" ;;
+    esac
+
+    # 2. Download the archive and the checksum file
+    FILE="bacnetctl-${VERSION}-linux-${ARCH}.tar.gz"
+    BASE="https://github.com/otfabric/bacnetctl/releases/download/v${VERSION}"
+    curl -fsSLO "${BASE}/${FILE}"
+    curl -fsSLO "${BASE}/bacnetctl-${VERSION}-checksums.txt"
+
+    # 3. Verify the download (should print "OK")
+    grep "${FILE}" "bacnetctl-${VERSION}-checksums.txt" | sha256sum -c -
+
+    # 4. Extract and install
+    mkdir -p bacnetctl-dl && tar -xzf "${FILE}" -C bacnetctl-dl
+    sudo install -m 0755 "$(find bacnetctl-dl -type f -name 'bacnetctl*' | head -n1)" /usr/local/bin/bacnetctl
+    ```
+  </TabItem>
+  <TabItem label="macOS">
+    ```sh
+    VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/bacnetctl/releases/latest | sed 's|.*/v||')
+    case "$(uname -m)" in
+      arm64)   ARCH=arm64 ;;
+      x86_64)  ARCH=amd64 ;;
+    esac
+
+    FILE="bacnetctl-${VERSION}-darwin-${ARCH}.tar.gz"
+    BASE="https://github.com/otfabric/bacnetctl/releases/download/v${VERSION}"
+    curl -fsSLO "${BASE}/${FILE}"
+    curl -fsSLO "${BASE}/bacnetctl-${VERSION}-checksums.txt"
+
+    grep "${FILE}" "bacnetctl-${VERSION}-checksums.txt" | shasum -a 256 -c -
+
+    mkdir -p bacnetctl-dl && tar -xzf "${FILE}" -C bacnetctl-dl
+    sudo install -m 0755 "$(find bacnetctl-dl -type f -name 'bacnetctl*' | head -n1)" /usr/local/bin/bacnetctl
+    ```
+  </TabItem>
+  <TabItem label="Go toolchain">
+    Requires Go 1.25 or later.
+
+    ```sh
+    go install github.com/otfabric/bacnetctl@latest
+    ```
+  </TabItem>
+</Tabs>
+
+The Windows PowerShell steps are in the bacnetctl README. Check the install with `bacnetctl version`. bacnetctl is one file and keeps no configuration or state.
+
+Shell completion covers commands, object types, property names and flag values:
+
+```sh
+bacnetctl completion bash | sudo tee /etc/bash_completion.d/bacnetctl > /dev/null
+```
+
+## Connecting to a device
+
+There is no connection in BACnet/IP: bacnetctl opens one UDP socket per invocation and addresses a device by where it is. The device instance is not needed.
+
+| Flags | Addresses |
+|---|---|
+| `--device host[:port]` | The device at that IPv4 address or host name; port 47808 when omitted |
+| `--device router[:port] --network N --mac HEX` | The device with MAC `HEX` on BACnet network `N`, behind the router at `--device`. For MS/TP the MAC is the station number in hex (`0a` for station 10) |
+
+The local port depends on the command:
+
+| Commands | `--local-port` default | Why |
+|---|---|---|
+| `read`, `write`, `release`, `objects`, `describe`, `device`, `monitor`, `alarms`, `ack`, `trend`, `file`, `time sync`, `bbmd`, `reinitialize`, `comm-control` | 0 (a free port) | A device answers to the address the request came from |
+| `discover`, `whohas`, `events`, `router list` | 47808 | Devices answer Who-Is and send event notifications by broadcast to port 47808 |
+
+Only one program on a host can hold port 47808. If a BACnet workstation or gateway has it, the second group fails with exit code 4. Allow inbound UDP 47808 in the host firewall for discovery. No administrator rights are needed.
+
+Other connection flags: `--interface` restricts broadcasts to one interface's subnet; `--bbmd host[:port]` and `--bbmd-ttl` register as a foreign device (60 s TTL by default) and send broadcasts through that BBMD; `--timeout` sets the APDU timeout in milliseconds (3000); `--retries` sets how often an unanswered **read** is resent (3). A write is never sent twice.
+
+## Command tree
+
+```text
+bacnetctl
+├── discover             Find devices with Who-Is
+├── whohas               Find the devices that have an object, by name or identifier
+├── read                 Read properties of objects (ReadProperty, ReadPropertyMultiple)
+├── objects              List the objects of a device, with values
+├── describe             Show every property of one object
+├── device               Show what a device says about itself
+├── trend                Read the records of a trend log (ReadRange)
+├── file
+│   ├── get              Read a file object into a local file
+│   └── put              Write a local file into a file object
+├── write                Write one or more properties (WriteProperty, WritePropertyMultiple)
+├── release              Relinquish a command priority
+├── create               Create an object in a device (CreateObject)
+├── delete               Delete an object from a device (DeleteObject)
+├── time
+│   └── sync             Set the clock of a device, or of every device on the network
+├── monitor              Print the values of objects as they change (SubscribeCOV, or polling)
+├── alarms               List the active alarms and events of a device
+├── ack                  Acknowledge an alarm
+├── events               Listen for event notifications
+├── router
+│   └── list             Find the BACnet routers and the networks behind them
+├── bbmd
+│   ├── bdt              Read the broadcast distribution table of a BBMD
+│   └── fdt              Read the foreign device table of a BBMD
+├── reinitialize         Restart a device (ReinitializeDevice)
+├── comm-control         Silence a device, or let it speak again
+├── decode               Decode a captured BACnet/IP datagram (offline)
+├── types                List the object types bacnetctl knows by name
+├── properties           List the property identifiers bacnetctl knows by name
+├── completion           Generate shell completion script (bash|zsh|fish|powershell)
+└── version              Print version
+```
+
+Objects are written `type:instance` (`analog-input:1`, or `ai:1`) and properties by name (`present-value`, or `pv`). `bacnetctl types` and `bacnetctl properties` list the names. Every command has `--help` with examples.
+
+## Read-only commands first
+
+```sh
+# Which devices are on this network?
+bacnetctl discover
+bacnetctl discover --low 1000 --high 1999 --names
+
+# One address, another subnet through its BBMD, one BACnet network behind a router
+bacnetctl discover --target 10.0.20.15
+bacnetctl discover --bbmd 10.0.20.1
+bacnetctl discover --network 2001
+
+# Who is at this address, and what does it hold?
+bacnetctl device --device 192.168.1.20
+bacnetctl objects --device 192.168.1.20 --values
+
+# Values
+bacnetctl read --device 192.168.1.20 analog-input:1 present-value
+bacnetctl read --device 192.168.1.20 ai:1 pv,units,status-flags av:2 pv,description
+bacnetctl read --device 192.168.1.20 analog-value:1 priority-array[8]
+bacnetctl describe --device 192.168.1.20 analog-input:1
+```
+
+A single property prints the bare value, ready for a script. With several properties, bacnetctl sends ReadPropertyMultiple split to the device's APDU size; a property the device refuses is reported in its row and the exit code is 7.
+
+```text
+$ bacnetctl objects --device 127.0.0.1:47809 --values
+device:1234 at 127.0.0.1:47809: 10 objects
+
+OBJECT               NAME                 VALUE         STATUS    DESCRIPTION
+device:1234          AHU-1 Controller     -             -         Simulated air handling unit controller
+analog-input:1       Supply Air Temp      21.5 °C       ok        AHU-1 supply air temperature
+analog-input:2       Return Air Humidity  71.25 %RH     in-alarm  AHU-1 return air humidity
+...
+```
+
+Watching, alarms, trends and the network:
+
+```sh
+bacnetctl monitor --device 192.168.1.20 analog-input:1 binary-input:3
+bacnetctl monitor --device 192.168.1.20 ai:1 --property present-value --increment 0.5 --count 10 --format json
+bacnetctl monitor --device 192.168.1.20 ai:1 --poll 2000
+bacnetctl alarms --device 192.168.1.20
+bacnetctl events --duration 3600 --format json > events.jsonl
+bacnetctl trend --device 192.168.1.20 trend-log:1 --all
+bacnetctl file get --device 192.168.1.20 file:1 --output config.bin
+bacnetctl router list
+bacnetctl bbmd bdt --device 10.0.20.1
+bacnetctl decode 810a0017 0100 3003 0c 0c00000001 1955 3e 4441ac0000 3f
+```
+
+`monitor` subscribes with SubscribeCOV, renews while running and cancels on exit; `--poll` reads periodically for devices without COV. `decode` takes the hex of a UDP payload and shows BVLC, NPDU, APDU and the service; nothing is sent.
+
+## Writes and other changes
+
+<Aside type="caution" title="These commands change the device">
+`write` and `release` change what a plant does (a fan, a valve, a setpoint). `ack` acknowledges an alarm, `time sync` changes clocks, `file put` can deliver a configuration, `create` and `delete` change the object database, and `reinitialize` and `comm-control` restart or silence a device. BACnet/IP has no authentication. Know what an object controls before you write to it, and practise against a simulator first.
+</Aside>
+
+```sh
+# A typed value, at operator priority, then hand it back
+bacnetctl write --device 192.168.1.20 analog-value:1 present-value real:21.5 --priority 8
+bacnetctl release --device 192.168.1.20 analog-value:1 --priority 8
+
+# Several properties in one WritePropertyMultiple
+bacnetctl write --device 127.0.0.1:47809 av:1 pv real:21.5 av:1 object-name "string:Supply SP" bv:1 pv active
+```
+
+| Value | BACnet type |
+|---|---|
+| `real:21.5`, `double:21.5` | REAL, Double |
+| `unsigned:3`, `signed:-1` | Unsigned, Signed Integer |
+| `bool:true` | BOOLEAN |
+| `enum:1`, `enum:active` | Enumerated |
+| `string:Room 4` | CharacterString (UTF-8) |
+| `octets:0a1b2c`, `bits:1011` | OctetString, BitString |
+| `date:2026-10-10`, `time:12:00:00` | Date, Time |
+| `object:analog-input:1` | Object identifier |
+| `null` | NULL: relinquishes, with `--priority` |
+
+Without a type prefix, bacnetctl reads the property first and writes with the type it holds now; `--type` names the type and skips the read. Without `--priority` a device uses priority 16.
+
+The safety model:
+
+<Steps>
+1. Everything that can be checked is checked before anything is sent. A rejected invocation exits 2 or 3 and has sent nothing.
+2. `delete`, `reinitialize` and `comm-control` refuse to run without `--yes-i-am-sure`, which has no environment variable.
+3. A request that changes the device is sent **exactly once**. Without an acknowledgement bacnetctl reports `outcome_unknown` (exit 5) and does not resend: read the state back before repeating the command.
+4. Passwords for `reinitialize` and `comm-control` come from `--password` or `BACNETCTL_PASSWORD` and are never printed, not even with `--debug`. BACnet sends them in clear text.
+</Steps>
+
+There is no dry-run flag. `discover`, `whohas` and `router list` are read-only but broadcast to every device on the network; limit them with `--low`/`--high`, `--network` or `--target` on large or fragile networks.
+
+## Output formats and exit codes
+
+`--format text|json|table` (or `BACNETCTL_OUTPUT_FORMAT`) controls the result on stdout only; progress and diagnostics go to stderr. `monitor` and `events` stream JSON Lines in JSON mode. A failure in JSON mode is a single `{"error": {"kind", "code", "message", "bacnet"}}` object on stdout, also for usage errors. The JSON shapes are a stable contract (`docs/json-output.md`).
+
+| Code | Meaning |
+|---|---|
+| 0 | Success; also an empty discovery result |
+| 2 | Usage: unknown command or flag, wrong arguments, missing `--yes-i-am-sure`. Nothing sent |
+| 3 | Invalid input. Nothing sent |
+| 4 | Transport: port in use, name does not resolve, BBMD refused registration |
+| 5 | Timeout; for a change, `outcome_unknown` |
+| 6 | The device refused (Error, Reject, Abort), or a protocol error |
+| 7 | Partial success: a valid result that holds failures |
+| 10 | Output or internal error |
+
+`--debug` adds the client's diagnostics and the chain of causes on stderr without changing stdout or the exit code.
+
+## Environment variables
+
+Every configuration flag has a `BACNETCTL_*` variable; a flag on the command line wins. Commonly used ones:
+
+| Variable | Flag | Default |
+|---|---|---|
+| `BACNETCTL_DEVICE` | `--device` | none |
+| `BACNETCTL_OUTPUT_FORMAT` | `--format` | text |
+| `BACNETCTL_LOCAL_PORT` | `--local-port` | 0 (47808 for discovery commands) |
+| `BACNETCTL_INTERFACE` | `--interface` | chosen by the system |
+| `BACNETCTL_BBMD`, `BACNETCTL_BBMD_TTL` | `--bbmd`, `--bbmd-ttl` | none, 60 |
+| `BACNETCTL_TIMEOUT` | `--timeout` | 3000 |
+| `BACNETCTL_RETRIES` | `--retries` | 3 |
+| `BACNETCTL_NETWORK`, `BACNETCTL_MAC` | `--network`, `--mac` | 0, none |
+| `BACNETCTL_PRIORITY` | `--priority` | 0 (none) |
+| `BACNETCTL_PASSWORD` | `--password` | none |
+
+The README lists all of them. `--debug` and `--yes-i-am-sure` have none.
+
+## Simulation
+
+bacnetctl has no server or simulation mode. Its test suite includes a simulated BACnet/IP device (`internal/bactest`), which you can run from a source checkout to try commands safely:
+
+```sh
+go run ./internal/bactest/bacsim -listen 127.0.0.1:47809 &
+bacnetctl objects --device 127.0.0.1:47809 --values
+```
+
+For independent stacks, use the [bacnet-interop](/docs/protocols/bacnet/testing/) containers.
+
+<LinkCard title="bacnetctl on GitHub" description="README, docs/exitcodes.md, docs/json-output.md, SECURITY.md" href="https://github.com/otfabric/bacnetctl" />

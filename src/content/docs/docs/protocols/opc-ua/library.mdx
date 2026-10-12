@@ -1,0 +1,367 @@
+---
+title: Go library
+description: Use go-opcua to connect to OPC UA servers securely, read, write, browse and subscribe, and to build your own OPC UA server in pure Go.
+sidebar:
+  label: Go library
+  order: 1
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+[go-opcua](https://github.com/otfabric/go-opcua) is a pure Go OPC UA client and server over UA-TCP with the OPC UA Binary encoding. It has no cgo; cryptography is the Go standard library plus ChaCha20-Poly1305 from `golang.org/x/crypto`.
+
+## Install
+
+```sh
+go get github.com/otfabric/go-opcua
+```
+
+Go 1.26 or later is required. The packages you will use most:
+
+| Package | Purpose |
+|---|---|
+| `opcua` | Client, `Node`, subscriptions, options, retry, metrics |
+| `ua` | Types and codec: `NodeID`, `Variant`, `DataValue`, `StatusCode`, service messages |
+| `server` | Server, namespaces, access control, events, history providers |
+| `monitor` | Callback and channel based subscriptions (`NodeMonitor`) |
+| `errors` | Sentinel errors for `errors.Is` |
+| `id` | Well-known NodeID constants |
+| `uacp`, `uasc`, `uapolicy` | Transport, secure channel, security policies (advanced use) |
+
+## Connecting
+
+`opcua.NewClient(endpoint, opts...)` builds a client; `Connect` opens the SecureChannel and creates and activates a session. `Dial` opens only the SecureChannel (enough for discovery services). `Close` tears everything down; do not reuse a client after `Close`.
+
+<Tabs>
+  <TabItem label="No security (lab)">
+    ```go
+    c, err := opcua.NewClient("opc.tcp://localhost:4840",
+        opcua.SecurityPolicy("None"),
+        opcua.SecurityMode(ua.MessageSecurityModeNone),
+        opcua.AuthAnonymous(),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    if err := c.Connect(ctx); err != nil {
+        log.Fatal(err)
+    }
+    defer c.Close(ctx)
+    ```
+  </TabItem>
+  <TabItem label="RSA, SignAndEncrypt">
+    ```go
+    c, err := opcua.NewClient("opc.tcp://server:4840",
+        opcua.SecurityPolicy("Basic256Sha256"),
+        opcua.SecurityMode(ua.MessageSecurityModeSignAndEncrypt),
+        opcua.CertificateFile("client.crt"),
+        opcua.PrivateKeyFile("client.key"),
+        opcua.TrustedCertificates(caCert), // *x509.Certificate of the server's CA
+        opcua.AuthUsername("operator", password),
+    )
+    ```
+  </TabItem>
+  <TabItem label="ECC">
+    ```go
+    // ECDSA P-256 key for ECC_nistP256 and the two AEAD P-256 policies.
+    c, err := opcua.NewClient("opc.tcp://server:4840",
+        opcua.SecurityPolicy("ECC_nistP256_AesGcm"),
+        opcua.SecurityMode(ua.MessageSecurityModeSignAndEncrypt),
+        opcua.CertificateFile("client-ecc.crt"),
+        opcua.PrivateKeyFile("client-ecc.key"), // PKCS #8 or SEC 1
+        opcua.TrustedCertificates(caCert),
+    )
+    ```
+  </TabItem>
+  <TabItem label="Auto-select">
+    ```go
+    endpoints, err := opcua.GetEndpoints(ctx, "opc.tcp://server:4840")
+    if err != nil {
+        log.Fatal(err)
+    }
+    // Best endpoint this certificate can use; "" and Invalid mean "any".
+    ep, err := opcua.SelectEndpoint(endpoints, "", ua.MessageSecurityModeInvalid, certDER)
+    if err != nil {
+        log.Fatal(err)
+    }
+    c, err := opcua.NewClient(ep.EndpointURL,
+        opcua.SecurityFromEndpoint(ep, ua.UserTokenTypeAnonymous),
+        opcua.Certificate(certDER),
+        opcua.PrivateKeySigner(key), // RSA, ECDSA or Ed25519
+        opcua.TrustedCertificates(caCert),
+    )
+    ```
+  </TabItem>
+  <TabItem label="Reverse connect">
+    ```go
+    // The server dials this client. The URL is the endpoint the server announces.
+    c, err := opcua.NewClient("opc.tcp://plc-17:4840",
+        opcua.ReverseConnect("0.0.0.0:4841",
+            opcua.ReverseServerURI("urn:acme:plc-17")),
+        opcua.DialTimeout(60*time.Second), // how long to wait for the server
+    )
+    if err := c.Connect(ctx); err != nil { // returns once the server has connected
+        log.Fatal(err)
+    }
+    ```
+  </TabItem>
+</Tabs>
+
+Policies can be named by short name or full URI (`http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256`). `opcua.SelectEndpoint` skips policies the library does not implement and secured endpoints whose policy does not fit the certificate's key type; with an empty certificate only unsecured endpoints remain. With reverse connect, create the client with `""` to accept whatever endpoint URL the server announces. `GetEndpoints`, `FindServers` and `FindServersOnNetwork` accept the same `ReverseConnect` option.
+
+## A complete client
+
+```go title="main.go"
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "time"
+
+    "github.com/otfabric/go-opcua"
+    "github.com/otfabric/go-opcua/ua"
+)
+
+func main() {
+    ctx := context.Background()
+
+    c, err := opcua.NewClient("opc.tcp://localhost:4840",
+        opcua.AutoReconnect(true),
+        opcua.ReconnectInterval(5*time.Second),
+        opcua.WithConnStateHandler(func(s opcua.ConnState) {
+            log.Printf("State: %s", s)
+        }),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    if err := c.Connect(ctx); err != nil {
+        log.Fatal(err)
+    }
+    defer c.Close(ctx)
+
+    // Read the server time (i=2258).
+    dv, err := c.ReadValue(ctx, ua.NewNumericNodeID(0, 2258))
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println("Server time:", dv.Value.Value())
+
+    // Subscribe to value changes.
+    sub, notifyCh, err := c.NewSubscription().
+        Interval(500 * time.Millisecond).
+        Monitor(ua.NewNumericNodeID(2, 1001)).
+        Start(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer sub.Cancel(ctx)
+
+    for msg := range notifyCh {
+        if msg.Error != nil {
+            log.Println("error:", msg.Error)
+            continue
+        }
+        if dcn, ok := msg.Value.(*ua.DataChangeNotification); ok {
+            for _, item := range dcn.MonitoredItems {
+                fmt.Printf("Value changed: %v\n", item.Value.Value.Value())
+            }
+        }
+    }
+}
+```
+
+## Core operations
+
+**Read.** `ReadValue` and `ReadValues` read the Value attribute. `ReadMulti` reads many node/attribute pairs and chunks the requests (32 items per request by default, `ReadMultiWithChunkSize` to change it). `c.Node(id)` gives helpers such as `Value`, `DisplayName`, `BrowseName`, `NodeClass`, `AccessLevel` and `Summary` (all common attributes in one call). `ua.StandardNodeID("CurrentTime")` returns a NodeID for a well-known name.
+
+```go
+items := []opcua.ReadItem{
+    {NodeID: n1, AttributeID: ua.AttributeIDValue},
+    {NodeID: n2, AttributeID: ua.AttributeIDDisplayName},
+}
+results, err := c.ReadMulti(ctx, items)
+```
+
+**Write.** Every write returns a per-item StatusCode next to the Go error.
+
+<Aside type="caution">
+A write changes a live process value. Try it against a simulator or the go-opcua server first, and check the node's access level before writing to a real controller.
+</Aside>
+
+```go
+status, err := c.WriteValue(ctx,
+    ua.NewNumericNodeID(2, 1001),
+    &ua.DataValue{
+        EncodingMask: ua.DataValueValue,
+        Value:        ua.MustVariant(42.0),
+    },
+)
+if err != nil {
+    log.Fatal(err)
+}
+if status != ua.StatusOK {
+    log.Fatal("write failed:", status)
+}
+```
+
+`WriteNodeValue(ctx, nodeID, value)` wraps a plain Go value for you.
+
+**Browse and resolve paths.** `BrowseAll` returns all references of a node; `Node.BrowseAll` is an iterator that follows continuation points; `Node.BrowseWithDepth` recurses on the client side.
+
+```go
+node, err := c.NodeFromPath(ctx, "Server.ServerStatus") // from Objects, namespace 0
+node, err = c.NodeFromQualifiedPath(ctx, "0:Server.0:ServerStatus")
+node, err = c.NodeFromPathInNamespace(ctx, 1, "MyFolder.Sensor1.Temperature")
+```
+
+**Subscriptions.** The builder sets `Interval` (publishing), `SamplingInterval`, `DataChangeFilter`, `MonitorItems` (for `QueueSize` and `DiscardOldest`), `MonitorEvents` with an `EventFilter`, and `Timestamps`.
+
+```go
+sub, notifs, err := c.NewSubscription().
+    Interval(250 * time.Millisecond).
+    DataChangeFilter(ua.DataChangeTriggerStatusValue, ua.DeadbandTypeAbsolute, 0.5).
+    Monitor(nodeID).
+    Start(ctx)
+```
+
+A server that cannot apply a filter rejects that item with a Bad status such as `BadFilterNotAllowed` or `BadMonitoredItemFilterUnsupported`; the other items are created. If the server closes the connection while creating a subscription or monitored items, the error wraps `io.EOF`. The `monitor` package (`monitor.NewNodeMonitor(c)`) offers channel and callback subscriptions by NodeID string.
+
+**Methods and history.**
+
+```go
+result, err := c.CallMethod(ctx, objectID, methodID, 42.0, "hello") // args wrapped in Variants
+inputs, outputs, err := c.MethodArguments(ctx, objectID, methodID)
+
+for dv, err := range c.ReadHistoryAll(ctx, nodeID, start, end) { // pages raw history
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(dv.SourceTimestamp, dv.Value.Value())
+}
+```
+
+For services without a helper, use `Client.Send`.
+
+## Security in practice
+
+<Steps>
+
+1. **Create an application certificate.** The URI subject alternative name is the ApplicationUri and is required. For testing, from the go-opcua security guide:
+
+    ```sh
+    # RSA (Basic256Sha256 and the other RSA policies)
+    openssl req -x509 -newkey rsa:2048 \
+        -keyout key.pem -out cert.pem \
+        -days 365 -nodes \
+        -subj "/CN=OPC-UA Test" \
+        -addext "subjectAltName=URI:urn:otfabric:opcua:client,DNS:localhost"
+
+    # ECDSA P-256 (ECC_nistP256, ECC_nistP256_AesGcm, ECC_nistP256_ChaChaPoly)
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+        -keyout key.pem -out cert.pem \
+        -days 365 -nodes \
+        -subj "/CN=OPC-UA Test" \
+        -addext "keyUsage=digitalSignature,nonRepudiation" \
+        -addext "subjectAltName=URI:urn:otfabric:opcua:client,DNS:localhost"
+    ```
+
+    Use `-newkey ed25519` for `ECC_curve25519`. The guide asks for RSA 2048 bits or more, and 4096 bits for `Aes128_Sha256_RsaOaep` and `Aes256_Sha256_RsaPss`. Key files may be PKCS #1, PKCS #8 or SEC 1, PEM or DER. In production use certificates from your own CA and keep private keys at mode `0600`.
+
+2. **Trust the server.** Pass the server's CA (or self-signed certificate) with `TrustedCertificates`. It is merged with the system pool; the client checks the chain, validity period, key usage and, with `SecurityFromEndpoint`, the ApplicationUri. `InsecureSkipVerify()` disables all of this and is for development only.
+
+3. **Get your certificate trusted by the server.** Most servers reject unknown client certificates until an administrator trusts them.
+
+4. **Pick the user token.** `AuthAnonymous()` (default), `AuthUsername`, `AuthCertificate` with `AuthPrivateKey` or `AuthPrivateKeySigner`, or `AuthIssuedToken`. Always pair a password with SignAndEncrypt. `AuthPolicyID` overrides the UserTokenPolicy ID.
+
+</Steps>
+
+Mismatches are caught early: an RSA certificate on an ECC policy (or the reverse) fails with `ErrInvalidSecurityConfig` before anything is sent, and an unimplemented policy fails with `ErrUnsupportedSecurityPolicy`. Keys in a hardware security module work for ECC through any `crypto.Signer` (`PrivateKeySigner`); RSA keys must be `*rsa.PrivateKey`.
+
+<Aside type="note" title="ECC Sign mode with other stacks">
+In `Sign` mode the ECC key derivation follows open62541 v1.5.9, not the later text of OPC UA 1.05.07 that the OPC Foundation .NET stack follows. Prefer `SignAndEncrypt` with other stacks.
+</Aside>
+
+## Running a server
+
+```go title="main.go"
+package main
+
+import (
+    "context"
+    "log"
+
+    "github.com/otfabric/go-opcua/id"
+    "github.com/otfabric/go-opcua/server"
+    "github.com/otfabric/go-opcua/ua"
+)
+
+func main() {
+    srv, err := server.New(
+        server.EndPoint("localhost", 4840),
+        server.EnableSecurity("None", ua.MessageSecurityModeNone),
+        server.EnableAuthMode(ua.UserTokenTypeAnonymous),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ns := server.NewNodeNameSpace(srv, "http://example.com/myapp")
+    temperature := 21.5
+    node := server.NewVariableNode(
+        ua.NewNumericNodeID(ns.ID(), 1001),
+        "Temperature",
+        func() *ua.DataValue { return server.DataValueFromValue(temperature) },
+    )
+    ns.AddNode(node)
+    ns.Objects().AddRef(node, id.HasComponent, true)
+
+    if err := srv.Start(context.Background()); err != nil {
+        log.Fatal(err)
+    }
+    defer srv.Close()
+
+    select {} // run until killed
+}
+```
+
+After changing a value, call `srv.ChangeNotification(nodeID)` so subscribers are sampled. `server.NewMapNamespace` is a simpler key/value namespace that notifies on `SetValue`. `RegisterMethod` adds method handlers, `ImportNodeSetXML` loads NodeSet2 models, `EmitBaseEvent` emits events, and `SetHistorian(server.NewHistorian())` enables HistoryRead.
+
+For a secured server, add `server.Certificate` and `server.PrivateKey` (RSA), `server.ApplicationIdentity(cert, key)` once per ECC key type, and `EnableSecurity` per policy and mode. `WithClientCertificateTrustList(caDER...)` rejects untrusted client certificates at OpenSecureChannel with `BadCertificateUntrusted`. `WithUsernameValidator` and `WithX509UserValidator` check user tokens during ActivateSession, and `WithAccessController` decides each read, write, browse and call. The `DefaultAccessController` allows everything. `AllowUsernameOnNone()` exists for test deployments only.
+
+## Errors
+
+There are two error surfaces. A Go `error` means the call did not complete normally (connection, session, configuration, transport); match it with `errors.Is` against sentinels in the `errors` package such as `ErrNotConnected`, `ErrSessionClosed`, `ErrInvalidEndpoint`, `ErrNoMatchingEndpoint` or `ErrReverseHelloRejected`. A `ua.StatusCode` is the server's verdict on one item, and the Go error can be `nil` while items are Bad.
+
+```go
+dv, err := c.ReadValue(ctx, nodeID)
+if err != nil {
+    return err // client or transport failure
+}
+if dv.Status != ua.StatusOK {
+    return dv.Status // ua.StatusCode implements error
+}
+```
+
+Do not treat a Bad item status as a reason to reconnect.
+
+## Timeouts, retries and concurrency
+
+- Every call takes a `context.Context` for cancellation and deadlines. `DialTimeout` bounds the TCP and HEL/ACK handshake (default 10 s) and, with reverse connect, the wait for the server. `RequestTimeout` sets a per-request timeout.
+- `WithRetryPolicy` attaches a `RetryPolicy`: `NoRetry()`, `ExponentialBackoff(base, maxDelay, maxAttempts)` or `NewExponentialBackoff(cfg)`, where `RetryOnTimeout` defaults to false.
+- `AutoReconnect` is on by default. After a connection loss the client reopens the channel, restores or recreates the session and, per subscription, tries TransferSubscriptions, then Republish, then recreation. `WithSubscriptionRecoveryHandler` reports `transferred`, `republished`, `recreated`, `partially_recovered` or `unrecoverable_gap`.
+- One connected `*Client` is safe for concurrent ordinary service calls. Notification, connection-state and recovery callbacks run on library goroutines and must not block.
+
+## Logging and metrics
+
+The library is silent by default. `opcua.WithLogger(*slog.Logger)` and `server.SetLogger(...)` turn logging on; `nil` restores silence. `opcua.WithMetrics` takes a `ClientMetrics` with `OnRequest`, `OnResponse`, `OnError` and `OnTimeout` callbacks per service name; the server has `ServerMetrics` via `server.WithMetrics`. Callbacks run on the request path and must not block.
+
+## Limitations
+
+- Client/server over UA-TCP only: no HTTPS, WebSockets or PubSub.
+- `ECC_brainpoolP256r1`, `ECC_brainpoolP384r1` and `ECC_curve448` are not implemented.
+- Alarms and Conditions are deferred (not implemented).
+- The built-in historian: historical events are not supported, and `returnBounds` is accepted but bounding and interpolation are not implemented.
+- Not certified by the OPC Foundation.

@@ -1,0 +1,189 @@
+---
+title: IEC 60870-5-104
+description: How IEC 60870-5-104 works, from APCI frames and timers to ASDUs, addressing, select-before-operate, redundancy and security.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+IEC 60870-5-104 (IEC 104) is the TCP/IP telecontrol protocol between control centres and substations, remote terminal units (RTUs) and generation assets. It carries the application messages of its serial sibling IEC 60870-5-101 over TCP, by default on port **2404**.
+
+Two roles take part in every connection:
+
+- The **controlling station** (the control centre or a SCADA front end) is the TCP client.
+- The **controlled station** (an RTU, a substation gateway or an intelligent electronic device, IED) is the TCP server.
+
+The standard has two layers. The **APCI** (application protocol control information) runs the TCP connection: framing, sequence numbers, acknowledgements and link supervision. The **ASDU** (application service data unit) is the payload: what kind of data, why it was sent, for which station and which point.
+
+```text
+┌──────────────────────────────────────────────┐
+│  ASDU   type identification, cause of        │
+│         transmission, common address,        │
+│         information objects                  │
+├──────────────────────────────────────────────┤
+│  APCI   APDU framing, I/S/U frames,          │
+│         sequence numbers, acknowledgements,  │
+│         STARTDT / STOPDT / TESTFR            │
+└──────────────────────────────────────────────┘
+                 TCP (optionally TLS)
+```
+
+## APCI: frames on the wire
+
+Every APDU (application protocol data unit) starts with the octet `0x68` and a length. A whole frame is at most 255 octets, the APDU after the start and length octets at most 253, and the ASDU inside at most 249. There are three frame formats:
+
+| Format | Carries | Purpose |
+|---|---|---|
+| **I** (information) | An ASDU, a send sequence number N(S) and a receive sequence number N(R) | Application data in either direction |
+| **S** (supervisory) | N(R) only | Acknowledges received I frames when there is nothing to send |
+| **U** (unnumbered) | One function | STARTDT, STOPDT and TESTFR, each as activation (act) and confirmation (con) |
+
+Sequence numbers are 15 bits wide and wrap at 32768. Every I frame a side sends counts up N(S); the N(R) it sends back acknowledges every I frame received up to that number. An I frame of your own also acknowledges, so an S frame is only needed when one side is quiet.
+
+### Data transfer: STARTDT and STOPDT
+
+A fresh TCP connection carries no application data. The controlling station sends **STARTDT act** and the station answers **STARTDT con**; only then do I frames flow. **STOPDT** stops data transfer without closing the connection. This is what makes redundancy work: a station can hold several connections open and send its events on the one that is started.
+
+### Windows k and w
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `k` | 12 | Maximum number of I frames sent and not yet acknowledged. A sender stops at `k` |
+| `w` | 8 | Acknowledge at the latest after this many received I frames |
+
+### Timers t0 to t3
+
+| Timer | Default | Meaning |
+|---|---|---|
+| `t0` | 30 s | Connection establishment timeout (client) |
+| `t1` | 15 s | Timeout for the acknowledgement of a sent I frame or the confirmation of a U frame. Expiry closes the connection |
+| `t2` | 10 s | Longest wait before acknowledging received I frames when there is nothing to send. Must be below `t1` |
+| `t3` | 20 s | Idle time before a **TESTFR act** is sent to check that the link is alive |
+
+The parameters are not negotiated. Both ends must be configured alike, and you change them only to match a station that deviates.
+
+## ASDU: the application data
+
+An ASDU has a header and one or more information objects. With the IEC 104 field sizes the header is:
+
+| Field | Size | Meaning |
+|---|---|---|
+| Type identification | 1 octet | What kind of object the ASDU carries |
+| Variable structure qualifier | 1 octet | Number of objects (up to 127) and the SQ bit |
+| Cause of transmission | 2 octets | Why the ASDU was sent, the P/N (positive/negative) and T (test) bits, and the originator address |
+| Common address of ASDU | 2 octets | The station |
+| Information object address | 3 octets per object | The point |
+
+Here is a real read request from an iec104ctl debug trace, decoded:
+
+```text
+I N(S)=0 N(R)=0 len=9  C_RD_NA_1 request ca=1 n=1  [66 01 05 00 01 00 64 00 00]
+
+66        type identification 102 (C_RD_NA_1, read command)
+01        one object, SQ = 0
+05 00     cause 5 (request), originator 0
+01 00     common address 1
+64 00 00  information object address 100
+```
+
+With **SQ = 0** each object carries its own address. With **SQ = 1** one address is followed by consecutive elements, a compact form for a run of adjacent points.
+
+### Addressing: common address and IOA
+
+- The **common address** (CA) names a station. A gateway can answer for several stations behind one connection. Address 65535 is the broadcast address.
+- The **information object address** (IOA) names one point within a station: a breaker position, a voltage, a command. With three octets it ranges from 1 to 16,777,215.
+
+There are no names on the wire. A station does not tell you that IOA 1000 is "Voltage L1"; the station's signal list is where addresses get their meaning.
+
+### Type identifications
+
+The type name encodes direction and time tag. `M_` types travel in monitor direction (station to centre), `C_` in control direction, `P_` are parameters and `F_` file transfer. A suffix such as `_TB_1` marks a variant with a time tag.
+
+| Range | Group | Examples |
+|---|---|---|
+| 1..40 | Process information, monitor direction | `M_SP_NA_1` (1) single point, `M_DP_NA_1` (3) double point, `M_ME_NC_1` (13) short floating point measured value, `M_IT_NA_1` (15) integrated totals, `M_SP_TB_1` (30) single point with CP56Time2a |
+| 45..64 | Process information, control direction | `C_SC_NA_1` (45) single command, `C_DC_NA_1` (46) double command, `C_SE_NC_1` (50) floating point set point, `C_SC_TA_1` (58) single command with CP56Time2a |
+| 70 | System information, monitor direction | `M_EI_NA_1` end of initialization |
+| 100..107 | System information, control direction | `C_IC_NA_1` (100) interrogation, `C_CI_NA_1` (101) counter interrogation, `C_RD_NA_1` (102) read, `C_CS_NA_1` (103) clock synchronization, `C_TS_TA_1` (107) test command |
+| 110..113 | Parameters | `P_ME_NC_1` (112), `P_AC_NA_1` (113) parameter activation |
+| 120..127 | File transfer | `F_FR_NA_1` (120) file ready, `F_SG_NA_1` (125) segment, `F_DR_TA_1` (126) directory |
+| 128..255 | Private range | Vendor specific |
+
+CP56Time2a is the seven-octet time tag (date and time to the millisecond); CP24Time2a carries only minutes, seconds and milliseconds. The CP24Time2a types (2, 4, 6 and so on) belong to IEC 60870-5-101 and are not part of the IEC 104 subset. A time tag carries no time zone: both ends have to agree on one.
+
+Values carry a **quality descriptor** with the flags `IV` (invalid), `NT` (not topical), `SB` (substituted), `BL` (blocked) and `OV` (overflow).
+
+### Cause of transmission
+
+The cause of transmission (COT) says why an ASDU was sent. The ones you meet daily:
+
+| Cause | Meaning |
+|---|---|
+| 3 spontaneous | A change the station reports on its own |
+| periodic, background | Cyclic data |
+| 5 request | Answer to a read command |
+| 6 activation, 7 activation confirmation | A command or request and its confirmation |
+| 8 deactivation, 9 deactivation confirmation | Cancelling a command, for example a selection |
+| activation termination | The end of a procedure (an interrogation, an executed command) |
+| 11 return information, remote command | The state change caused by a command |
+| 13 file transfer | File transfer ASDUs |
+| 20 interrogated by station, 21..36 groups 1..16 | Answers to a general or group interrogation |
+| 37 requested by general counter request | Answers to a counter interrogation |
+| 44..47 | Unknown type identification, cause, common address or information object address |
+
+A station refuses a request by **mirroring** it with the P/N bit set, or with one of the causes 44..47.
+
+## Procedures
+
+- **General interrogation** (`C_IC_NA_1`, qualifier QOI 20) makes a station send its whole process image: activation confirmation, the data with cause 20, activation termination. Groups 1..16 use QOI 21..36. Integrated totals are not included; a **counter interrogation** (`C_CI_NA_1`) reads them, optionally with freeze or reset.
+- **Spontaneous reporting**: after the interrogation the station sends changes as they happen, usually with a CP56Time2a time tag.
+- **Clock synchronization** (`C_CS_NA_1`) sets the station's clock, and with it the time tags of its events.
+- **Commands** are confirmed (cause 7) and, when carried out, terminated. The effect arrives as a separate monitor-direction event, usually with cause 11.
+
+### Select-before-operate
+
+A command can be sent in two steps. The **select** (S/E bit = 1) asks the station to confirm that the object is free and the command acceptable. The **execute** (S/E = 0) then carries it out. A selection can be cancelled with a deactivation (cause 8). Stations can require a select before an execute; they keep the selection per connection, so a select and its execute must use the same connection.
+
+<Aside type="caution">
+Commands operate physical equipment: they open and close breakers, move tap changers and change what a plant produces. A command whose confirmation is lost may still have operated the process, and IEC 104 has no way to ask. Do not repeat a command blindly; read the state back first.
+</Aside>
+
+## Redundancy
+
+The standard lets a controlled station serve several connections of one **redundancy group**, of which exactly one is started. The control centre keeps the others established in STOPDT and supervised by test frames. On failover it sends STARTDT on a standby, and the station moves its event stream there. Events the old connection had not acknowledged are sent again on the new one, so the control centre may see an event twice across a switchover but does not miss one.
+
+This is why IEC 104 has no connection pool. A connection is a session: sequence numbers, acknowledgements and command procedures belong to it, and more connections add availability, not throughput.
+
+## Security: TLS versus IEC 62351-5
+
+Plain IEC 104 has **no authentication and no encryption**. Anyone who can reach port 2404 can interrogate a station and send it commands, and anyone on the path can read or alter the traffic. Keep plain IEC 104 on isolated networks and never expose it to the Internet.
+
+Two standards add security:
+
+| | IEC 62351-3 (TLS) | IEC 62351-5 (application layer) |
+|---|---|---|
+| What it protects | The TCP connection: encryption, server and client certificates | Individual ASDUs: challenge and reply, session and update keys, message authentication codes |
+| Default port | 19998 | Runs inside the IEC 104 connection; IEC TS 60870-5-7 says how it applies to IEC 60870-5-101 and -104 |
+| OT Fabric support | Yes, client and server, with mutual authentication | **No.** The type identifications and causes are named and carried as raw payload; the procedures are not implemented |
+
+TLS authenticates the connection, not the individual command. With TLS and client certificates the station knows which control centre is connected, and authorizes commands by that certificate. The OT Fabric projects document why IEC 62351-5 is not implemented yet: the 2023 edition with IEC TS 60870-5-7:2025 differs from the 2013 one, and none of the three open-source stacks they test against has an implementation to verify against.
+
+## Where it is used
+
+IEC 104 is the telecontrol protocol of power system SCADA:
+
+- links between grid control centres and substations, in transmission and distribution networks;
+- RTUs and substation gateways, often in front of IEC 60870-5-101 serial devices;
+- solar parks, wind farms and battery storage that report to and take set points from a grid operator.
+
+## OT Fabric for IEC 60870-5-104
+
+<CardGrid>
+  <LinkCard title="go-iec104" description="Pure Go client and server: the full APCI machine, 67 type identifications, file transfer, redundancy groups, TLS." href="/projects/go-iec104/" />
+  <LinkCard title="iec104ctl" description="Command-line tool: interrogate, monitor, command, transfer files, or simulate a station from YAML." href="/projects/iec104ctl/" />
+  <LinkCard title="iec104-interop" description="Reference stations in containers: lib60870-C, OpenMUC j60870 and wendy512/iec104." href="/projects/iec104-interop/" />
+</CardGrid>
+
+Source code: [go-iec104](https://github.com/otfabric/go-iec104), [iec104ctl](https://github.com/otfabric/iec104ctl), [iec104-interop](https://github.com/otfabric/iec104-interop). Read on in the [Go library](/docs/protocols/iec-104/library/), [iec104ctl](/docs/protocols/iec-104/cli/) and [testing and interop](/docs/protocols/iec-104/testing/) pages.

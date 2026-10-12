@@ -1,0 +1,171 @@
+---
+title: IEC 61850 / MMS
+description: How IEC 61850 client/server communication works over MMS, from the object model to the ISO stack on TCP port 102.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+IEC 61850 is the communication standard for substation automation. It does two things that older SCADA protocols kept apart. It defines an **object model** for the device (what a breaker, a measurement or a protection function looks like), and it defines **services** on that model (read, write, report, control, file transfer, logging). The abstract services are specified in IEC 61850-7-2 (ACSI, the Abstract Communication Service Interface). IEC 61850-8-1 maps those services onto **MMS**, the Manufacturing Message Specification (ISO 9506), which runs over an ISO upper-layer stack on TCP port 102.
+
+This page covers the client/server (MMS) part of IEC 61850, which is what OT Fabric implements. GOOSE and Sampled Values are covered briefly at the end, because they are out of scope.
+
+## The object model
+
+A device that speaks IEC 61850 is an **IED** (Intelligent Electronic Device): a protection relay, bay controller, meter or RTU. Inside it the model is a strict hierarchy:
+
+```text
+IED (Intelligent Electronic Device)
+└── Logical Device (LD)          e.g. "MNSREF615LD0"
+    ├── Logical Node (LN)        e.g. "FMMXU1" (measurement)
+    │   └── Data Object (DO)     e.g. "Hz"
+    │       └── Data Attribute (DA)  e.g. "mag.f", "q", "t"
+    └── LLN0 (device-level LN)
+        ├── Data Sets (DS)       e.g. "MeasFlt"
+        ├── Report Control Blocks (URCB / BRCB)
+        └── Log Control Blocks and Logs (journals)
+```
+
+| Concept | Role |
+|---|---|
+| **IED** | The physical device. |
+| **LD** (logical device) | A group of functions inside the IED. In the MMS mapping an LD is an MMS **domain**. |
+| **LN** (logical node) | A standard function, named by a class plus optional prefix and instance: `MMXU` (measurement), `XCBR` (circuit breaker), `GGIO` (generic I/O), `LLN0` (the LD's own node). |
+| **DO** (data object) | A piece of data in the LN, typed by a Common Data Class (CDC) from IEC 61850-7-3: `SPS` (single-point status), `DPS` (double-point status), `MV` (measured value), `SPC` (single-point controllable), `BCR` (binary counter reading) and others. |
+| **DA** (data attribute) | A leaf or structured attribute: `stVal` (status value), `mag.f` (magnitude as float), `q` (quality), `t` (timestamp), `ctlModel` (control model). |
+
+### Functional constraints
+
+Every data attribute carries a **functional constraint** (FC). The FC says what kind of access the attribute is for, and it is part of the address. The same DO can have attributes under several FCs: `Pos.stVal` is `ST`, `Pos.ctlModel` is `CF`, `Pos.Oper` is `CO`.
+
+| FC | Meaning | FC | Meaning |
+|---|---|---|---|
+| `ST` | Status | `SG` / `SE` | Setting group / setting group editable |
+| `MX` | Measured values | `SR` | Service response |
+| `SP` | Setpoint | `OR` | Operate received |
+| `SV` | Substitution | `BL` | Blocking |
+| `CF` | Configuration | `EX` | Extended definition |
+| `DC` | Description | `CO` | Control |
+| `RP` | Unbuffered report control | `BR` | Buffered report control |
+| `LG` | Log control | `GO`, `US`, `MS` | GOOSE, unicast SV, multicast SV control |
+
+### Quality and timestamps
+
+Status and measured values travel with a **quality** (`q`) and a **timestamp** (`t`). Quality holds a validity (good, invalid, reserved, questionable) plus detail flags such as overflow, out of range, old data, failure, test and operator blocked. The timestamp carries its own time quality: leap second known, clock failure, clock not synchronised, and time accuracy. A value without checking its quality is only half read.
+
+## References and the MMS mapping
+
+IEC 61850 names an attribute with an **object reference**:
+
+```text
+LD/LN.DO.DA[FC]
+MNSREF615LD0/FMMXU1.Hz.mag.f[MX]
+```
+
+MMS has no logical nodes or FCs. It has domains and named variables. IEC 61850-8-1 flattens the reference: the LD becomes the MMS domain, and the rest becomes an item ID with `$` separators and the FC inserted after the LN:
+
+| IEC 61850 reference | MMS domain | MMS item ID |
+|---|---|---|
+| `IEDLD1/LLN0.Mod.stVal[ST]` | `IEDLD1` | `LLN0$ST$Mod$stVal` |
+| `PROT1LD/MMXU1.TotW.mag.f[MX]` | `PROT1LD` | `MMXU1$MX$TotW$mag$f` |
+
+Many servers prefix the domain with the IED name (for example `InteropIED` + `InteropLD` gives the domain `InteropIEDInteropLD`). Clients need to know the IED name to strip or add that prefix. OT Fabric exposes it as `DialOptions.IEDName` in the library and `--ied-name` in the CLI.
+
+## Services you will use
+
+**Browse.** A client discovers the model with MMS GetNameList (domains, then variables per domain) and GetVariableAccessAttributes (the type tree). These implement the ACSI GetServerDirectory, GetLogicalDeviceDirectory, GetLogicalNodeDirectory, GetDataDirectory and GetDataDefinition services.
+
+**Read and write.** GetDataValues and SetDataValues map to MMS Read and Write, single or multi-variable. Writes are normally limited to settings and configuration (`SP`, `CF`). Control attributes (`CO`) are never written directly; you use a control service.
+
+**Datasets.** A dataset is a named, ordered list of FC-qualified members (FCDA). In MMS it is a named variable list. Datasets are usually defined in the SCL file and live in `LLN0`. They are what reports carry.
+
+**Reports.** A Report Control Block (RCB) in `LLN0` tells the server to send a dataset's values when something happens. The server sends an unsolicited MMS InformationReport. Two kinds exist:
+
+- **URCB** (unbuffered, FC `RP`): best-effort. If no client is connected or the client is slow, reports are lost. A client normally reserves the URCB (`Resv`) before enabling it.
+- **BRCB** (buffered, FC `BR`): the server keeps a buffer of report entries, each with an **EntryID**. A client that reconnects can write the last EntryID it saw and receive what it missed, or set `PurgeBuf` to discard the buffer. When the buffer overflows the server drops the oldest entries and flags `BufOvfl`.
+
+The RCB attributes a client configures include `RptID`, `DatSet`, `TrgOps` (trigger options: data change, quality change, data update, integrity, general interrogation), `OptFlds` (optional fields in each report: sequence number, timestamp, reason code, dataset name, data reference, buffer overflow, EntryID, configuration revision, segmentation), `IntgPd` (integrity period) and `BufTm` (buffer time). Writing `GI` triggers a **general interrogation**: one report with the current value of every dataset member. Setting `RptEna` enables the RCB.
+
+<Aside type="tip">
+Report instance names on the wire do not always match the SCL. A ReportControl named `urcb01` can appear as `urcb0101` on some servers because the server expands one instance per client. Always list the RCBs on the live device before subscribing.
+</Aside>
+
+**Controls.** A controllable DO (SPC, DPC, BSC and similar) has a `ctlModel` attribute that tells the client which sequence to use:
+
+| `ctlModel` | Name | Sequence |
+|---|---|---|
+| 0 | status-only | Not controllable. |
+| 1 | direct-with-normal-security | Write `Oper`. |
+| 2 | sbo-with-normal-security | Read `SBO` to select, then write `Oper`. |
+| 3 | direct-with-enhanced-security | Write `Oper`; the server reports completion with CommandTermination. |
+| 4 | sbo-with-enhanced-security | Write `SBOw` (select with value), then write `Oper`. |
+
+SBO stands for select-before-operate. Selection reserves the object for one client for a limited time. With enhanced security the `ctlNum` in `SBOw` and `Oper` must match, and both libiec61850 and the OT Fabric server enforce this. Every control also carries an origin (`orCat` and `orIdent`), a test flag and check conditions (synchrocheck, interlock check). If the server rejects a control, the reason is in `LastApplError` with an `AddCause` code. OT Fabric does not implement CommandTermination monitoring or time-activated operate.
+
+**Setting groups, journals and files.** Protection settings can live in several setting groups, switched through the setting group control block (SGCB). Journals (logs) are read by time range or after a known entry. Files (for example disturbance records or configuration) are listed and downloaded through MMS file services.
+
+## SCL files
+
+The Substation Configuration Language (SCL, IEC 61850-6) is the XML format that describes IEDs, their data models, datasets, control blocks, the communication network and the substation topology. You meet several file kinds:
+
+| Kind | Content |
+|---|---|
+| **ICD** | IED Capability Description: what a device type can do, from the vendor. |
+| **IID** | Instantiated IED Description: one configured IED. |
+| **CID** | Configured IED Description: the file loaded into one device. |
+| **SCD** | Substation Configuration Description: the whole substation. |
+| **SSD** | System Specification Description: topology and functions. |
+
+The schema has several editions in the field: 1.7 (IEC 61850-6:2003), 2007B (2009), 2007B4 (2018) and 2007C5 (2025). The SCL defines the engineering model. A live server can expose a subset of it or use different instance names, so verify against the device.
+
+## Transport and sessions
+
+MMS does not sit directly on TCP. It runs on the full ISO/OSI upper-layer stack, carried over TCP by RFC 1006:
+
+```text
+MMS            ISO 9506-1/2    services, BER-encoded PDUs
+ACSE           ISO 8650-1      association (AARQ / AARE), authentication
+Presentation   ISO 8823-1      context negotiation
+Session        ISO 8327-1      CONNECT / ACCEPT / DATA / FINISH
+COTP           ISO 8073        class 0 transport, connection request/confirm
+TPKT           RFC 1006        4-byte header framing over TCP
+TCP            port 102
+```
+
+A client opens TCP, sends a COTP connection request, then a single packet that nests session CONNECT, presentation, ACSE AARQ and the MMS Initiate request. The Initiate exchange negotiates the maximum PDU size, the number of outstanding requests and the data nesting level. After that the association carries confirmed requests (matched by invoke ID) and unconfirmed InformationReports in both directions. A client ends with MMS Conclude (graceful) or an ACSE abort (immediate).
+
+## Security
+
+Plain IEC 61850 MMS has no encryption and, in most deployments, no authentication. ACSE can carry a password in the association request; anyone on the network path can read it. TLS on the TCP connection is the transport-level option and must be supported by both ends. In practice MMS is protected by network segmentation. Treat port 102 as a control interface, because an associated client can send control commands to any object the device allows to be operated remotely.
+
+## Where it is used
+
+IEC 61850 MMS is the station-bus protocol in modern substations. A station computer, gateway or SCADA front end is the MMS client; protection relays, bay controllers, meters and RTUs are the servers. The same model is used wherever grid-connected plant is engineered to substation practice.
+
+## GOOSE and Sampled Values (out of scope)
+
+IEC 61850 also defines two publisher/subscriber protocols that do not use MMS. **GOOSE** (Generic Object Oriented Substation Event, IEC 61850-8-1) multicasts dataset values in Ethernet frames for fast protection signalling between IEDs. **Sampled Values** (IEC 61850-9-2) streams digitised current and voltage samples from merging units. Both run directly on Ethernet with no TCP and no association.
+
+OT Fabric does not implement GOOSE or Sampled Values: no publishing, no subscription, no sniffing. The SCL tooling can still list GOOSE and SMV control blocks from a configuration file.
+
+## OT Fabric for IEC 61850
+
+<CardGrid>
+  <LinkCard title="go-iec61850" description="IEC 61850 client and SCL-driven server in pure Go, plus the sclparse and sclgen tools." href="/projects/go-iec61850/" />
+  <LinkCard title="go-mms" description="MMS (ISO 9506) client and server, with the ISO upper-layer stack." href="/projects/go-mms/" />
+  <LinkCard title="iec61850ctl" description="Command-line client, SCL tools and local MMS server." href="/projects/iec61850ctl/" />
+  <LinkCard title="mms-interop" description="Docker adapter images for libiec61850 and IEC61850bean, used by the interop tests." href="/projects/mms-interop/" />
+</CardGrid>
+
+| Project | Role | Source |
+|---|---|---|
+| go-iec61850 | IEC 61850 semantics: references, FCs, datasets, reports, controls, SCL, server model | [github.com/otfabric/go-iec61850](https://github.com/otfabric/go-iec61850) |
+| go-mms | Generic MMS, ACSE, presentation and session layers | [github.com/otfabric/go-mms](https://github.com/otfabric/go-mms) |
+| go-cotp | COTP class 0 transport | [github.com/otfabric/go-cotp](https://github.com/otfabric/go-cotp) |
+| go-tpkt | RFC 1006 TPKT framing | [github.com/otfabric/go-tpkt](https://github.com/otfabric/go-tpkt) |
+| iec61850ctl | CLI on top of go-iec61850 and go-mms | [github.com/otfabric/iec61850ctl](https://github.com/otfabric/iec61850ctl) |
+| mms-interop | Reference stack adapters and fixtures | [github.com/otfabric/mms-interop](https://github.com/otfabric/mms-interop) |
+
+Start with the [Go library](/docs/protocols/iec-61850/library/) page or the [iec61850ctl](/docs/protocols/iec-61850/cli/) page, and see [Testing and interop](/docs/protocols/iec-61850/testing/) for what has been validated.

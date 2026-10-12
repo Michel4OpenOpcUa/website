@@ -1,0 +1,154 @@
+---
+title: OPC UA
+description: How OPC Unified Architecture works on the wire and in the address space, how its security model fits together, and which OT Fabric projects implement it.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+OPC Unified Architecture (OPC UA) is the client/server interoperability standard of industrial automation. A server exposes an object model of a machine, line or plant (its *address space*); a client discovers the server, opens a secured channel, creates a session and then reads, writes, browses, calls methods, subscribes to changes and events, and reads history. The same standard defines the wire encoding, the services, the information model and the security model, so two independent implementations can talk without a vendor driver in between.
+
+This page explains the protocol as the OT Fabric projects implement it: client/server over UA-TCP (`opc.tcp://`) with the OPC UA Binary encoding.
+
+## Layers and transport
+
+OPC UA client/server traffic in OT Fabric runs over three layers:
+
+| Layer | Name | What it does | go-opcua package |
+|---|---|---|---|
+| Connection | UA Connection Protocol (UACP, "UA-TCP") | TCP connection, Hello/Acknowledge (HEL/ACK) handshake that agrees buffer sizes, message size and chunk count | `uacp` |
+| Secure conversation | UA Secure Conversation (UASC) | SecureChannel: OpenSecureChannel, signing and encryption of every message chunk, security token renewal | `uasc`, `uapolicy` |
+| Services | OPC UA services | Request/response pairs such as Read, Browse, CreateSubscription, encoded in OPC UA Binary | `ua`, `opcua`, `server` |
+
+An endpoint URL looks like `opc.tcp://host:4840/path`; 4840 is the well-known Local Discovery Server port. Large messages are split into chunks, each signed and optionally encrypted on its own, and requests are correlated by a request ID, so one connection carries many outstanding calls.
+
+**Reverse connect** (OPC UA Part 6 §7.1.3) turns the TCP connection around for servers behind a firewall or NAT: the server dials a listening client and announces itself with a ReverseHello message carrying its ServerUri and EndpointUrl.
+
+HTTPS, WebSockets and PubSub are not implemented by OT Fabric. JSON and XML are supported as encodings of values only; the wire stays UA-TCP with OPC UA Binary.
+
+## Address space
+
+Everything a server exposes is a **node**. Each node has a NodeClass (Object, Variable, Method, ObjectType, VariableType, ReferenceType, DataType or View), a set of **attributes**, and **references** to other nodes.
+
+- **NodeId** identifies a node: a namespace index plus an identifier. String forms are `i=2258` (numeric, namespace 0), `ns=2;i=1001`, `ns=2;s=Temperature` (string), `ns=3;g=...` (GUID) and `ns=4;b=dGVzdA==` (opaque, base64).
+- **Namespaces** are listed in the server's NamespaceArray. Index 0 is the standard OPC UA namespace. Indices of other namespaces can differ between servers and restarts, so robust tools reference them by namespace URI (`nsu=urn:...;s=...`) or resolve the URI to an index at run time.
+- **Attributes** include NodeId, BrowseName, DisplayName, DataType, Value, AccessLevel and UserAccessLevel. A read returns a **DataValue**: the value as a Variant, a StatusCode (Good, Uncertain or Bad), and source and server timestamps.
+- **References** are typed edges: Organizes, HasComponent, HasProperty, HasTypeDefinition and many more. Browsing follows them; browse paths such as `Server.ServerStatus` are resolved with the TranslateBrowsePathsToNodeIds service.
+
+Well-known nodes in namespace 0 are the Objects folder (`i=85`), the Server object (`i=2253`), ServerStatus (`i=2256`) and its CurrentTime (`i=2258`). Information models from companion specifications and vendors are shipped as NodeSet2 XML files.
+
+## Services
+
+| Service set | Services |
+|---|---|
+| Discovery | FindServers, FindServersOnNetwork, GetEndpoints, RegisterServer, RegisterServer2 |
+| SecureChannel | OpenSecureChannel, CloseSecureChannel |
+| Session | CreateSession, ActivateSession, CloseSession, Cancel |
+| Attribute | Read, Write, HistoryRead, HistoryUpdate |
+| View | Browse, BrowseNext, TranslateBrowsePathsToNodeIds, RegisterNodes, UnregisterNodes |
+| Method | Call |
+| MonitoredItem, Subscription | CreateMonitoredItems, CreateSubscription, Publish, Republish, TransferSubscriptions, plus Modify, Set and Delete variants |
+| NodeManagement | AddNodes, DeleteNodes, AddReferences, DeleteReferences |
+| Query | QueryFirst, QueryNext |
+
+Multi-item services return one StatusCode per item. A Read of ten nodes can succeed as a service while three items carry `BadNodeIdUnknown`, so clients must check every item.
+
+## Sessions and subscriptions
+
+A **SecureChannel** protects messages between two applications. A **Session** runs on top of it and carries the user identity; a session can outlive its channel and be reactivated on a new one after a network failure.
+
+A **subscription** is the push mechanism. The client creates a subscription with a *publishing interval*, then adds **monitored items** to it. Each item has its own *sampling interval* (how often the server samples the source), a *queue size* and a discard policy. The server delivers queued notifications in Publish responses at the publishing interval and sends keep-alives when nothing changed. A **DataChangeFilter** narrows what counts as a change: the trigger (Status, StatusValue or StatusValueTimestamp) and an absolute or percent deadband, where percent refers to the variable's `EURange` property. **Event** monitored items use an EventFilter with SelectClauses (which fields to return) and a WhereClause (which events to deliver).
+
+Notifications carry sequence numbers, so after a connection loss a client can move its subscriptions to a new session (TransferSubscriptions) and fetch missed ones (Republish).
+
+## Security
+
+OPC UA security has two independent parts: the **application** layer (which programs may talk, and whether messages are signed and encrypted) and the **user** layer (who is operating the client).
+
+### Application instance certificates
+
+Every application that uses a secure endpoint has an X.509 *application instance certificate*. Its subject alternative name must contain the **ApplicationUri** as a URI; it should also contain the host names and IP addresses the application is reached under. Servers keep a trust list: a client certificate that is not trusted, directly or through a trusted CA, is rejected with `BadCertificateUntrusted`. Many servers move such a certificate to a *rejected* store, where an administrator can trust it. Clients validate the server certificate in the same way.
+
+### Endpoints, security policies and modes
+
+`GetEndpoints` returns one endpoint description per combination the server offers: endpoint URL, security policy, security mode, server certificate, accepted user token types and a **SecurityLevel** (higher means stronger). A client picks one.
+
+The **security mode** decides what is protected:
+
+| Mode | Integrity | Confidentiality | Use |
+|---|---|---|---|
+| None | No | No | Isolated lab networks only |
+| Sign | Yes | No | Tamper detection |
+| SignAndEncrypt | Yes | Yes | Recommended default |
+
+`None` mode only goes with the `None` policy. In both secure modes go-opcua verifies that each chunk follows the previous one, so repeated, missing or reordered chunks are refused with `BadSequenceNumberInvalid` and the channel is closed.
+
+The **security policy** decides the algorithms. These are the ones go-opcua implements:
+
+| Policy | Symmetric protection | Application key | Status |
+|---|---|---|---|
+| Basic128Rsa15 | AES-128-CBC, HMAC-SHA1 | RSA | Deprecated by the OPC Foundation |
+| Basic256 | AES-256-CBC, HMAC-SHA1 | RSA | Deprecated |
+| Basic256Sha256 | AES-256-CBC, HMAC-SHA256 | RSA 2048+ | Widely deployed |
+| Aes128_Sha256_RsaOaep | AES-128-CBC, HMAC-SHA256 | RSA | Current RSA policy |
+| Aes256_Sha256_RsaPss | AES-256-CBC, HMAC-SHA256 | RSA | Current RSA policy |
+| ECC_nistP256 | AES-128-CBC, HMAC-SHA256 | ECDSA P-256 or P-384 | OPC UA 1.05 |
+| ECC_nistP384 | AES-256-CBC, HMAC-SHA384 | ECDSA P-384 | OPC UA 1.05 |
+| ECC_nistP256_AesGcm | AES-128-GCM | ECDSA P-256 or P-384 | OPC UA 1.05.07, authenticated encryption |
+| ECC_nistP256_ChaChaPoly | ChaCha20-Poly1305 | ECDSA P-256 or P-384 | OPC UA 1.05.07, authenticated encryption |
+| ECC_curve25519 | ChaCha20-Poly1305 | Ed25519 | OPC UA 1.05.07, authenticated encryption |
+
+`ECC_brainpoolP256r1`, `ECC_brainpoolP384r1` and `ECC_curve448` exist in the specification but are not implemented by go-opcua; a client refuses them by name.
+
+**How the channel keys are made.** With the RSA policies, the OpenSecureChannel messages are signed and encrypted with the certificates' RSA keys and carry random nonces from which both sides derive the symmetric keys. With the ECC policies those messages are signed but not encrypted, the nonces are ephemeral elliptic-curve Diffie-Hellman (ECDH) public keys, and the keys come from HKDF over the shared secret. Fresh ephemeral keys for every security token give the ECC policies forward secrecy; the RSA policies have none. The authenticated-encryption policies replace padding and HMAC with a 16-byte tag per chunk.
+
+The certificate's key type must fit the policy: an RSA certificate cannot open an ECC channel, and an ECDSA certificate cannot open `ECC_curve25519`. A server that offers RSA and ECC endpoints therefore needs one application certificate per key type.
+
+**Renewal.** A security token has a lifetime negotiated at OpenSecureChannel. Before it expires the client renews the channel, which yields a new TokenId and new keys; the old token remains valid until it expires.
+
+### User identity tokens
+
+ActivateSession carries one of four user identity tokens. The server's endpoint description lists which token types (and which UserTokenPolicy IDs) it accepts.
+
+| Token | What the client proves | Notes |
+|---|---|---|
+| Anonymous | Nothing | Rely on application certificates and network controls |
+| UserName | Username and password | Password is encrypted for the server; with the ECC policies as an `EccEncryptedSecret`. Use only over SignAndEncrypt |
+| X.509 | Possession of a user certificate's private key | Separate from the application certificate; key type follows the same rules as the policy |
+| Issued | A token from an identity provider (for example JWT or SAML) | Format depends on the server's UserTokenPolicy; go-opcua carries it to the server application |
+
+<Aside type="caution" title="What reverse connect and discovery do not prove">
+A ReverseHello is neither signed nor encrypted: anyone who reaches a listening client can send one. Discovery answers (FindServers, GetEndpoints, mDNS announcements) are public and unauthenticated by design. In both cases trust comes only from validating the server certificate and its ApplicationUri when the secure channel opens, so use a secure mode and a trust list before sending credentials.
+</Aside>
+
+## Discovery
+
+`GetEndpoints` asks a known server for its endpoints. `FindServers` asks the **Local Discovery Server** (LDS) of a machine, usually on port 4840, for the servers registered with it through `RegisterServer` or `RegisterServer2`. `FindServersOnNetwork` asks an LDS with the multicast extension (LDS-ME) for servers announced with multicast DNS (mDNS) on the local segment; multicast does not cross routers.
+
+## Vocabulary
+
+| Term | Meaning |
+|---|---|
+| Endpoint | URL plus security policy, mode and accepted user tokens |
+| ApplicationUri | Unique name of an application, carried in its certificate |
+| SecureChannel / Session | Protected channel between applications / user context on top of it |
+| NodeId / BrowseName | Identifier / path name of a node |
+| Variant / DataValue | Typed value / value plus StatusCode and timestamps |
+| Monitored item | Attribute or event source watched by a subscription |
+| NodeSet2 | XML file format for information models |
+
+## Where OPC UA is used
+
+OPC UA connects PLCs, industrial gateways, SCADA servers and industrial IoT applications, in energy installations as elsewhere. Typical tasks are commissioning (is every tag reachable, with the right type and access level), troubleshooting, integration of supervisory software with controllers, and data collection.
+
+## OT Fabric for OPC UA
+
+<CardGrid>
+  <LinkCard title="go-opcua" description="Pure Go client and server library: RSA and ECC security, subscriptions, events, methods, history, discovery and reverse connect." href="/projects/go-opcua/" />
+  <LinkCard title="opcuactl" description="Command-line client for discovery, browse, read, write, method calls, monitoring, history and export." href="/projects/opcuactl/" />
+  <LinkCard title="opcua-interop" description="Dockerized open62541 and Eclipse Milo reference clients and servers with shared fixtures and a test PKI." href="/projects/opcua-interop/" />
+</CardGrid>
+
+Source code: [otfabric/go-opcua](https://github.com/otfabric/go-opcua), [otfabric/opcuactl](https://github.com/otfabric/opcuactl), [otfabric/opcua-interop](https://github.com/otfabric/opcua-interop). Continue with the [Go library](/docs/protocols/opc-ua/library/) or the [opcuactl](/docs/protocols/opc-ua/cli/) guide.

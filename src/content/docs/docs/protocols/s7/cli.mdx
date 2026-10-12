@@ -1,0 +1,209 @@
+---
+title: s7commctl
+description: Use s7commctl to identify Siemens S7 PLCs, find the right rack and slot, read memory, list blocks and run diagnostics, with writes behind explicit safety flags.
+sidebar:
+  label: s7commctl
+  order: 2
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+[s7commctl](https://github.com/otfabric/s7commctl) is a command-line S7comm client for ISO-on-TCP (TCP port 102), built on [go-s7comm](/docs/protocols/s7/library/). It is meant for commissioning, troubleshooting and engineering work on PLCs you are responsible for.
+
+## Install
+
+Prebuilt binaries are attached to each [GitHub release](https://github.com/otfabric/s7commctl/releases): `.tar.gz` archives for Linux and macOS and `.zip` archives for Windows, for amd64 and arm64.
+
+To build from source you need Go 1.25:
+
+```sh
+git clone https://github.com/otfabric/s7commctl
+cd s7commctl
+make build        # writes bin/s7commctl
+```
+
+Check the build with `s7commctl version`, which prints the version, commit and build date.
+
+## Connecting
+
+Every command that talks to a PLC takes `--ip`, and `--port` when the PLC is not on the default port 102. Pick the CPU with `--rack` and `--slot`. s7commctl also supports automatic rack/slot selection and explicit local and remote TSAPs; the JSON output records which of the three connection modes (`rack_slot`, `auto_rack_slot` or `explicit_tsap`) a command used.
+
+Most flags can also come from `S7COMMCTL_*` environment variables, for example `S7COMMCTL_IP`, `S7COMMCTL_PORT`, `S7COMMCTL_RACK`, `S7COMMCTL_SLOT`, `S7COMMCTL_TIMEOUT`, `S7COMMCTL_AUTO_RACK_SLOT`, `S7COMMCTL_LOCAL_TSAP` and `S7COMMCTL_REMOTE_TSAP`:
+
+```sh
+export S7COMMCTL_IP=192.168.1.10
+export S7COMMCTL_RACK=0
+export S7COMMCTL_SLOT=1
+s7commctl identify
+```
+
+s7commctl warns when the target address looks publicly routable. `--no-exposure-warning` (or `S7COMMCTL_NO_EXPOSURE_WARNING`) turns the warning off in environments where that is expected.
+
+## Command tree
+
+```text
+s7commctl
+├── discover            find S7 endpoints in a CIDR range
+├── identify            SZL-based device metadata
+├── read                read an area (DB, I, Q, M, T, C, ...)
+├── write               write an area (requires --dangerous)
+├── blocks              alias for list blocks
+├── list
+│   ├── blocks
+│   ├── db
+│   └── areas
+├── block
+│   ├── info
+│   └── upload
+├── diagnostic          CPU state, protection level, diagnostic buffer
+├── fingerprint         PDU size, AMQ, TSAP behaviour, CPU generation heuristic
+├── probe
+│   └── rackslot        which rack/slot pairs are accepted or confirmed
+├── scan
+│   └── read-ranges     which byte ranges of an area are readable
+├── compare
+│   └── read            same read across several rack/slot pairs
+├── profile             capability summary in one run
+├── record              periodic reads to a file
+├── sniff               decode TPKT streams arriving on a local socket
+├── pcap-decode         offline decode of a pcap capture
+├── replay              scripted replay endpoint for tests
+├── completion
+└── version
+```
+
+## A safe first session
+
+When you meet an unfamiliar endpoint, start with read-only steps and widen only as needed.
+
+<Steps>
+
+1. Find the rack and slot. Setup acceptance alone is weak evidence, so ask for a follow-up query too:
+
+   ```sh
+   s7commctl probe rackslot --ip 192.168.1.10 --strict --first-confirmed
+   ```
+
+   `--confirm szl`, `--confirm cpu-state` or `--confirm any` picks the confirming query. `--summary-only` prints counts and one recommended connection tuple. The command exits 0 when it finds at least one valid pair and 1 when it finds none.
+
+2. Identify the device:
+
+   ```sh
+   s7commctl identify --ip 192.168.1.10 --rack 0 --slot 1 --format json
+   ```
+
+3. Get a capability summary (setup, rack/slot, identity and block list) in one run:
+
+   ```sh
+   s7commctl profile --ip 192.168.1.10
+   ```
+
+4. Make small, bounded reads:
+
+   ```sh
+   s7commctl read --ip 192.168.1.10 --area DB --db 1 --offset 0 --size 16 --format hex
+   ```
+
+5. Map which parts of an area respond:
+
+   ```sh
+   s7commctl scan read-ranges --ip 192.168.1.10 --area DB --db 1 --start 0 --end 1024 --probe-size 32
+   ```
+
+</Steps>
+
+If many rack/slot pairs behave the same, `compare read` shows whether the endpoint is rack/slot-insensitive (a gateway or a compatibility layer, for example):
+
+```sh
+s7commctl compare read --ip 192.168.1.10 --area DB --db 1 --offset 0 --size 32 --candidates 0/0,0/1,0/2
+```
+
+## Reading
+
+`read` supports DB, I, Q, M, T and C, plus the extended areas DATA_RECORD, S7200AO, IEC_COUNTER_200 and IEC_TIMER_200. `--type` decodes the bytes as BOOL, INT, DINT, REAL or STRING:
+
+```sh
+s7commctl read --ip 192.168.1.10 --area M --offset 100 --size 8 --type int --format json
+```
+
+The output always shows the read status (`success`, `short-read`, `empty-read`, `rejected` and so on) and the requested and returned lengths. With `--format json`, a `decoded` array holds the typed values. Add `--strict-read` to make the command fail when the status is not `success`.
+
+To sample a value over time, `record` writes one line per read:
+
+```sh
+s7commctl record --ip 192.168.1.10 --area DB --db 1 --offset 0 --size 8 \
+  --every-ms 1000 --count 60 --output samples.jsonl
+```
+
+## Writing
+
+<Aside type="caution">
+`write` changes PLC memory, and with it, possibly the process the PLC controls. Check the address and its meaning in the PLC program, and write during a controlled maintenance window or against a simulator.
+</Aside>
+
+The safety model has three rules:
+
+- Reads are always allowed.
+- `write` refuses to run without `--dangerous`.
+- With `--dangerous`, s7commctl asks for confirmation unless you also pass `--force`.
+
+```sh
+# Interactive: asks before writing
+s7commctl write --ip 192.168.1.10 --area DB --db 1 --offset 0 --type int --value 123 --dangerous
+```
+
+Use `--force` only in automation where nobody can answer the prompt.
+
+## Blocks and diagnostics
+
+```sh
+s7commctl list blocks --ip 192.168.1.10 --format table
+s7commctl list db --ip 192.168.1.10 --format json
+s7commctl block info --ip 192.168.1.10 --type DB --number 1 --format json
+s7commctl block upload --ip 192.168.1.10 --type DB --number 1 --format json
+s7commctl diagnostic --ip 192.168.1.10 --format table
+s7commctl fingerprint --ip 192.168.1.10 --format json
+```
+
+Block upload copies a block from the PLC to your machine. It does not change the PLC. Whether it is allowed depends on the CPU and its protection level. `diagnostic` shows the CPU state, the protection level and the diagnostic buffer, which are often more restricted than plain reads.
+
+## Offline and test tools
+
+- `pcap-decode --file capture.pcap --port 102` decodes S7 frames from a packet capture on a best-effort basis. It does not reassemble TCP streams.
+- `sniff --listen :15102` accepts one TCP connection on a local port and decodes the TPKT frames it receives.
+- `replay --listen :1102 --script replay.hex` answers one client with scripted response frames, one hex TPKT frame per line. It is a scaffold for deterministic tests, not a PLC simulator. For a full test server, use [snap7-interop](/docs/protocols/s7/testing/).
+
+## Output formats
+
+`--format` takes `table` (human readable), `json`, `quiet` and `hex`. `--quiet` is the same as `--format quiet`. For `discover` it prints one IP address per line.
+
+Single-target commands share one JSON envelope:
+
+```json
+{
+  "target": { "ip": "192.168.1.10", "port": 102 },
+  "request": { "connection_mode": "rack_slot", "rack": 0, "slot": 1 },
+  "result": {}
+}
+```
+
+On failure, an `error` object with `code` and `message` replaces `result`. `discover` returns a plain array with one object per device, and `list blocks` returns an array of blocks.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | The target answered but the operation did not succeed (no valid rack/slot found, a read that was not `success` with `--strict-read`, a list or diagnostic that failed) |
+| 2 | Usage or validation error |
+| 3 | Connection or runtime failure (TCP connect failed, timeout, protocol error) |
+
+## Shell completion
+
+```sh
+source <(s7commctl completion bash)
+source <(s7commctl completion zsh)
+s7commctl completion fish | source
+```
+
+Enum flags such as `--area`, `--format`, `--type` and `--confirm` complete with their allowed values.

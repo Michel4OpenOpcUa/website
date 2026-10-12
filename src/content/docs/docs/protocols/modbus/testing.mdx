@@ -1,0 +1,215 @@
+---
+title: Testing and interop
+description: Simulate Modbus devices with modbus-simulator and modbusctl, run go-modbus against five reference stacks with modbus-interop, and see what has and has not been validated.
+sidebar:
+  label: Testing and interop
+  order: 3
+---
+
+import { Aside, Steps, Badge, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+Test against something that is not live equipment first. OT Fabric gives you three ways to do that for Modbus, from a quick replay of a real device to a cross-implementation interop suite.
+
+| Tool | What it simulates | Best for |
+|---|---|---|
+| [modbus-simulator](/projects/modbus-simulator/) | A device described in a JSON fixture, with deterministic exceptions and a request trace | Integration tests and CI assertions for a gateway or client |
+| `modbusctl server static` / `replay` | A real device, from an MCAP recording | Developing against realistic data without hardware |
+| [modbus-interop](/projects/modbus-interop/) | Five independent Modbus TCP stacks in Docker | Proving a library interoperates |
+
+## modbus-simulator
+
+modbus-simulator is a deterministic, stateful **Modbus TCP** device simulator. You describe the device in a JSON fixture, it serves one or more devices on one listener (routed by unit ID 1-247), writes are kept in memory, and every request can be recorded to a JSON Lines trace that you assert on in CI.
+
+### Install
+
+```sh
+go install github.com/otfabric/modbus-simulator@latest
+```
+
+Building from source needs Go 1.25 or later (`make build` writes `bin/modbus-simulator`).
+
+### Run a device
+
+<Steps>
+
+1. Write a fixture. Points are raw 16-bit values or go-modbus codec fields with typed values:
+
+   ```json title="device.json"
+   {
+     "$schema": "https://otfabric.dev/schemas/modbus-simulator/fixture-v1.json",
+     "schemaVersion": "modbus-simulator.fixture.v1",
+     "name": "gateway-integration-test",
+     "defaults": { "unknownAddress": "exception", "stateMode": "persistent" },
+     "devices": [
+       {
+         "unitId": 1,
+         "name": "inverter-a",
+         "identity": {
+           "vendorName": "OTFabric",
+           "productCode": "GWTEST",
+           "majorMinorRevision": "1.0.0"
+         },
+         "state": {
+           "coils": [ { "address": 0, "value": true, "writable": true } ],
+           "holdingRegisters": [
+             { "address": 0, "value": 2301, "writable": false },
+             { "address": 1, "value": 501, "writable": true },
+             { "address": 10, "codec": "float32/layout:4321", "value": 230.5, "writable": true, "name": "voltage" }
+           ],
+           "inputRegisters": [ { "address": 0, "value": 1234 } ]
+         },
+         "behavior": {
+           "exceptions": [
+             {
+               "id": "hr-999-illegal",
+               "match": { "fc": 3, "area": "holdingRegisters", "address": 999 },
+               "exceptionCode": "illegal_data_address"
+             }
+           ]
+         }
+       }
+     ]
+   }
+   ```
+
+2. Validate it against the embedded schema and the semantic rules (exit 0, or 3 on failure):
+
+   ```sh
+   modbus-simulator validate device.json
+   ```
+
+3. Serve it and record a trace. The default listen address is `:5020`:
+
+   ```sh
+   modbus-simulator run --fixture device.json --listen :1502 --trace trace.jsonl
+   ```
+
+4. Point your client at `tcp://127.0.0.1:1502`, unit 1. Stop the simulator with Ctrl-C when the test traffic is done.
+
+</Steps>
+
+Fixture behaviour worth knowing:
+
+- `unknownAddress: exception` (the default) answers any address not in the fixture with Illegal Data Address. `zeroForReads` returns 0 for unknown reads. Writes to unknown addresses always fail, so a mis-mapped gateway write cannot silently grow the map.
+- `stateMode: persistent` keeps written values for the life of the process. `resetOnConnection` resets to the fixture on each new connection.
+- Exception rules match on `fc`, `area`, `address` or `addressRange`, and `quantity`, and are evaluated before normal handling, so a test can force an exception on a valid address.
+- Codec IDs come from go-modbus. `modbus-simulator codecs list` prints them; the repository ships fixtures that cover every codec.
+
+### Assert in CI
+
+An expectation file lists assertions over the trace. Kinds are `contains`, `notContains`, `count` (with `equals`, `atLeast` or `atMost`), `ordered` and `exact`. Matching is by subset: only the fields you name are compared.
+
+```json title="expected.json"
+{
+  "schemaVersion": "modbus-simulator.expect.v1",
+  "assertions": [
+    { "kind": "contains", "match": { "request": { "fc": 43 } } },
+    { "kind": "notContains", "match": { "request": { "address": 999 } } },
+    {
+      "kind": "ordered",
+      "sequence": [
+        {
+          "request": { "fc": 6, "address": 1, "value": 777 },
+          "response": { "ok": true },
+          "stateChange": { "area": "holdingRegisters", "address": 1, "after": 777 }
+        },
+        {
+          "request": { "fc": 3, "address": 1, "quantity": 1 },
+          "response": { "ok": true, "values": [777] }
+        }
+      ]
+    }
+  ]
+}
+```
+
+```sh
+modbus-simulator assert-trace trace.jsonl --expect expected.json
+```
+
+Exit codes: 0 success, 2 usage, 3 validation, 4 transport or server, 8 assertion failure, 10 internal. Every flag has a `MODBUS_SIMULATOR_*` environment variable.
+
+### Limits
+
+| Supported in v1 | Not supported in v1 |
+|---|---|
+| FC01, FC02, FC03, FC04, FC05, FC06, FC15, FC16, FC43/14 | FC22, FC23 (deferred) |
+| Modbus TCP | RTU or serial server (deferred) |
+
+## Replay a real device with modbusctl
+
+When you have access to a device once, record it and keep the recording:
+
+```sh
+modbusctl client scan --ip 192.168.1.10 --algo smart --start 0 --end 5000 --output scan.mcap
+modbusctl server static --input scan.mcap --port 1502
+```
+
+`server static` serves the captured values unchanged. `server replay` steps through a `client record` capture over time (`--loops 0`, `--interval`). Both are Modbus TCP only, listen on all interfaces and accept any client: keep them on a trusted network. Captures can contain device identification and process values, so handle them as operational data.
+
+## modbus-interop
+
+[modbus-interop](https://github.com/otfabric/modbus-interop) packages five independent Modbus TCP implementations as container images with the same command interface. It contains no library under test: a library pulls the images and owns its own scenarios and assertions.
+
+| Adapter | Implementation | Version | Language |
+|---|---|---|---|
+| `libmodbus` | libmodbus | v3.2.0 | C |
+| `pymodbus` | PyModbus | 3.15.0 | Python |
+| `digitalpetri` | digitalpetri/modbus | 2.1.6 | Java |
+| `nmodbus` | NModbus | 3.0.83 | C# |
+| `tokiomodbus` | tokio-modbus | 0.17.0 | Rust |
+
+Each image (`ghcr.io/otfabric/modbus-interop-<adapter>`) offers `server`, `client <operation>`, `print-capabilities` and `print-fixture`. Expected values come from the image's own fixture, and a test skips (does not fail) a scenario that needs a feature the image declares false.
+
+```sh
+# Needs Docker and jq
+make images      # build the adapter images
+make smoke       # container contract of each image
+make interop     # every reference client against every reference server
+make run-libmodbus   # a reference server on 127.0.0.1:1502
+```
+
+The stacks differ. Not every one has FC22 or FC43, and they differ in what they check:
+
+| | libmodbus | PyModbus | digitalpetri | NModbus | tokio-modbus |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Server FC22 | yes | yes | yes | no | yes |
+| Server FC43/14 | no | yes | no | no | yes |
+| Client FC43/14 | no | yes | no | yes | yes |
+| Server quantity check | yes | no | yes | yes | yes |
+
+The reference servers are unauthenticated and accept writes from anyone. They publish on loopback only and must never be attached to a plant network.
+
+## What go-modbus has been validated against
+
+go-modbus runs its interop suite on every push (`make interop` in the go-modbus repository, about five minutes, Docker required). It is qualified against modbus-interop v0.1.0.
+
+| Reference | go-modbus client to reference server | Reference client to go-modbus server |
+|---|---|---|
+| libmodbus v3.2.0 | <Badge text="pass" variant="success" /> without FC43 | <Badge text="pass" variant="success" /> without FC43 |
+| PyModbus 3.15.0 | <Badge text="pass" variant="success" /> | <Badge text="pass" variant="success" /> |
+| digitalpetri/modbus 2.1.6 | <Badge text="pass" variant="success" /> without FC43 | <Badge text="pass" variant="success" /> FC43 via raw PDU only |
+| NModbus 3.0.83 | <Badge text="pass" variant="success" /> without FC43 and FC22 | <Badge text="pass" variant="success" /> without FC22 |
+| tokio-modbus 0.17.0 | <Badge text="pass" variant="success" /> | <Badge text="pass" variant="success" /> |
+
+The suite covers FC01 to FC06, FC15, FC16, FC22, FC23 and FC43/14. As a client, go-modbus reads every table at block boundaries and with the largest request of each function, reads writes back on a second connection, checks exceptions 1, 2 and 11, sends two thousand requests on one connection, and runs sixteen connections at once plus a pooled client. As a server, it answers 92 operations per reference client, including raw PDUs and exceptions 1, 2, 3 and 11, and each result must match what the client gets from a reference server.
+
+To pin other builds, set `MODBUS_INTEROP_<ADAPTER>_IMAGE`; to run a subset, set `MODBUS_INTEROP_ADAPTERS=libmodbus,pymodbus`.
+
+<Aside type="note" title="What is not validated">
+- The interop suite covers **Modbus TCP only**. RTU, ASCII, TLS, UDP and the tunnelled transports are covered by the go-modbus repository's own tests, not by independent stacks.
+- go-modbus has **not** been run against certified test equipment.
+- modbus-simulator and the modbusctl servers are TCP only. There is no OT Fabric RTU server simulator.
+</Aside>
+
+The suite also found a bug in go-modbus, fixed in v1.3.0: the server closed the connection on an FC15, FC16 or FC23 request whose byte count did not match its quantity, where the specification asks for exception 3. The findings about the reference stacks themselves are in [COMPATIBILITY.md](https://github.com/otfabric/modbus-interop/blob/main/docs/COMPATIBILITY.md).
+
+## Serial tests without hardware
+
+- modbusctl's tests use an in-memory Modbus device (`internal/mbtest`) served over TCP, UDP, RTU and ASCII over TCP, and RTU and ASCII on a pseudo-terminal that stands in for a serial port (Linux and macOS).
+- go-serial's `TestReadWrite` creates a PTY loopback on Linux, macOS and BSD. For manual testing, create a pair with `socat -d -d pty,raw,echo=0 pty,raw,echo=0` and set `SERIAL_LOOPBACK_PTY1` and `SERIAL_LOOPBACK_PTY2`.
+
+<CardGrid>
+  <LinkCard title="modbus-simulator" href="https://github.com/otfabric/modbus-simulator" />
+  <LinkCard title="modbus-interop" href="https://github.com/otfabric/modbus-interop" />
+</CardGrid>

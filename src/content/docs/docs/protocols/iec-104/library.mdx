@@ -1,0 +1,325 @@
+---
+title: Go library
+description: Use go-iec104 to build an IEC 60870-5-104 controlling station or controlled station in pure Go.
+sidebar:
+  label: Go library
+  order: 1
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+[go-iec104](https://github.com/otfabric/go-iec104) is a pure Go implementation of IEC 60870-5-104 with both roles: a **client** (controlling station) and a **server** (controlled station). It has no cgo and no dependencies outside the standard library. The current release is v0.0.3. The license is MIT.
+
+## Install
+
+```sh
+go get github.com/otfabric/go-iec104
+```
+
+Requires **Go 1.23** or later.
+
+| Package | Import path | Contents |
+|---|---|---|
+| `iec104` | `github.com/otfabric/go-iec104` | Shared errors, `State`, `Logger`, `Metrics` |
+| `client` | `.../client` | The controlling station, and `Group` for redundancy |
+| `server` | `.../server` | The controlled station, sessions, `Mux`, `FileServer` |
+| `asdu` | `.../asdu` | ASDU model and codec, independent of the transport and reusable for IEC 60870-5-101 |
+| `apci` | `.../apci` | APDU framing, sequence arithmetic and the `k`/`w`/`t0`..`t3` parameters |
+
+## Client: connect, interrogate, command
+
+`client.Dial` connects and sends STARTDT. Every ASDU the station sends reaches your handler, in wire order. Request methods block until the station answers.
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/otfabric/go-iec104/asdu"
+	"github.com/otfabric/go-iec104/client"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// Dial connects and sends STARTDT. Every ASDU the station sends reaches
+	// the handler, in order.
+	c, err := client.Dial(ctx, "10.0.0.5:2404",
+		client.WithReconnect(client.Reconnect{}),
+		client.WithHandler(client.HandlerFunc(func(a *asdu.ASDU) {
+			for _, obj := range a.Objects {
+				if m, ok := obj.(asdu.MeasuredFloat); ok {
+					fmt.Printf("%s ioa=%d value=%g quality=%s\n", a.Cause, m.IOA, m.Value, m.Quality)
+				}
+			}
+		})))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close()
+
+	// General interrogation of station 1: returns when the station sends
+	// the activation termination.
+	data, err := c.Interrogate(ctx, 1, asdu.QOIStation)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("interrogation returned %d ASDUs\n", len(data))
+
+	if err := c.ClockSync(ctx, 1, time.Now()); err != nil {
+		log.Fatal(err)
+	}
+
+	// Select before operate.
+	cmd := asdu.SingleCommand{IOA: 6001, Value: true, Select: true}
+	if err := c.Command(ctx, 1, cmd); err != nil {
+		log.Fatal(err)
+	}
+	cmd.Select = false
+	if err := c.Command(ctx, 1, cmd); err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+<Aside type="caution">
+`Command` operates the process on a real station. Try it first against the `quickstart` or `commands` example, or against [`iec104ctl server start`](/docs/protocols/iec-104/cli/), before pointing it at equipment.
+</Aside>
+
+The address is `host:port`. A missing port becomes 2404, or 19998 with `WithTLS`.
+
+### Request methods
+
+| Method | Sends | Returns when |
+|---|---|---|
+| `Interrogate(ctx, ca, qoi)` | `C_IC_NA_1` activation | Activation termination; result is the data with the matching "interrogated by" cause |
+| `CounterInterrogate(ctx, ca, request, freeze)` | `C_CI_NA_1` activation | Activation termination; result is the counters |
+| `Read(ctx, ca, ioa)` | `C_RD_NA_1` request | The ASDU with cause "request" for that address |
+| `ClockSync(ctx, ca, t)` | `C_CS_NA_1` activation | Activation confirmation |
+| `Command(ctx, ca, obj)` | Process command, activation | Activation confirmation |
+| `Deactivate(ctx, ca, obj)` | Process command, deactivation | Deactivation confirmation |
+| `TestCommand(ctx, ca)` | `C_TS_TA_1` activation | Activation confirmation |
+| `ResetProcess(ctx, ca, qualifier)` | `C_RP_NA_1` activation | Activation confirmation |
+| `GetFile(ctx, ca, ioa, name)` | File select, calls and acknowledgements | The file is acknowledged; result is its content |
+| `PutFile(ctx, ca, ioa, name, sections...)` | File ready, then sections and segments | The station acknowledged the file |
+| `ListFiles(ctx, ca, ioa)` | `F_SC_NA_1` with cause "request" | The last directory entry arrived |
+
+`Command` accepts `SingleCommand`, `DoubleCommand`, `StepCommand`, `SetpointNormalized`, `SetpointScaled`, `SetpointFloat` and `BitstringCommand`. A non-zero `Time` selects the CP56Time2a type. Collected ASDUs also reach the handler: request methods are a convenience on top of the stream, never a filter in front of it.
+
+IEC 104 has no transaction identifier. The client matches an answer by type, common address, object address and cause, so two identical requests cannot be pending at once; the second fails with `ErrBusy`.
+
+For anything the request methods leave out (parameters, private types, file deletion) use `Send(ctx, a)`, which transmits one ASDU and does not wait for an answer.
+
+`StartDT`, `StopDT` and `TestLink` drive the U-frame procedures by hand. `WithAutoStart(false)` connects without sending STARTDT.
+
+## The ASDU model
+
+Information objects are plain structs named for what they mean. `asdu.New` picks the type identification from the first object: no time tag when `Time` is zero, CP56Time2a otherwise.
+
+```go
+a := asdu.New(asdu.CauseSpontaneous, 1,
+	asdu.MeasuredFloat{IOA: 4001, Value: 49.98, Time: asdu.Now()})
+wire, err := a.Encode(asdu.IEC104)   // M_ME_TF_1
+back, err := asdu.Decode(wire, asdu.IEC104)
+```
+
+| Struct | Without time tag | CP24Time2a | CP56Time2a |
+|---|---|---|---|
+| `SinglePoint` | `M_SP_NA_1` | `M_SP_TA_1` | `M_SP_TB_1` |
+| `DoublePoint` | `M_DP_NA_1` | `M_DP_TA_1` | `M_DP_TB_1` |
+| `MeasuredFloat` | `M_ME_NC_1` | `M_ME_TC_1` | `M_ME_TF_1` |
+| `SingleCommand` | `C_SC_NA_1` | | `C_SC_TA_1` |
+
+Set `ASDU.Type` for the other variants and `ASDU.Sequence` for the SQ = 1 encoding. The object set is closed; consume it with a type switch. Types 128..255 have no object model and travel as `ASDU.Raw` in both directions. `asdu.Params` carries the field sizes, so the same codec serves the shorter IEC 60870-5-101 addresses (`client.WithASDUParams`). Time tags are UTC unless `Params.Location` (or `Params.In`) says otherwise.
+
+## Server: a controlled station
+
+`server.Mux` routes by type identification and answers what you did not register with the refusals of the standard.
+
+```go title="main.go"
+package main
+
+import (
+	"log"
+
+	"github.com/otfabric/go-iec104/asdu"
+	"github.com/otfabric/go-iec104/server"
+)
+
+func main() {
+	mux := server.NewMux()
+
+	mux.HandleFunc(asdu.C_IC_NA_1, func(s *server.Session, req *asdu.ASDU) {
+		qoi := req.First().(asdu.Interrogation).Qualifier
+		_ = s.Confirm(req)
+		_ = s.Send(s.Context(), asdu.New(qoi.Cause(), req.CommonAddr,
+			asdu.SinglePoint{IOA: 1001, Value: true},
+			asdu.SinglePoint{IOA: 1002, Value: false}))
+		_ = s.Terminate(req)
+	})
+
+	mux.HandleFunc(asdu.C_SC_NA_1, func(s *server.Session, req *asdu.ASDU) {
+		cmd := req.First().(asdu.SingleCommand)
+		if cmd.IOA != 6001 {
+			_ = s.Reject(req, asdu.CauseUnknownIOA)
+			return
+		}
+		_ = s.Confirm(req)
+		// operate the process ...
+	})
+
+	srv, err := server.New(mux, server.WithCommonAddrs(1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Fatal(srv.ListenAndServe(":2404"))
+}
+```
+
+`Mux` answers a type without a handler with "unknown type identification" and an invalid cause with "unknown cause of transmission". `WithCommonAddrs` answers a foreign station address with "unknown common address". The reply helpers on `Session` are `Confirm`, `Negative`, `Terminate`, `Reject` (causes 44..47) and `Reply`.
+
+The library checks the encoding, not the meaning. Select-before-operate state, value ranges and interlocks are the handler's job: keep the selection in your handler and refuse an execute that does not match it.
+
+### Events and redundancy groups
+
+`Server.Enqueue` sends events with acknowledged delivery. Each redundancy group delivers them, in order, to its one started connection, keeps them while no control centre is connected, and sends again what was not acknowledged when a connection is lost. `Session.Send` and `Server.Broadcast` send immediately and buffer nothing.
+
+```go
+srv, err := server.New(mux,
+	server.WithRedundancyGroups(
+		server.RedundancyGroup{Name: "main", Allow: []string{"10.0.0.0/24"}},
+		server.RedundancyGroup{Name: "backup"}), // everyone else
+	server.WithEventQueue(10000))
+
+_ = srv.Enqueue(asdu.New(asdu.CauseSpontaneous, 1,
+	asdu.SinglePoint{IOA: 1001, Value: true, Time: asdu.Now()}))
+```
+
+The queue holds 1024 events per group by default and drops the oldest when full; `Pending(group)` and `Dropped(group)` report its state. The queue is in memory: it survives an absent control centre, not a restart of the station.
+
+Other server options: `WithMaxSessions`, `WithAccept` (filter by address before any exchange), `WithStateHandler`, `WithTLS`, `WithParams`. File transfer is served by `server.NewFileServer`, registered with `mux.Handle(server.NewFileServer(source), server.FileTypes...)`.
+
+### Redundancy on the client side
+
+`client.NewGroup` keeps several connections to one station established, exactly one started, the standbys supervised by test frames. It fails over automatically and offers `Switchover`.
+
+```go
+g, err := client.NewGroup([]string{"10.0.0.5:2404", "10.1.0.5:2404"},
+	client.WithHandler(h),
+	client.WithSwitchHandler(func(active *client.Client) { /* failover happened */ }))
+if err := g.Connect(ctx); err != nil { ... }
+defer g.Close()
+
+data, err := g.Interrogate(ctx, 1, asdu.QOIStation) // on the active connection
+```
+
+A select and its execute must use the same connection: select again after a switchover.
+
+## TLS (IEC 62351-3)
+
+`client.WithTLS` and `server.WithTLS` take a standard `*tls.Config` that the library does not weaken. Set `MinVersion` to TLS 1.2 or later. For mutual authentication set `ClientAuth: tls.RequireAndVerifyClientCert` and `ClientCAs` on the server and `Certificates` on the client. Without it, a TLS server still accepts commands from any client. In a handler, `Session.Conn()` returns the `*tls.Conn`, whose `ConnectionState().PeerCertificates` identifies the controlling station. The `tls` example shows both sides.
+
+<Aside type="note">
+IEC 62351-5 application-layer security is **not implemented**. Its type identifications (`asdu.S_CH_NA_1` .. `asdu.S_UC_NA_1`, `asdu.S_IT_TC_1`) and causes are named and carried as `ASDU.Raw`; the library neither creates nor checks them.
+</Aside>
+
+## Protocol parameters
+
+Both sides take `apci.Params`; the defaults are those of the standard (`k` 12, `w` 8, `t0` 30 s, `t1` 15 s, `t2` 10 s, `t3` 20 s). Zero fields take defaults and `T3: 0` disables the idle test. `Validate` enforces `1 ≤ W ≤ K ≤ 32767` and `T2 < T1`.
+
+```go
+p := apci.DefaultParams()
+p.T3 = 10 * time.Second
+c, err := client.Dial(ctx, addr, client.WithParams(p))
+```
+
+## Errors
+
+Always test with `errors.Is` and `errors.As`.
+
+| Situation | Error | Connection |
+|---|---|---|
+| Station refuses (P/N = 1 or cause 44..47) | `*iec104.NegativeError`; `Cause()` tells why | stays up |
+| No answer before the deadline | wraps `context.DeadlineExceeded` | stays up |
+| Identical request pending | `iec104.ErrBusy` | stays up |
+| Request method called from a client handler | `iec104.ErrInHandler` | stays up |
+| Connection could not be made | `iec104.ErrConnectFailed`, wrapping the cause | |
+| No connection / data transfer stopped | `iec104.ErrNotConnected` / `iec104.ErrNotStarted` | |
+| Peer closed or transport failed | `iec104.ErrConnectionLost` | closed |
+| No acknowledgement within `t1` | `iec104.ErrTimeout` | closed |
+| Peer broke the protocol | `iec104.ErrProtocol` | closed |
+| Value cannot be encoded | `asdu.ErrInvalidValue`, `asdu.ErrTypeMismatch`, ... | stays up, nothing sent |
+
+```go
+err := c.Command(ctx, 1, asdu.SingleCommand{IOA: 6001, Value: true})
+
+var neg *iec104.NegativeError
+switch {
+case err == nil:
+	// confirmed
+case errors.As(err, &neg):
+	if neg.Cause() == asdu.CauseUnknownIOA {
+		// no such object
+	}
+case errors.Is(err, context.DeadlineExceeded):
+	// the station did not answer; the connection is still up
+case errors.Is(err, iec104.ErrNotConnected), errors.Is(err, iec104.ErrConnectionLost):
+	// no connection: retry after the state handler reports StateStarted
+case errors.Is(err, asdu.ErrInvalidValue):
+	// programming error: the command cannot be encoded
+}
+```
+
+A received ASDU that does not decode is dropped and reported through `Metrics.OnDecodeError`; the connection stays up.
+
+## Timeouts, retries and concurrency
+
+- `Connect` is bounded by the context and by `t0`. A request without a context deadline is bounded by `WithRequestTimeout` (default 10 s). On expiry the slot is released and the connection stays up; a late answer still reaches the handler.
+- `WithReconnect` re-dials with exponential backoff (`MinDelay` 1 s, `MaxDelay` 30 s). `WithStartHandler` runs after every connect that started data transfer, the place for a general interrogation.
+- `WithRetry` (off by default; 3 attempts, 500 ms backoff doubling to 10 s) repeats only requests that read: `Interrogate`, `CounterInterrogate` with `asdu.FreezeRead`, `Read`, `TestCommand`. `Command`, `Deactivate`, `ClockSync`, `ResetProcess`, a counter freeze or reset and `Send` are **never** repeated.
+- Every method of `Client`, `Server`, `Session` and `Mux` is safe for concurrent use. A client handler runs on one goroutine per connection, a server handler on one per session. Request methods called from inside a client handler fail at once with `ErrInHandler`; use another goroutine.
+- `Send` blocks while `k` I frames are unacknowledged. A slow handler does not stall acknowledgements or test frames: the protocol machine keeps running and memory per connection is bounded.
+
+## Logging and metrics
+
+Both are off by default and cost nothing when off.
+
+```go
+c, err := client.Dial(ctx, "10.0.0.5:2404",
+	client.WithLogger(iec104.NewSlogLogger(slog.NewJSONHandler(os.Stderr, nil))),
+	client.WithMetrics(myMetrics),
+	client.WithReconnect(client.Reconnect{}),
+	client.WithRetry(client.Retry{Attempts: 3}),
+	client.WithStartHandler(func(ctx context.Context, c *client.Client) {
+		_, _ = c.Interrogate(ctx, 1, asdu.QOIStation) // refresh after every (re)connect
+	}))
+```
+
+Log entries are constant messages with fields (`component`, `remote`, `state`, `type`, `error`, ...); per-frame entries are logged at debug level. `iec104.Metrics` has `OnConnect`, `OnDisconnect`, `OnFrameSent`, `OnFrameReceived` and `OnDecodeError`; the optional `RequestMetrics` (client) and `HandlerMetrics` (server) add request outcomes, retries and handler duration. Embed `iec104.NopMetrics` to implement a subset. Callbacks run on the protocol path and must not block.
+
+## Examples
+
+Seven examples are self-contained (station and client in one process over loopback):
+
+```sh
+go run ./examples/quickstart      # the smallest station and client
+go run ./examples/commands        # select-before-operate, set points, refusals
+go run ./examples/files           # download, upload and directory
+go run ./examples/events          # event queue, broadcast, end of initialization
+go run ./examples/redundancy      # redundancy group, switchover, failover
+go run ./examples/tls             # TLS with certificates on both sides
+go run ./examples/observability   # logs, states, metrics, retries, reconnect
+```
+
+## Limitations
+
+- No IEC 62351-5 application-layer security; use TLS with client certificates.
+- No IEC 60870-5-101 serial link layer. The `asdu` package takes the 101 field sizes, so a separate module could add it.
+- No combined station (both directions on one connection); run a client and a server side by side.
+- File upload and the directory are verified by the repository's own tests only: no reference stack offers them through the interop images yet. File deletion and the query log have their types in the codec but no procedure.
+- A client waiting for a command confirmation does not also wait for the activation termination; the termination reaches the handler.
+- Verified against lib60870-C, j60870 and wendy512/iec104, not against certified test equipment or field devices. See [Testing and interop](/docs/protocols/iec-104/testing/).

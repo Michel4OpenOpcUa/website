@@ -1,0 +1,157 @@
+---
+title: Testing and interop
+description: How go-s7comm is tested against two independent Snap7 server implementations with snap7-interop, and what is and is not covered.
+sidebar:
+  label: Testing and interop
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Real S7 PLCs differ by family and firmware, and you should never test client code against a running process. OT Fabric tests its S7 client against [snap7-interop](https://github.com/otfabric/snap7-interop): two S7 servers built from independent implementations, loaded with the same memory fixtures and checked to behave the same.
+
+## snap7-interop
+
+snap7-interop publishes two container images. Both speak classic S7comm over ISO-on-TCP on container port 102:
+
+| Image | Implementation |
+|---|---|
+| `ghcr.io/otfabric/snap-interop-native` | Native Snap7, built from the SCADACS fork at a pinned revision (Snap7 1.4.0 lineage, LGPL-3.0-or-later) |
+| `ghcr.io/otfabric/snap-interop-python` | Pure-Python server from `python-snap7` 3.0.0, with no native library in the image |
+
+The current release is **v0.1.0**, built for `linux/amd64` and `linux/arm64`. Tags never move and there is no `latest` tag; pin by digest where you can. The images in the project and its documentation are named `snap-interop`, while the repository is `snap7-interop`.
+
+The repository does not depend on go-s7comm, so any S7 client can use it.
+
+### Fixtures define the server
+
+A fixture is a JSON file that describes the server's memory: which areas exist, how big they are, whether they are read-only, and their initial contents. It also lists the expected results of reads and writes. A compiler turns typed values into canonical big-endian bytes once, and both servers load the same compiled bytes. Neither server interprets types itself.
+
+```json
+{
+  "$schema": "../schema/fixture.schema.json",
+  "schemaVersion": "1.0.0",
+  "id": "basic-db",
+  "description": "Single zero-filled DB1 with a short hex prefix for smoke reads",
+  "requires": ["area.db", "operation.read"],
+  "server": { "rack": 0, "slot": 2, "pduSize": 480 },
+  "areas": [
+    {
+      "type": "db",
+      "number": 1,
+      "size": 64,
+      "access": "read-write",
+      "initial": { "hex": "0102030405060708" }
+    }
+  ],
+  "expectations": [
+    {
+      "operation": "read",
+      "area": { "type": "db", "number": 1 },
+      "offset": 0,
+      "length": 8,
+      "result": { "hex": "0102030405060708" }
+    }
+  ]
+}
+```
+
+### Run a test server
+
+<Steps>
+
+1. Pull an image:
+
+   ```sh
+   docker pull ghcr.io/otfabric/snap-interop-native:v0.1.0
+   ```
+
+2. Start it with a compiled fixture from a checkout of the repository. Map the container's port 102 to an unprivileged host port such as 1102:
+
+   ```sh
+   docker run --rm -p 1102:102 --read-only \
+     --tmpfs /tmp --tmpfs /run/snap-interop:uid=10001,gid=10001,mode=0755 \
+     --cap-drop ALL --cap-add NET_BIND_SERVICE \
+     -v "$PWD/fixtures/compiled:/fixtures:ro" \
+     -e SNAP_INTEROP_FIXTURE=/fixtures/basic-db.compiled.json \
+     ghcr.io/otfabric/snap-interop-native:v0.1.0
+   ```
+
+3. Point a client at it, with rack 0 and slot 2:
+
+   ```sh
+   s7commctl read --ip 127.0.0.1 --port 1102 --rack 0 --slot 2 --area DB --db 1 --offset 0 --size 8 --format hex
+   ```
+
+</Steps>
+
+The container is configured with `SNAP_INTEROP_FIXTURE`, `SNAP_INTEROP_LISTEN_ADDRESS`, `SNAP_INTEROP_PORT`, `SNAP_INTEROP_LOG_FORMAT` and `SNAP_INTEROP_STATE_PATH`. It refuses to start with a missing or invalid fixture, logs `server_ready` once it accepts connections, has a Docker health check, and shuts down cleanly on `SIGTERM`.
+
+<Aside type="caution">
+These servers are test infrastructure only. Do not expose them to untrusted networks, and do not bind host port 102.
+</Aside>
+
+## The fixture matrix
+
+All 15 canonical fixtures pass on both servers:
+
+| Fixture | What it proves |
+|---|---|
+| `basic-db` | Smoke read of DB1 |
+| `write-cycle` | An accepted write changes DB1 and is visible on the next read |
+| `multiple-dbs` | Two DBs with distinct contents |
+| `markers-io` | Markers, inputs and outputs |
+| `typed-values` | Typed scalars in a DB and in markers |
+| `integer-boundaries` | Signed and unsigned integer limits, big-endian |
+| `floating-point` | IEEE 754 float32 and float64 patterns |
+| `bit-access` | Single-bit reads and writes inside a DB byte |
+| `unaligned-range` | Multi-byte reads at odd offsets |
+| `last-valid-byte` | A read of the last byte of a DB |
+| `out-of-range` | Out-of-range reads and writes are rejected |
+| `read-only-reject` | A write to a read-only DB is rejected and memory stays unchanged |
+| `large-read` | A large single read within the negotiated PDU |
+| `concurrent-reads` | Several clients read the same bytes at once |
+| `reconnect-state` | Memory survives a client reconnect |
+
+Results are normalized to outcomes such as `success`, `address-out-of-range`, `unsupported`, `transport-failure` and `protocol-failure`. Each run writes `report.json`, `report.md` and `junit.xml` under `reports/<fixture-id>/`.
+
+### Known differences
+
+Both servers reject a write to a read-only area with item return code `0x0A`, not a distinct "write protected" code. The fixture therefore expects `address-out-of-range` and proves the rejection with a follow-up read. Out-of-range access returns item code `0x05` on both. The Python adapter adds behaviour the stock `python-snap7` server lacks (out-of-range rejection, single-bit writes, read-only enforcement) so that both match native Snap7.
+
+## Testing go-s7comm
+
+go-s7comm has a build-tagged interop package that runs the full fixture matrix against both servers:
+
+```sh
+make interop
+```
+
+This pulls pinned image digests, starts both containers for each fixture on host ports **1102** (native) and **2102** (Python) with rack 0 and slot 2, and runs `go test -tags=interop ./interop/...`. Variables change what it runs:
+
+| Variable | Purpose |
+|---|---|
+| `SNAP_INTEROP_NATIVE_IMAGE`, `SNAP_INTEROP_PYTHON_IMAGE` | Use other image references |
+| `SNAP_INTEROP_MANAGED=0` | Use servers that are already running, at `SNAP_INTEROP_NATIVE_ADDR` and `SNAP_INTEROP_PYTHON_ADDR` |
+| `SNAP_INTEROP_FIXTURE=<id>` | Run a single fixture, for example `basic-db` |
+
+`make check` compiles and lints the interop package but does not start Docker. Running the matrix in go-s7comm's own CI against pinned images is still listed as open work in snap7-interop.
+
+Besides interop, go-s7comm has unit tests with frame fixtures in `testdata/`, race detector runs (`make test-race`), benchmarks for discovery, probing and the wire parsers (`make bench`), static analysis (`make lint`, `make lint-ci`) and `govulncheck` (`make vuln`). s7commctl's own tests cover command wiring, configuration, input validation, output formatting, the write confirmation helpers and the pcap and replay parsers. Protocol codec coverage lives in go-s7comm.
+
+## What is and is not validated
+
+| Area | Status |
+|---|---|
+| DB, marker, input and output byte reads; DB and marker writes | Validated on both servers |
+| Single-bit reads and writes | Validated |
+| Typed values, boundaries, out-of-range and read-only rejection | Validated |
+| Concurrent clients and reconnects | Validated |
+| Reads larger than the PDU | Chunking happens in the client; the servers cover one large request |
+| Range scans, compare reads, discovery, rack/slot probing | Client-side logic, not fixture-tested |
+| Timers and counters | Deferred |
+| Identify, SZL, CPU state, diagnostics | Deferred until both servers are characterized |
+| Block list, upload and download | Deferred |
+| Optimized S7-1200/1500 data blocks | Out of scope |
+| Scan-cycle or program execution | Out of scope: the servers hold static memory, not a PLC program |
+

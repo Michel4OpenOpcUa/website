@@ -1,0 +1,192 @@
+---
+title: Command-line tool
+description: Install sunspecctl and use it to detect, list, read and poll SunSpec devices over Modbus TCP or RTU, plus the SunSpec commands in modbusctl.
+sidebar:
+  label: sunspecctl
+  order: 2
+---
+
+import { Aside, Tabs, TabItem, Steps, LinkCard } from '@astrojs/starlight/components';
+
+`sunspecctl` is the command-line tool bundled with [go-sunspec](/projects/go-sunspec/). It detects SunSpec devices, lists their models, and reads or polls decoded points with scale factors and units applied. It only reads: there is no command that writes to a device.
+
+For transport-level SunSpec work (marker, base address, model headers, capturing every model to a file), [modbusctl](/projects/modbusctl/) has its own SunSpec commands, covered at the end of this page.
+
+## Install
+
+Pre-built binaries for Linux (x86-64, ARM64, ARMv7), macOS (Apple Silicon, Intel) and Windows (x86-64, ARM64) are on the [go-sunspec releases page](https://github.com/otfabric/go-sunspec/releases), with a `sunspecctl-<version>-checksums.txt` file of SHA-256 sums.
+
+<Tabs>
+  <TabItem label="Linux">
+    ```sh
+    VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/go-sunspec/releases/latest | sed 's|.*/v||')
+    case "$(uname -m)" in
+      x86_64)         ARCH=amd64 ;;
+      aarch64|arm64)  ARCH=arm64 ;;
+      armv7l)         ARCH=armv7 ;;
+    esac
+    FILE="sunspecctl-${VERSION}-linux-${ARCH}.tar.gz"
+    BASE="https://github.com/otfabric/go-sunspec/releases/download/v${VERSION}"
+    curl -fsSLO "${BASE}/${FILE}"
+    curl -fsSLO "${BASE}/sunspecctl-${VERSION}-checksums.txt"
+    grep "${FILE}" "sunspecctl-${VERSION}-checksums.txt" | sha256sum -c -
+    mkdir -p sunspecctl-dl && tar -xzf "${FILE}" -C sunspecctl-dl
+    sudo install -m 0755 "$(find sunspecctl-dl -type f -name 'sunspecctl*' | head -n1)" /usr/local/bin/sunspecctl
+    ```
+    For a serial port without `sudo`, add your user to the `dialout` group: `sudo usermod -aG dialout "$USER"`, then log out and back in.
+  </TabItem>
+  <TabItem label="macOS">
+    Same steps with `darwin` in the file name and `shasum -a 256 -c -` to verify. If macOS refuses a binary downloaded with a browser, run `xattr -d com.apple.quarantine /usr/local/bin/sunspecctl`.
+  </TabItem>
+  <TabItem label="With Go">
+    Requires Go 1.23 or later:
+    ```sh
+    go install github.com/otfabric/go-sunspec/cmd/sunspecctl@latest
+    ```
+    From a checkout, `make build` (with code generation and checks) or `go build -o bin/sunspecctl ./cmd/sunspecctl`.
+  </TabItem>
+</Tabs>
+
+The README also has a PowerShell script for Windows that verifies the checksum and adds the binary to your `PATH`. Check the install with `sunspecctl version`.
+
+## Connecting
+
+All commands share these global flags:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--url` | `tcp://localhost:502` | Modbus device URL |
+| `--unit-id` | `1` | Modbus unit ID |
+| `--timeout` | `10s` | Operation timeout |
+| `--json` | `false` | Output as JSON |
+| `--raw` | `false` | Include raw register hex in the output |
+| `--baud` | `0` (19200) | Serial baud rate for `rtu://` and `ascii://` |
+| `--data-bits` | `0` (8 for RTU, 7 for ASCII) | Serial data bits, 5 to 8 |
+| `--parity` | `none` | `none`, `even` or `odd` |
+| `--stop-bits` | `0` (2 without parity, 1 with) | Serial stop bits, 1 or 2 |
+
+`--url` takes any go-modbus scheme: `tcp://host:port`, `rtu://<device>` (`rtu:///dev/ttyUSB0`, `rtu://COM3`), `ascii://<device>`, `udp://host:port`, `rtuovertcp://host:port` for a serial-to-Ethernet gateway, and the others listed in the [Modbus overview](/docs/protocols/modbus/). The serial flags are ignored for network URLs.
+
+<Aside type="tip" title="RS-485 defaults">
+Many SunSpec devices on RS-485 use 9600 baud, 8 data bits, no parity and 1 stop bit, which is not the default. Pass `--baud 9600 --stop-bits 1` and the device's Modbus address as `--unit-id`.
+</Aside>
+
+## Command tree
+
+```text
+sunspecctl
+├── detect       Detect SunSpec device presence
+├── models       List discovered SunSpec models
+├── read         Read and decode all models
+├── read-model   Read and decode a specific model by ID
+├── read-point   Read a single named point from a model
+├── poll         Repeatedly read and decode all models
+├── poll-model   Repeatedly read and decode a specific model by ID
+├── poll-point   Repeatedly read a single named point from a model
+├── completion   Generate shell completion script (bash/zsh/fish/powershell)
+└── version      Print the sunspecctl version
+```
+
+## A first session
+
+<Steps>
+
+1. Check that the device speaks SunSpec and find its base address:
+
+   ```sh
+   sunspecctl detect --url tcp://192.168.1.100:502
+   ```
+
+2. List the models it implements:
+
+   ```sh
+   sunspecctl models --url tcp://192.168.1.100:502
+   ```
+
+3. Read one model, or one point:
+
+   ```sh
+   sunspecctl read-model --id 101 --url tcp://192.168.1.100:502
+   sunspecctl read-point --model 101 --point W --url tcp://192.168.1.100:502
+   ```
+
+4. Read and decode everything, with the raw registers alongside:
+
+   ```sh
+   sunspecctl read --url tcp://192.168.1.100:502 --raw
+   ```
+
+</Steps>
+
+Over RS-485 or through a gateway:
+
+```sh
+# SunSpec over Modbus RTU at 9600 8N1, device address 3
+sunspecctl models --url rtu:///dev/ttyUSB0 --baud 9600 --stop-bits 1 --unit-id 3
+
+# A serial device behind an RS-485-to-Ethernet gateway
+sunspecctl read --url rtuovertcp://192.168.1.50:4001 --unit-id 3
+```
+
+If `detect` finds nothing, check the unit ID first (many inverters do not answer on unit 1), then whether SunSpec or Modbus has to be enabled in the device settings. The library can probe other base addresses and input registers; the documented CLI flags do not expose those options.
+
+## Polling
+
+`poll`, `poll-model` and `poll-point` work like their `read` counterparts but repeat:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--interval` | `30s` | Time between polls (`s`, `m`, `h`) |
+| `--count` | `0` | Number of polls; `0` runs until Ctrl-C |
+
+```sh
+# All models every 10 seconds
+sunspecctl poll --interval 10s --url tcp://192.168.1.100:502
+
+# Model 101 five times, once per minute
+sunspecctl poll-model --id 101 --interval 1m --count 5 --url tcp://192.168.1.100:502
+
+# AC power of a three-phase inverter every 5 seconds, as JSON
+sunspecctl poll-point --model 103 --point W --interval 5s --json --url tcp://192.168.1.100:502
+```
+
+## Output
+
+The default output is a human-readable table. `--json` gives structured output for `jq` and scripts, and `--raw` adds the raw register hex next to the decoded values. When a value looks wrong, `sunspecctl read --raw` shows the registers behind it; include that output, together with `detect` and `models`, when you report a device problem.
+
+The README does not document exit codes or environment variables for `sunspecctl`. Do not rely on specific non-zero codes in scripts; check for zero and parse `--json` output.
+
+## Safety
+
+`sunspecctl` only reads, so it cannot change a setpoint. It still sends real Modbus requests: use it only on devices and networks you are authorized to access, and keep inverter, meter and battery Modbus ports off the Internet. Output can contain serial numbers, network addresses and production figures, so treat it as operational data.
+
+## SunSpec in modbusctl
+
+modbusctl works at the Modbus level. Its SunSpec commands find the marker and enumerate model headers, but do not decode points.
+
+| Command | What it does |
+|---|---|
+| `client sunspec detect` | Is the unit SunSpec, and at which base? `--bases 0,40000,50000` to probe specific bases, `--verbose` for the attempt log |
+| `client sunspec models` | The model chain: start and end address, model ID, length, end model. `--base` skips detection; `--max-models` and `--max-address-span` bound the walk |
+| `client sunspec map` | A readable address map. `--show-header-regs`, `--show-next`, `--compact` |
+| `client sunspec probe` | One-shot summary: FC03, FC04 and FC43 support plus SunSpec detection |
+
+```sh
+modbusctl client sunspec detect --ip 192.168.1.10 --unit 1 --regtype holding --bases 0,40000,50000 --verbose --format json
+modbusctl client sunspec models --ip 192.168.1.10 --unit 1 --base 40000 --max-models 64 --format json
+modbusctl client sunspec map --url tcp://192.168.1.10:502 --unit 1
+modbusctl client sunspec probe --url tcp://192.168.1.10:502 --unit 1
+```
+
+`--regtype` accepts `holding` or `input`, which is how you reach a device that keeps its SunSpec map in input registers from the command line. All four commands take `--format text|json|table`.
+
+To capture every model body to a file, use the SunSpec scan algorithm. It detects the base, walks the chain and reads each model in chunks of up to 125 registers:
+
+```sh
+modbusctl client scan --ip 192.168.1.10 --algo sunspec --output sunspec.mcap
+modbusctl client scan --ip 192.168.1.10 --algo sunspec --sunspec-base 40000 --output sunspec.mcap
+```
+
+The resulting MCAP file can be served back as a Modbus TCP device with `modbusctl server static --input sunspec.mcap --port 1502`.
+
+<LinkCard title="go-sunspec on GitHub" href="https://github.com/otfabric/go-sunspec" description="Source, sunspecctl, API.md and ERRORS.md." />

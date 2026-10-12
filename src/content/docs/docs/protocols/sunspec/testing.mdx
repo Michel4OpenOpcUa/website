@@ -1,0 +1,103 @@
+---
+title: Testing and interop
+description: How go-sunspec is tested without hardware, how to test your own SunSpec code offline, and what has and has not been validated.
+sidebar:
+  label: Testing and interop
+  order: 3
+---
+
+import { Aside, Steps, LinkCard } from '@astrojs/starlight/components';
+
+There is no separate interoperability suite for SunSpec. SunSpec runs on top of Modbus, so the Modbus transport under go-sunspec is the part that is tested against other implementations (see the [Modbus overview](/docs/protocols/modbus/) and its testing page). This page covers how go-sunspec itself is tested, and the tools you can use to test your own SunSpec code without an inverter on the desk.
+
+## How go-sunspec is tested
+
+The go-sunspec test suite needs no hardware.
+
+| Mechanism | What it covers |
+|---|---|
+| `testutil` fixture server | A SunSpec model chain served over Modbus TCP. Anything in the test suite that talks to a device uses it. |
+| Offline decoding | `DecodeModel` decodes a register slice with no I/O, so point types, scale factors and groups can be tested directly. |
+| Generated registry check | A test fails if the committed `registry/models_gen.go` differs from what the generator produces from `models/`. |
+| Race detector | CI runs the tests with `-race` on every Go version from 1.23, with a 120 s per-package timeout. |
+| Coverage gate | `make check` enforces a coverage threshold, and Codecov tracks it. |
+
+The contribution guidelines ask tests to assert behaviour (decoded values, scale factors, the specific error) rather than only that the code ran, and they use only the standard `testing` package.
+
+Run the suite from a checkout:
+
+```sh
+make test       # tests with the race detector
+make coverage   # coverage report for the library packages
+make check      # format, vet, lint, vulnerability scan, race tests, coverage gate
+```
+
+## Model definitions
+
+The model definitions are the other half of correctness: if a definition is wrong, every decoded value from that model is wrong. go-sunspec takes them unchanged from the official [sunspec/models](https://github.com/sunspec/models) repository and generates the registry from them.
+
+```sh
+./check-models.sh         # report what is new, changed or removed upstream (read-only)
+./check-models.sh --diff  # also show which points changed and the JSON diff
+./sync-models.sh          # fetch the latest JSON from sunspec/models
+make generate             # regenerate registry/models_gen.go
+```
+
+A scheduled workflow runs `check-models.sh` every week and opens an issue, with the changed points and the JSON diff, when upstream has new, changed or removed models. The issue closes itself once the local copy is back in sync. The model JSON files must not be edited by hand; a wrong definition is fixed upstream.
+
+## Testing your own code
+
+### Decode captured registers offline
+
+If you have the raw registers of a model (from a capture, a log or a device manual example), decode them without any Modbus connection:
+
+```go
+meta := registry.ByID(103)
+dm, err := sunspec.DecodeModel(regs, meta, instanceAddr)
+```
+
+`regs` has the same layout as `DecodedModel.RawRegisters`, which is indexed from the model's ID register, and `instanceAddr` is the model's address on the device. This is the quickest way to write table-driven tests for code that consumes `DecodedModel` values, including the "not implemented" and scale-factor cases.
+
+### Record a real device and replay it
+
+The OT Fabric tools can capture a SunSpec device once and serve the capture back as a Modbus TCP device. This combines documented commands from modbusctl; the SunSpec round trip itself is not a documented, tested workflow, so check the result against the real device before relying on it.
+
+<Steps>
+
+1. Capture the marker and every model body with the SunSpec scan algorithm:
+
+   ```sh
+   modbusctl client scan --ip 192.168.1.10 --algo sunspec --output sunspec.mcap
+   ```
+
+2. Serve the capture as a Modbus TCP device on port 1502:
+
+   ```sh
+   modbusctl server static --input sunspec.mcap --port 1502
+   ```
+
+3. Point sunspecctl, or your own go-sunspec code, at it:
+
+   ```sh
+   sunspecctl read --url tcp://127.0.0.1:1502
+   ```
+
+</Steps>
+
+`server static` listens on all interfaces and accepts any client. Run it on a trusted network, and remember that the capture contains the device's serial number and production values.
+
+### A fixture-based simulator
+
+[modbus-simulator](/projects/modbus-simulator/) serves a Modbus TCP device from a JSON fixture of raw register values and codec fields, and records a trace you can assert on. You can lay out a SunSpec map in such a fixture by hand (marker, model headers, model bodies, end model). The simulator has no SunSpec-specific support, so you build and check the register layout yourself.
+
+## What has been validated
+
+<Aside type="note" title="Validation status">
+- go-sunspec is tested against its own `testutil` fixture server and offline decoding tests. The README and contribution guide describe no run against an independent SunSpec implementation or certified test equipment.
+- The underlying Modbus TCP transport (go-modbus) is tested against five independent Modbus TCP stacks. That covers the wire protocol, not SunSpec decoding.
+- Contributors are asked to verify changes that affect what is read from a device against real hardware when possible, and to name the device in the pull request. The repository does not publish a list of devices it has been verified against.
+</Aside>
+
+If go-sunspec decodes a value wrongly on your device, the repository asks for the manufacturer and model, the transport, and the output of `sunspecctl detect`, `sunspecctl models` and `sunspecctl read --raw` in the issue.
+
+<LinkCard title="go-sunspec on GitHub" href="https://github.com/otfabric/go-sunspec" description="Source, testutil, CONTRIBUTING.md and the models check workflow." />

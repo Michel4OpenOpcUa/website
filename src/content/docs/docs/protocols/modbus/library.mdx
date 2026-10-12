@@ -1,0 +1,294 @@
+---
+title: Go library
+description: Use go-modbus to read and write Modbus devices over TCP, TLS, RTU, ASCII and UDP, run a Modbus server, and handle errors, retries and concurrency.
+sidebar:
+  label: Go library
+  order: 1
+---
+
+import { Aside, Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
+
+[go-modbus](/projects/go-modbus/) is a pure Go Modbus client and server library (no CGO). It implements the Modbus Application Protocol Specification V1.1b3 over Modbus TCP, Modbus over TLS (MBAPS), Modbus RTU and Modbus ASCII on serial lines, RTU and ASCII framing tunnelled over TCP, RTU over UDP, and Modbus UDP. The full API reference is [API.md](https://github.com/otfabric/go-modbus/blob/main/API.md) in the repository.
+
+## Install
+
+```sh
+go get github.com/otfabric/go-modbus
+```
+
+go-modbus requires **Go 1.23** or later. Its only dependency is [go-serial](/projects/go-serial/), used for RTU and ASCII.
+
+The library is organized in tiers. Use the lowest one that does the job:
+
+| Package | Purpose |
+|---|---|
+| `modbus` | Raw function-code methods, client configuration, server, errors, retry, metrics |
+| `modbus/codec` | Typed values over several registers (`uint32`, `float32`, strings, BCD, timestamps, IP addresses) with explicit byte and word layout |
+| `modbus/sunspec` | SunSpec marker detection and model-chain enumeration (headers only, no point decoding) |
+
+## Connect
+
+`modbus.New` validates a `Config` and returns a `*Client`. It does not open a connection; `Open` does. The URL scheme selects the transport.
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/otfabric/go-modbus"
+	"github.com/otfabric/go-modbus/codec"
+)
+
+func main() {
+	client, err := modbus.New(modbus.Config{
+		URL:     "tcp://192.168.1.10:502",
+		Timeout: 2 * time.Second,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := client.Open(); err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// FC03: four raw holding registers from unit 1, starting at address 100.
+	regs, err := client.ReadRegisters(ctx, 1, 100, 4, modbus.HoldingRegister)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(regs)
+
+	// The same registers as a big-endian float32 (two registers, layout 4321).
+	v, err := codec.ReadFromClient(client, ctx, 1, 100, modbus.HoldingRegister,
+		codec.MustNewFloat32Codec(codec.Layout32_4321))
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(v)
+}
+```
+
+For larger setups, `modbus.NewConfig(TransportConfig, ExecutionConfig, ObservabilityConfig)` builds the same `Config` from grouped parts.
+
+<Tabs>
+  <TabItem label="TCP">
+    ```go
+    client, err := modbus.New(modbus.Config{
+        URL:         "tcp://plc.local:502",
+        Timeout:     2 * time.Second,
+        DialTimeout: 5 * time.Second,
+    })
+    ```
+  </TabItem>
+  <TabItem label="TLS (MBAPS)">
+    ```go
+    cert, _ := tls.LoadX509KeyPair("client.crt", "client.key")
+    pool, _ := modbus.LoadCertPool("ca.crt")
+
+    client, err := modbus.New(modbus.Config{
+        URL:           "tcp+tls://plc.local:802",
+        TLSClientCert: &cert,
+        TLSRootCAs:    pool,
+        Timeout:       5 * time.Second,
+    })
+    ```
+    Both fields are required: MBAPS mandates mutual authentication. TLS 1.2 is the minimum.
+  </TabItem>
+  <TabItem label="RTU">
+    ```go
+    client, err := modbus.New(modbus.Config{
+        URL:      "rtu:///dev/ttyUSB0",
+        Speed:    9600,
+        DataBits: 8,
+        Parity:   modbus.ParityNone,
+        StopBits: 1,
+    })
+    ```
+  </TabItem>
+  <TabItem label="ASCII">
+    ```go
+    client, err := modbus.New(modbus.Config{
+        URL:    "ascii:///dev/ttyUSB0",
+        Speed:  9600,
+        Parity: modbus.ParityEven,
+    })
+    ```
+  </TabItem>
+  <TabItem label="Gateways and UDP">
+    ```go
+    // RTU device behind a serial-to-Ethernet bridge
+    client, err := modbus.New(modbus.Config{URL: "rtuovertcp://192.168.1.50:4001"})
+
+    // Other tunnelled and UDP variants
+    // "rtuoverudp://host:port", "asciiovertcp://host:port", "udp://host:port"
+    ```
+  </TabItem>
+</Tabs>
+
+| Config field | Applies to | Default |
+|---|---|---|
+| `Timeout` | all | 300 ms for RTU, 1 s for TCP and UDP modes |
+| `DialTimeout` | network transports | 5 s for TCP and UDP, 15 s for TLS |
+| `Speed`, `DataBits`, `Parity`, `StopBits` | `rtu://`, `ascii://` | 19200 bps; 8 data bits (RTU) or 7 (ASCII); no parity; 2 stop bits without parity, 1 with |
+| `TLSClientCert`, `TLSRootCAs` | `tcp+tls://` | required |
+| `MinConns`, `MaxConns` | `tcp`, `udp`, `rtuovertcp`, `rtuoverudp`, `asciiovertcp` | single connection |
+
+### Serial lines and go-serial
+
+RTU and ASCII use [go-serial](https://github.com/otfabric/go-serial) underneath. You do not call it directly: the `Speed`, `DataBits`, `Parity` and `StopBits` fields are passed through. Serial device names are `/dev/ttyUSB0` on Linux, `/dev/cu.usbserial-1420` on macOS and `COM3` on Windows.
+
+go-serial is also usable on its own for non-Modbus serial work. It runs on Linux, macOS, Windows, FreeBSD, NetBSD and OpenBSD, offers optional RS-485 driver configuration (`Config.RS485.Enabled`, platform dependent), returns `serial.ErrTimeout` on read timeouts, and validates configuration at `Open` with a `*serial.ConfigError`. Its `modbus` subpackage has a 19200 8E1 preset, `modbus.DefaultRTUConfig(address)`. Note that this preset (even parity, 1 stop bit) differs from the go-modbus serial defaults (no parity, 2 stop bits); both are valid Modbus RTU settings, so match the device.
+
+## Core operations
+
+Every client method takes a `context.Context` first and the unit ID second. A context deadline overrides `Timeout`.
+
+```go
+coils, err := client.ReadCoils(ctx, 1, 0, 8)                         // FC01
+in, err := client.ReadInputRegisters(ctx, 1, 0, 10)                   // FC04
+err = client.WriteCoil(ctx, 1, 8, true)                               // FC05
+err = client.WriteRegister(ctx, 1, 100, 1234)                         // FC06
+err = client.WriteRegisters(ctx, 1, 100, []uint16{10, 255, 65535})    // FC16
+
+di, err := client.ReadAllDeviceIdentification(ctx, 1)                 // FC43/14
+for _, obj := range di.Objects {
+	fmt.Printf("%s = %s\n", obj.Name, obj.Value)
+}
+```
+
+Typed writes use the codec package: `codec.WriteToClient(client, ctx, unitID, addr, value, enc)`. Common layouts are `codec.Layout32_4321` (big-endian, ABCD) and `codec.Layout32_2143` (word-swapped, CDAB), with 16, 48 and 64-bit equivalents. [CODECS.md](https://github.com/otfabric/go-modbus/blob/main/CODECS.md) lists every codec with its stable ID.
+
+The client also covers FC07, FC08 diagnostics, FC11, FC12, FC17, FC20, FC21, FC22 (`MaskWriteRegister`), FC23 (`ReadWriteMultipleRegisters`) and FC24. To find out what a unit supports, `SupportsFunction(ctx, unitID, fc)` probes one read-style function code, and `ProbeFunction` returns a `ProbeResult` with the outcome, exception code and raw payload.
+
+<Aside type="caution" title="Writes reach real equipment">
+`WriteCoil`, `WriteRegister(s)`, `MaskWriteRegister` and some FC08 sub-functions change device state. Test against a [simulator](/docs/protocols/modbus/testing/) first. `WriteCoilRaw` sends a non-standard FC05 payload and is meant only for vendor-specific semantics.
+</Aside>
+
+### SunSpec tier
+
+The `sunspec` subpackage detects the `SunS` marker and enumerates the model chain (model ID and length only). It reads through a one-method `sunspec.Reader` interface, so `*modbus.Client` needs a small adapter:
+
+```go
+type reader struct{ client *modbus.Client }
+
+func (r reader) ReadRawBytes(ctx context.Context, unitID uint8, addr, byteCount uint16, regType sunspec.RegType) ([]byte, error) {
+	return r.client.ReadRegisterBytes(ctx, unitID, addr, byteCount, regType)
+}
+
+result, err := sunspec.Discover(ctx, reader{client}, &sunspec.Options{UnitID: 1, RegType: sunspec.HoldingRegister})
+```
+
+For decoded, scaled SunSpec points, use [go-sunspec](/docs/protocols/sunspec/).
+
+## Server
+
+The server supports `tcp://` and `tcp+tls://` only. You implement `RequestHandler`; the server owns framing, validation and exceptions.
+
+```go
+type handler struct {
+	mu   sync.Mutex
+	regs [65536]uint16
+}
+
+func (h *handler) HandleHoldingRegisters(ctx context.Context, req *modbus.HoldingRegistersRequest) ([]uint16, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if req.IsWrite {
+		for i, v := range req.Args {
+			h.regs[req.Addr+uint16(i)] = v
+		}
+		return nil, nil
+	}
+	out := make([]uint16, req.Quantity)
+	copy(out, h.regs[req.Addr:])
+	return out, nil
+}
+
+func (h *handler) HandleCoils(ctx context.Context, req *modbus.CoilsRequest) ([]bool, error) {
+	return nil, modbus.ErrIllegalDataAddress
+}
+func (h *handler) HandleDiscreteInputs(ctx context.Context, req *modbus.DiscreteInputsRequest) ([]bool, error) {
+	return nil, modbus.ErrIllegalDataAddress
+}
+func (h *handler) HandleInputRegisters(ctx context.Context, req *modbus.InputRegistersRequest) ([]uint16, error) {
+	return nil, modbus.ErrIllegalDataAddress
+}
+
+server, err := modbus.NewServer(&modbus.ServerConfig{URL: "tcp://[::]:5020", MaxClients: 20}, &handler{})
+if err != nil {
+	log.Fatal(err)
+}
+if err := server.Start(); err != nil {
+	log.Fatal(err)
+}
+defer server.Shutdown(context.Background())
+```
+
+- Returning a Modbus sentinel such as `modbus.ErrIllegalDataAddress` sends that exception. Any other error becomes Server Device Failure. Panics are recovered and also answered with Server Device Failure.
+- Each connection runs in its own goroutine, so handlers must be safe for concurrent use.
+- FC07, FC11, FC12, FC22, FC23 and FC43/14 are served only if the handler also implements the optional interface (`ExceptionStatusHandler`, `CommEventCounterHandler`, `CommEventLogHandler`, `MaskWriteHandler`, `ReadWriteHandler`, `DeviceIdentificationHandler`). Otherwise they get Illegal Function. FC08, FC17, FC20, FC21 and FC24 are not served.
+- The server does not filter unit IDs. That is the handler's job (`req.UnitID`).
+- `ServerConfig.Timeout` is the idle session timeout (default 120 s). `MaxClients` defaults to 10.
+- On TLS, `req.ClientRole` carries the role from the client certificate. Check it before serving writes.
+
+## Errors
+
+Errors fall into five categories. Use `errors.Is` and `errors.As`:
+
+| Situation | Reported as |
+|---|---|
+| Bad configuration | `*ConfigurationError` (`ErrConfigurationError`) |
+| Invalid arguments, nothing sent | `*ParameterError` (`ErrUnexpectedParameters`) |
+| Malformed or unexpected response | `*ProtocolError` (`ErrProtocolError`), or `ErrBadCRC`, `ErrBadLRC`, `ErrShortFrame` |
+| Device answered with an exception | `*ExceptionError`, matches `ErrIllegalDataAddress` and the other sentinels |
+| Timeout | `ErrRequestTimedOut` |
+| Connection lost or refused | standard library error (`io.EOF`, `*net.OpError`) |
+
+```go
+_, err := client.ReadRegisters(ctx, 1, 0x9000, 10, modbus.HoldingRegister)
+var exc *modbus.ExceptionError
+switch {
+case errors.As(err, &exc):
+	log.Printf("device exception: fc=0x%02x code=0x%02x", exc.FunctionCode, exc.ExceptionCode)
+case errors.Is(err, modbus.ErrRequestTimedOut):
+	log.Print("timeout")
+case err != nil:
+	log.Print(err)
+}
+```
+
+Treat a protocol error differently from an exception: the first means the link or the peer misbehaved, the second is a well-formed answer from the device.
+
+## Timeouts, retries and concurrency
+
+- **Reconnects.** An open client stays open. On `tcp://` and `tcp+tls://`, a timeout, framing error or transport error closes that connection and the next request dials a new one. A Modbus exception does not. Serial-framed transports and `udp://` keep their link unless it is down.
+- **Retries.** Off by default. `modbus.ExponentialBackoff(base, maxDelay, maxAttempts)` or `modbus.NewExponentialBackoff(cfg)` retry only known transient transport errors. Timeouts are retried only with `RetryOnTimeout: true`. Exceptions and protocol errors are never retried.
+- **Concurrency.** A `*Client` is safe for concurrent use. With `MaxConns` of 0 or 1, requests are serialized on one connection. With `MaxConns > 1` on a poolable transport, requests run in parallel on pooled connections. Serial and TLS always use one connection.
+
+<Aside type="caution" title="Retries and writes">
+Retries apply to writes too. If a write reached the device and the response was lost, a retry delivers it again. Do not enable retries for writes that are not safe to repeat.
+</Aside>
+
+## Logging and metrics
+
+Client logging is off by default. Set `Config.Logger` with `modbus.NewStdLogger`, `modbus.NewSlogLogger`, `modbus.NewSlogFieldLogger` or `modbus.NopLogger()`. Debug level can log raw TX and RX frames, including register values; treat those logs as sensitive. Note that for the server, a nil `ServerConfig.Logger` uses `slog.Default()`.
+
+Metrics are callbacks. Implement `ClientMetrics` (`OnRequest`, `OnResponse`, `OnError`, `OnTimeout`), optionally `AttemptMetrics` for per-attempt and re-dial events, or `ServerMetrics`, and assign it to the `Metrics` field. Callbacks run on the request path and must not block. `client.Info()` returns a snapshot for health checks.
+
+## Limitations
+
+- The server is TCP and TLS only. There is no RTU or ASCII server.
+- FC43 MEI type 13 (CANopen) is not supported.
+- UDP transports are not in the Modbus specification and assume one request and one response per datagram with no loss or reordering. Validate them against your device before relying on them.
+- The `sunspec` subpackage does not decode points or scale factors.
+- The interop suite covers Modbus TCP only. Other transports are covered by the repository's own tests. The library has not been run against certified test equipment.
+
+<LinkCard title="go-modbus on GitHub" href="https://github.com/otfabric/go-modbus" description="Source, API.md, ERRORS.md, OBSERVABILITY.md and CODECS.md." />

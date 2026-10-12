@@ -1,0 +1,152 @@
+---
+title: Testing and interop
+description: How the OT Fabric IEC 60870-5-104 projects are tested, against which reference stacks, and what has and has not been validated.
+sidebar:
+  label: Testing and interop
+  order: 3
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+IEC 60870-5-104 implementations disagree in small ways: a missing type, a refusal without the P/N bit, a timer that cannot be switched off. OT Fabric tests its IEC 104 code in three layers: tests inside each repository, a simulated station for hardware-free work, and an interop suite that runs the library against three independent stacks on every push.
+
+## Simulators
+
+You have two stations to test against without hardware:
+
+| Simulator | Where | Use it for |
+|---|---|---|
+| `iec104ctl server start` | [iec104ctl](/docs/protocols/iec-104/cli/) | Developing a SCADA front end or gateway. A YAML model with simulated values, select-before-operate, queued events, redundant connections, files and TLS |
+| `go run ./examples/server -addr :2404` | [go-iec104](https://github.com/otfabric/go-iec104) | A small station with single and double points, measurements, counters, a commandable switch and spontaneous updates |
+| Reference servers in containers | [iec104-interop](https://github.com/otfabric/iec104-interop) | Checking your code against lib60870-C, j60870 or wendy512/iec104 |
+
+```sh
+# A simulated station for a CI pipeline, stopped after 60 seconds
+iec104ctl server start --config model.yaml --duration 60
+```
+
+## Tests inside the repositories
+
+**go-iec104** needs no hardware and no external process:
+
+```sh
+make check      # format, lint, vet, vulnerability scan, tests, coverage
+make test       # tests with the race detector
+make fuzz       # codec fuzz targets (FUZZTIME=30s each)
+make bench      # codec benchmarks
+```
+
+| Layer | How it is tested |
+|---|---|
+| `apci`, `asdu` | Byte vectors from the standard, round trips over every type identification, error tables, fuzzing |
+| `internal/link` | A scripted peer writing raw APDUs over loopback TCP: windows, each timer, each violation |
+| `client`, `server` | Against each other over loopback TCP, including TLS, reconnect and server restart |
+| `e2e` | Client against server end to end over TCP, TLS and with `k = w = 1`; a wire matrix of all 67 type identifications in every variant; 40,000 frames each way to wrap the 15-bit sequence numbers |
+
+The `e2e` tests execute about 85% of the library's statements. The rest (malformed frames, sequence errors, protocol violations) is covered by the scripted-peer tests of `internal/link` and the codec tests.
+
+**iec104ctl** runs every command through the real command tree against an in-process simulated station (`internal/stationtest`), over TCP and TLS, in all three output formats, with its exit codes. Statement coverage is 94% for v0.1.0, with a floor of 85% enforced by `make coverage`.
+
+## The interop suite
+
+[iec104-interop](https://github.com/otfabric/iec104-interop) packages three independent IEC 104 implementations as container images, each with client and server:
+
+| Adapter | Implementation | Language | Image |
+|---|---|---|---|
+| `lib60870` | MZ Automation lib60870-C v2.4.1 | C | `ghcr.io/otfabric/iec104-interop-lib60870` |
+| `openmuc` | OpenMUC j60870 1.7.2 | Java | `ghcr.io/otfabric/iec104-interop-openmuc` |
+| `wendy512` | wendy512/iec104 v1.0.4 on go-iecp5 v1.2.6 | Go | `ghcr.io/otfabric/iec104-interop-wendy512` |
+
+j60870 stays on 1.7.2 because 1.8.0 drops the connection on any read command (`C_RD_NA_1`). The images run as a non-root user, with base images pinned by digest and upstream sources by commit or exact version.
+
+The repository owns the adapters, a fixture format and a **baseline fixture**: station 1 with twelve points (IOA 100..300), seven commands (IOA 500..510, one with select required) and two files (IOA 30000 and 30001). Every server adapter serves the fixture the same way. It does not contain any library under test; go-iec104 pulls the images and owns its own scenarios and assertions.
+
+### Running it
+
+Needs Docker and `jq`.
+
+<Steps>
+1. Build the images and check the container contract:
+
+   ```sh
+   make images      # build the adapter images for this machine
+   make smoke       # container contract of each image
+   make interop     # every client against every server
+   ```
+
+2. Run one reference server on loopback:
+
+   ```sh
+   make run-lib60870        # 127.0.0.1:2404, baseline fixture, Ctrl-C to stop
+   ```
+
+3. Run a reference client against it:
+
+   ```sh
+   docker run --rm --add-host=host.docker.internal:host-gateway \
+     ghcr.io/otfabric/iec104-interop-openmuc:dev \
+     client interrogate --host host.docker.internal --port 2404 | jq .
+   ```
+</Steps>
+
+Every image has the same commands: `server`, `client <operation>` (`connect`, `interrogate`, `counter-interrogate`, `read`, `clock-sync`, `test-command`, `command`, `monitor`, `file-get`), `print-capabilities` and `print-fixture`. A client prints one JSON result document; a server prints a JSON Lines stream of what it received. Wait for the readiness file, never for a delay:
+
+```sh
+docker run -d --name ref -p 127.0.0.1:2404:2404 ghcr.io/otfabric/iec104-interop-lib60870:<tag> server
+until docker exec ref test -f /run/iec104-interop/ready; do sleep 0.1; done
+```
+
+Pin images by digest for release qualification; the digests are in each release's `manifest.json`.
+
+<Aside type="caution">
+The reference servers are unauthenticated stations that accept commands from anyone, and the clients send commands to whatever address they are given. Never attach a server to a plant network and never point a client at a real station.
+</Aside>
+
+### Capabilities
+
+The stacks do not all support the same. Each image declares what it supports with `print-capabilities`, and test suites skip, rather than fail, what an image lacks. A capability is declared only when the self-tests exercise it.
+
+| | lib60870 | openmuc | wendy512 |
+|---|:---:|:---:|:---:|
+| General and counter interrogation, read, clock sync, test command | yes | yes | yes |
+| Direct commands, select-before-operate, deactivation | yes | yes | yes |
+| Commands with time tag | yes | yes | no |
+| File transfer, server | yes | no | no |
+| File transfer, client | yes | yes | no |
+| STARTDT/STOPDT server events | yes | yes | no |
+| Idle test disabled (`--t3 0`) | yes | no | no |
+| Interrogation groups | no | no | no |
+| TLS | no | no | no |
+
+go-iecp5 drops the time-tagged commands (types 58..63) and `F_SG_NA_1` on reception, and its refusals with causes 44..47 carry no P/N bit. lib60870 and j60870 scale normalized values differently, so the contract exchanges them as the raw 16-bit number.
+
+The cross-stack self-test runs all nine client and server pairings of the three references: 643 checks passed and 62 were skipped for undeclared capabilities.
+
+## What go-iec104 is validated against
+
+go-iec104 v0.0.3 is qualified against iec104-interop v0.2.0, with the images pinned by digest. The interop workflow runs on every push and pull request (`make interop`, about four minutes).
+
+| Reference | go-iec104 client to reference server | Reference client to go-iec104 server |
+|---|---|---|
+| lib60870-C v2.4.1 | pass | pass |
+| j60870 1.7.2 | pass, without file download | pass |
+| wendy512/iec104 v1.0.4 on go-iecp5 v1.2.6 | pass, without time-tagged commands and file transfer | pass, same exclusions |
+
+**go-iec104 as client** is checked for: interrogation, counter interrogation and read value by value against the fixture; every command type with and without time tag, select-before-operate and deactivation; the refusals (unknown type, cause, common address, object); STARTDT/STOPDT cycles; `k = w = 1`; the idle test in both directions; reconnect after a station restart; concurrent sessions; file download; and a redundancy group across two stacks with failover and switchover.
+
+**go-iec104 as server** runs 34 scenarios per reference client, file download among them. Each must have the outcome the standard prescribes, and the client's complete result (every ASDU, in order, field by field) must equal what the same client gets from the reference server of its own stack.
+
+To test against another build, set `IEC104_INTEROP_LIB60870_IMAGE`, `IEC104_INTEROP_OPENMUC_IMAGE` or `IEC104_INTEROP_WENDY512_IMAGE`; to run one stack only, `IEC104_INTEROP_ADAPTERS=lib60870`.
+
+**iec104ctl** v0.1.0 had its client commands run against the three reference servers, and its simulated station driven by their clients: interrogation, counters, read, clock, test command, commands (direct, select-before-operate, cancel, refused) and, with lib60870-C and j60870, file download.
+
+## What has not been validated
+
+- **Certified test equipment and field devices.** None of the projects has been run against them. Interoperability reports are welcome, with the `--debug` trace for iec104ctl.
+- **TLS against another stack.** No reference image supports TLS; it is tested between go-iec104's own client and server only.
+- **Redundancy against another station.** The reference servers send reports only on the commanding connection. Server-side redundancy and the event queue are tested by go-iec104's own tests; the client `Group` is tested across two reference stacks.
+- **File upload and the directory.** No reference image offers them; they are verified by go-iec104's own tests only.
+- **Type identifications outside the fixture.** The interop suite covers `M_SP`, `M_DP`, `M_ST`, `M_BO`, `M_ME_NA/NB/NC`, `M_IT` and their CP56Time2a variants, the six command types, and the system commands. Everything else (protection events, packed points, bitstring commands, parameters) is covered by codec tests only.
+- **Interrogation groups and SQ = 1 answers** are not part of the fixture.
+- **Faults.** The references are correct peers, not fault injectors. Malformed frames, wrong sequence numbers and timer boundaries are tested with go-iec104's scripted peers.
+- **IEC 62351-5.** Not implemented, and no open-source reference has it.

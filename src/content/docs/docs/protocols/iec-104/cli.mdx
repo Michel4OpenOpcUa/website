@@ -1,0 +1,317 @@
+---
+title: iec104ctl
+description: Interrogate, monitor and command IEC 60870-5-104 stations, transfer files, or simulate a station, from the command line.
+sidebar:
+  label: iec104ctl
+  order: 2
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+[iec104ctl](https://github.com/otfabric/iec104ctl) is a command-line tool for IEC 60870-5-104 in both roles. As a controlling station it interrogates an RTU, gateway or IED, watches its events, issues commands and set points (direct or select-before-operate), synchronizes its clock and transfers files. As a controlled station it simulates an RTU from a YAML model. It is built on [go-iec104](/docs/protocols/iec-104/library/). The first release is v0.1.0.
+
+<Aside type="caution" title="Responsible use">
+iec104ctl sends real telecontrol requests. Use it only on stations and networks you own or are authorized to test. A station often accepts few connections and sends its events on only one: connecting to a station in service can take its events away from the control centre.
+</Aside>
+
+## Install
+
+Pre-built binaries for Linux (x86-64, ARM64, ARMv7), macOS (Apple Silicon, Intel) and Windows (x86-64, ARM64) are on [GitHub Releases](https://github.com/otfabric/iec104ctl/releases). Each release has `iec104ctl-<version>-checksums.txt` with SHA-256 sums.
+
+<Tabs>
+  <TabItem label="Linux">
+    ```sh
+    VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/iec104ctl/releases/latest | sed 's|.*/v||')
+    case "$(uname -m)" in
+      x86_64)         ARCH=amd64 ;;
+      aarch64|arm64)  ARCH=arm64 ;;
+      armv7l)         ARCH=armv7 ;;
+      *) echo "Unsupported architecture: $(uname -m)" ;;
+    esac
+
+    FILE="iec104ctl-${VERSION}-linux-${ARCH}.tar.gz"
+    BASE="https://github.com/otfabric/iec104ctl/releases/download/v${VERSION}"
+    curl -fsSLO "${BASE}/${FILE}"
+    curl -fsSLO "${BASE}/iec104ctl-${VERSION}-checksums.txt"
+
+    # should print "OK"
+    grep "${FILE}" "iec104ctl-${VERSION}-checksums.txt" | sha256sum -c -
+
+    mkdir -p iec104ctl-dl && tar -xzf "${FILE}" -C iec104ctl-dl
+    sudo install -m 0755 "$(find iec104ctl-dl -type f -name 'iec104ctl*' | head -n1)" /usr/local/bin/iec104ctl
+    ```
+  </TabItem>
+  <TabItem label="macOS">
+    ```sh
+    VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/iec104ctl/releases/latest | sed 's|.*/v||')
+    case "$(uname -m)" in
+      arm64)   ARCH=arm64 ;;
+      x86_64)  ARCH=amd64 ;;
+    esac
+
+    FILE="iec104ctl-${VERSION}-darwin-${ARCH}.tar.gz"
+    BASE="https://github.com/otfabric/iec104ctl/releases/download/v${VERSION}"
+    curl -fsSLO "${BASE}/${FILE}"
+    curl -fsSLO "${BASE}/iec104ctl-${VERSION}-checksums.txt"
+
+    # should print "OK"
+    grep "${FILE}" "iec104ctl-${VERSION}-checksums.txt" | shasum -a 256 -c -
+
+    mkdir -p iec104ctl-dl && tar -xzf "${FILE}" -C iec104ctl-dl
+    sudo install -m 0755 "$(find iec104ctl-dl -type f -name 'iec104ctl*' | head -n1)" /usr/local/bin/iec104ctl
+    ```
+  </TabItem>
+  <TabItem label="Go">
+    Requires Go 1.25 or later:
+
+    ```sh
+    go install github.com/otfabric/iec104ctl@latest
+    ```
+  </TabItem>
+</Tabs>
+
+The README also has a PowerShell script for Windows. Check the install with `iec104ctl version`.
+
+## Try it without a station
+
+<Steps>
+1. Start the built-in demo station in one terminal:
+
+   ```sh
+   iec104ctl server start
+   ```
+
+2. Interrogate it from another:
+
+   ```sh
+   iec104ctl client interrogate --ip 127.0.0.1 --ca 1
+   ```
+
+3. Watch its events until Ctrl-C:
+
+   ```sh
+   iec104ctl client monitor --ip 127.0.0.1 --interrogate
+   ```
+</Steps>
+
+## Connecting
+
+Every `client` command takes the station as a URL, or as an address and port. The two styles are mutually exclusive.
+
+| Flags | Connects to |
+|---|---|
+| `--url tcp://host[:port]` | IEC 104 over TCP; port 2404 when omitted |
+| `--url tls://host[:port]` | IEC 104 over TLS (IEC 62351-3); port 19998 when omitted |
+| `--ip host [--port n]` | TCP on port 2404 or `n`; TLS when a `--tls...` flag is given |
+
+`--ca` is the common address (default 1). `--timeout` bounds connecting and each request, in milliseconds (default 10000). `--originator` sets the originator address.
+
+| TLS flag | Meaning |
+|---|---|
+| `--tls` | Use TLS with `--ip` |
+| `--tls-ca` | PEM file with the CA certificates to verify the station; system roots by default |
+| `--tls-cert`, `--tls-key` | Client certificate and key, for mutual authentication |
+| `--tls-server-name` | Name to verify the certificate against |
+| `--tls-insecure` | Do not verify the station's certificate. Test setups only |
+
+```sh
+iec104ctl client interrogate --url tls://rtu.example.net --tls-ca ca.pem --tls-cert scada.pem --tls-key scada.key
+```
+
+Protocol parameters default to the standard: `--k` 12, `--w` 8, `--t0` 30, `--t1` 15, `--t2` 10, `--t3` 20 (seconds). A station behind an IEC 60870-5-101 gateway may use shorter address fields: `--cot-size` (1 or 2), `--ca-size` (1 or 2) and `--ioa-size` (1 to 3). If every value looks scrambled, or the station closes the connection on the first request, check these first. `--timezone` (`utc`, `local` or an IANA name such as `Europe/Brussels`) says which zone the station keeps its clock in.
+
+## Command tree
+
+```text
+iec104ctl
+├── client
+│   ├── interrogate      General or group interrogation (C_IC_NA_1)
+│   ├── counters         Counter interrogation (C_CI_NA_1)
+│   ├── read             Read information objects (C_RD_NA_1)
+│   ├── monitor          Print every value the station sends, until interrupted
+│   ├── command          Process command: single, double, step, set point, bitstring
+│   ├── clock            Clock synchronization (C_CS_NA_1)
+│   ├── reset            Reset process command (C_RP_NA_1)
+│   ├── ping             Test frames (TESTFR) or test commands (C_TS_TA_1)
+│   ├── scan             Find the stations (common addresses) behind a connection
+│   ├── file
+│   │   ├── list         List the file directory
+│   │   ├── get          Fetch a file
+│   │   └── put          Deliver a file
+│   └── types            List the ASDU type identifications
+├── server
+│   ├── start            Serve a simulated station from a model (or the built-in demo)
+│   └── generate-config  Write an example station model
+├── discover             Find IEC 60870-5-104 stations on subnets
+├── completion           Generate shell completion script
+└── version              Print version
+```
+
+## Read-only commands
+
+Start here. These ask, they do not change the station. They still connect and start data transfer, so your connection may take the station's events while it is open.
+
+```sh
+# General interrogation, then group 3 only, then filtered
+iec104ctl client interrogate --ip 192.168.1.10 --ca 1
+iec104ctl client interrogate --ip 192.168.1.10 --group 3
+iec104ctl client interrogate --ip 192.168.1.10 --type M_SP_NA_1,M_ME_NC_1 --ioa 100-1999
+
+# Counters (integrated totals are not part of an interrogation)
+iec104ctl client counters --ip 192.168.1.10
+
+# Read single objects (one C_RD_NA_1 per address)
+iec104ctl client read --ip 192.168.1.10 --ioa 100,1000-1003 --format table
+
+# Stream events, starting with a general interrogation
+iec104ctl client monitor --ip 192.168.1.10 --interrogate
+
+# Link test with round-trip times
+iec104ctl client ping --ip 192.168.1.10
+```
+
+`--type` and `--ioa` filter what is shown; the station is always asked for everything. In `monitor`, the first column is when a value arrived and the time after `@` is the station's time tag:
+
+```text
+2026-10-10T09:15:17.676Z  M_DP_TB_1  ca=1   ioa=200      off               [good]   return-remote  @ 2026-10-10T09:15:17.666Z
+2026-10-10T09:15:19.286Z  M_ME_TF_1  ca=1   ioa=1000     230.20906         [good]   spontaneous  @ 2026-10-10T09:15:19.285Z
+```
+
+`client ping --method testfr` (default) sends the link test frame and changes nothing; `--method command` sends `C_TS_TA_1`. Add the global `--debug` flag to any command to trace every frame, decoded and in hex, on stderr.
+
+### Finding stations
+
+```sh
+iec104ctl discover --subnets 192.168.1.0/24
+iec104ctl client scan --ip 192.168.1.10
+iec104ctl client scan --ip 192.168.1.10 --method sweep --start 1 --end 50 --timeout 1000
+```
+
+`discover` opens a TCP connection to each address and sends one test frame; it does not start data transfer. More than 4096 hosts need `--force-large-scan`. `client scan` finds the common addresses behind one connection, by one interrogation to the broadcast address or by a sweep; either makes every station found send its whole process image.
+
+## Commands that change a station
+
+<Aside type="caution">
+`client command` opens and closes breakers, moves tap changers and changes set points. `client clock`, `client reset`, `client counters` with a freeze or reset, and `client file put` change the station too. Know what an address controls before you send to it. Practise against `iec104ctl server start` first.
+</Aside>
+
+```sh
+# Single command, direct execute
+iec104ctl client command --ip 192.168.1.10 --type single --ioa 5000 --value on
+
+# Double command with select-before-operate and a short pulse
+iec104ctl client command --ip 192.168.1.10 --type double --ioa 5001 --value off --mode sbo --qualifier short
+
+# Floating point set point
+iec104ctl client command --ip 192.168.1.10 --type setpoint-float --ioa 5003 --value 231.5
+
+# With a time tag (C_SC_TA_1), waiting up to 5 s for the activation termination
+iec104ctl client command --ip 192.168.1.10 --type single --ioa 5000 --value on --time-tag --wait-termination 5000
+```
+
+| `--type` | Type identification | `--value` |
+|---|---|---|
+| `single` | `C_SC_NA_1` | `on`, `off` |
+| `double` | `C_DC_NA_1` | `on`, `off` |
+| `step` | `C_RC_NA_1` | `higher`, `lower` |
+| `setpoint-normalized` | `C_SE_NA_1` | -1 ... < 1 |
+| `setpoint-scaled` | `C_SE_NB_1` | -32768 ... 32767 |
+| `setpoint-float` | `C_SE_NC_1` | any number |
+| `bitstring` | `C_BO_NA_1` | 0 ... 4294967295, or `0x` hex |
+
+| `--mode` | Procedure |
+|---|---|
+| `execute` | Direct execute (default) |
+| `sbo` | Select, and when the station has confirmed it, execute |
+| `select` | Select only, to see whether the station accepts it |
+| `cancel` | Select, then deactivate the selection |
+
+A selection belongs to the connection that made it and ends with it, so `select` and `cancel` operate nothing. `--qualifier` is `none`, `short`, `long` or `persistent` for switching commands, or the QL number 0-127 for set points. Parameter commands (`P_ME_...`, `P_AC_NA_1`) are not offered.
+
+The safety model:
+
+- Everything is validated before anything is sent. A rejected invocation exits 3 and has sent nothing.
+- A command is sent **exactly once**. It is never repeated, also not when its confirmation does not arrive (exit 5).
+- A refusal by the station exits 6, and the message says which step was refused.
+- `client reset` has no default for `--qualifier` (`process` or `events`).
+- There is no dry-run flag; the simulated station is the place to rehearse.
+
+```sh
+iec104ctl client clock --ip 192.168.1.10 --timezone Europe/Brussels
+iec104ctl client counters --ip 192.168.1.10 --freeze freeze
+iec104ctl client file get --ip 192.168.1.10 --ioa 30000 --name 1 --output record.bin
+```
+
+## Output and exit codes
+
+`--format text` (default), `json` or `table` controls only the result on stdout. Progress, connection state, summaries and the debug trace go to stderr. Streams (`client monitor`, `client ping`, `server start`) write JSON Lines. The JSON field names are a stable contract (`ca`, `ioa`, `type`, `type_id`, `cause`, `cot`, `value`, `quality`, `timestamp`). On failure with `--format json` a single object `{"error": {"kind", "code", "message"}}` is written to stdout.
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 2 | Usage: unknown command or flag, missing required flag |
+| 3 | Invalid input: nothing was sent |
+| 4 | Transport: cannot connect, connection lost, TLS failure |
+| 5 | Timeout: no answer, or no acknowledgement within t1 |
+| 6 | The station refused the request, or a protocol error |
+| 7 | Partial success: a valid result that holds failures (a refused address in `read`, a failed test in `ping`) |
+| 10 | Output or internal error |
+
+## Environment variables
+
+Every flag has an `IEC104CTL_*` variable; a flag on the command line wins. Required flags (`--ioa` of `client read`, `--type` and `--value` of `client command`, `--qualifier` of `client reset`) must still be given on the command line, and `--debug` has no variable.
+
+```sh
+export IEC104CTL_URL=tcp://192.168.1.10:2404
+export IEC104CTL_CA=1
+iec104ctl client interrogate
+iec104ctl client read --ioa 1000
+```
+
+## Simulated station
+
+`server start` serves a controlled station from a YAML or JSON model, or the built-in demo.
+
+```sh
+iec104ctl server generate-config --output station.yaml
+iec104ctl server start --config station.yaml --listen 127.0.0.1 --port 12404 --format json
+```
+
+```yaml
+station:
+  name: Demo bay
+  common_address: 1
+  cyclic_interval: 30s
+
+points:
+  - {ioa: 100, type: M_SP_NA_1, name: Circuit breaker closed, value: true, group: 1}
+  - ioa: 1000
+    type: M_ME_NC_1
+    name: Voltage L1 (kV)
+    value: 230.4
+    simulate: {mode: sine, interval: 2s, min: 228, max: 232}
+  - {ioa: 2000, type: M_IT_NA_1, name: Energy counter (kWh), value: 123456}
+
+commands:
+  - {ioa: 5000, type: C_SC_NA_1, name: Circuit breaker, target: 100}
+  - {ioa: 5001, type: C_DC_NA_1, name: Disconnector, target: 200, select_required: true}
+
+files:
+  - {ioa: 30000, name: 1, size: 4096}
+
+uploads:
+  accept: true
+```
+
+The station answers general, group and counter interrogations, read, clock synchronization, the test command and the reset process command. It executes commands on their `target` point, direct or select-before-operate (`select_required`, `select_timeout` default 30 s), and reports the change with cause 11. Values with `simulate` change by themselves (`toggle`, `ramp`, `sine`, `random`, `count`). State changes are queued until a controlling station acknowledges them; measured values are not kept. It serves any number of connections, and queued events go to the one that started data transfer last. It serves one common address per instance.
+
+<Aside type="caution">
+`server start` listens on all interfaces and accepts any client by default. Use `--listen`, `--allow` (addresses or CIDR prefixes) and `--max-sessions`, or TLS with `--tls-cert`, `--tls-key` and `--tls-client-ca`. `--duration` stops it after a number of seconds, for test pipelines.
+</Aside>
+
+## Limitations
+
+- IEC 62351-5 application-layer authentication is not implemented; its types are recognized by name only.
+- No serial link layer: IEC 60870-5-101 is not spoken, only its field sizes over IEC 104.
+- The simulated station serves one common address per instance.
+- No parameter commands in `client command`.

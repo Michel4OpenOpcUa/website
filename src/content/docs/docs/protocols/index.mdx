@@ -1,0 +1,23 @@
+---
+title: Protocol documentation
+description: In-depth guides for every protocol OT Fabric supports, covering how it works, the Go library, the CLI and interop testing.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+Each protocol has four guides. The **overview** explains how the protocol works on the wire and which OT Fabric projects implement it. The **Go library** guide covers installing, connecting, reading, writing and error handling. The **CLI** guide walks through the command-line tool. **Testing and interop** shows how each implementation is checked against independent reference stacks.
+
+For a shorter introduction to a protocol, start with its page in the [protocol overview](/protocols/).
+
+<CardGrid>
+  <LinkCard title="Modbus" description="TCP, RTU, ASCII, TLS and UDP. go-modbus, modbusctl, modbus-simulator." href="/docs/protocols/modbus/" />
+  <LinkCard title="SunSpec" description="Standard information models for solar and storage devices over Modbus. go-sunspec." href="/docs/protocols/sunspec/" />
+  <LinkCard title="OPC UA" description="Secure, object-oriented data access for industrial automation. go-opcua, opcuactl." href="/docs/protocols/opc-ua/" />
+  <LinkCard title="BACnet/IP" description="Building automation over UDP. go-bacnet, bacnetctl." href="/docs/protocols/bacnet/" />
+  <LinkCard title="IEC 60870-5-104" description="Telecontrol for power grids over TCP. go-iec104, iec104ctl." href="/docs/protocols/iec-104/" />
+  <LinkCard title="IEC 61850 / MMS" description="Substation automation data models over MMS. go-iec61850, go-mms, iec61850ctl." href="/docs/protocols/iec-61850/" />
+  <LinkCard title="Siemens S7" description="S7comm over ISO-on-TCP for S7 PLCs. go-s7comm, s7commctl." href="/docs/protocols/s7/" />
+</CardGrid>

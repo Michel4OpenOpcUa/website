@@ -1,0 +1,260 @@
+---
+title: opcuactl
+description: Install and use opcuactl, the OPC UA command-line client, to discover, browse, read, write, monitor and export over secured connections.
+sidebar:
+  label: opcuactl
+  order: 2
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+[opcuactl](https://github.com/otfabric/opcuactl) is a single-binary OPC UA client for the terminal, built on [go-opcua](https://github.com/otfabric/go-opcua). It discovers servers and endpoints, browses and searches the address space, reads and writes values, calls methods, monitors data changes, events and alarms, reads history and exports subtrees. Every command prints a table, JSON, YAML, CSV or JSON Lines and reports failures through stable exit codes. This page describes v0.3.0, which is built on go-opcua v1.6.0.
+
+<Aside type="caution" title="Responsible use">
+opcuactl talks to real control systems. Use it only on servers and networks you own or are authorized to test. `write value` changes process values and `call method` runs server-side logic. Subscriptions and large browse or export runs add load to servers with limited sessions.
+</Aside>
+
+## Install
+
+Pre-built binaries for Linux (x86-64, ARM64, ARMv7), macOS (Apple Silicon, Intel) and Windows (x86-64, ARM64) are on [GitHub Releases](https://github.com/otfabric/opcuactl/releases). Each release has an `opcuactl-<version>-checksums.txt` file with SHA-256 sums.
+
+<Tabs>
+  <TabItem label="Linux">
+    ```sh
+    VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/opcuactl/releases/latest | sed 's|.*/v||')
+    case "$(uname -m)" in
+      x86_64)         ARCH=amd64 ;;
+      aarch64|arm64)  ARCH=arm64 ;;
+      armv7l)         ARCH=armv7 ;;
+      *) echo "Unsupported architecture: $(uname -m)" ;;
+    esac
+
+    FILE="opcuactl-${VERSION}-linux-${ARCH}.tar.gz"
+    BASE="https://github.com/otfabric/opcuactl/releases/download/v${VERSION}"
+    curl -fsSLO "${BASE}/${FILE}"
+    curl -fsSLO "${BASE}/opcuactl-${VERSION}-checksums.txt"
+
+    # Should print "OK"
+    grep "${FILE}" "opcuactl-${VERSION}-checksums.txt" | sha256sum -c -
+
+    mkdir -p opcuactl-dl && tar -xzf "${FILE}" -C opcuactl-dl
+    sudo install -m 0755 "$(find opcuactl-dl -type f -name 'opcuactl*' | head -n1)" /usr/local/bin/opcuactl
+    ```
+  </TabItem>
+  <TabItem label="macOS">
+    Use the Linux commands with `darwin` in the file name, `arm64` or `amd64` as the architecture, and `shasum -a 256 -c -` to verify. If the binary was downloaded with a browser and macOS refuses to run it, remove the quarantine flag with `xattr -d com.apple.quarantine /usr/local/bin/opcuactl`.
+  </TabItem>
+  <TabItem label="Go install">
+    ```sh
+    go install github.com/otfabric/opcuactl@latest
+    ```
+    Requires Go 1.26 or later. `opcuactl version` reports `dev` for builds made this way.
+  </TabItem>
+</Tabs>
+
+Windows users download the `.zip` for their architecture, compare its `Get-FileHash -Algorithm SHA256` with the checksum file and put `opcuactl.exe` on the `PATH`; the opcuactl README has a complete PowerShell script. Check the install with `opcuactl version`. `opcuactl completion bash|zsh|fish|powershell` prints a shell completion script.
+
+## Command tree
+
+```text
+opcuactl
+├── discover   servers | lds | endpoints
+├── browse     children | refs | tree | path
+├── find       namespace | node | type
+├── get        value | node | attr | vars | server
+├── write      value
+├── call       method
+├── monitor    value | event | alarm
+├── history    value | event
+├── export     nodes | values
+├── ping
+├── version
+└── completion
+```
+
+## Connecting
+
+Every networked command takes the same connection flags. Settings can also come from `OPCUACTL_*` environment variables, which apply when the flag is not given.
+
+| Flag | Environment variable | Purpose |
+|---|---|---|
+| `-e, --endpoint` | `OPCUACTL_ENDPOINT` | Server endpoint, e.g. `opc.tcp://host:4840` |
+| `--security-policy` | `OPCUACTL_SECURITY_POLICY` | `None`, `Basic256Sha256`, `ECC_nistP256`, ..., or `auto` |
+| `--security-mode` | `OPCUACTL_SECURITY_MODE` | `None`, `Sign`, `SignAndEncrypt` or `auto` |
+| `--auth` | `OPCUACTL_AUTH` | `anonymous`, `username`, `certificate`, `issued` |
+| `--username`, `--password` | `OPCUACTL_USERNAME`, `OPCUACTL_PASSWORD` | Username token |
+| `--token`, `--token-file` | `OPCUACTL_TOKEN`, `OPCUACTL_TOKEN_FILE` | Issued token (raw or base64) |
+| `--auth-policy-id` | `OPCUACTL_AUTH_POLICY_ID` | User token PolicyId (normally filled in by `auto`) |
+| `--cert`, `--key` | `OPCUACTL_CERT`, `OPCUACTL_KEY` | Client certificate (RSA, ECDSA or Ed25519) and key |
+| `--server-cert` | `OPCUACTL_SERVER_CERT` | Server certificate; skips the endpoint lookup for an explicit policy |
+| `--trusted-cert` | `OPCUACTL_TRUSTED_CERT` | Trusted CA or self-signed certificate (repeatable; env is comma-separated) |
+| `--insecure-skip-verify` | none | Skip server certificate verification (insecure) |
+| `--reverse-listen` | `OPCUACTL_REVERSE_LISTEN` | Listen on `host:port` and wait for the server to connect |
+| `--reverse-server-uri` | `OPCUACTL_REVERSE_SERVER_URI` | Accept only the server announcing this ApplicationUri |
+| `--timeout` | `OPCUACTL_TIMEOUT` | Dial, request and connect timeout; reverse connect wait (default `10s`) |
+| `--namespace` | `OPCUACTL_NAMESPACE` | Default namespace index for node IDs |
+
+NodeIDs use the standard forms `i=2258`, `"ns=2;i=1001"`, `"ns=2;s=Temperature"`, GUID (`g=`) and opaque (`b=`). Quote anything with a semicolon, or the shell splits the command. Well-known names such as `CurrentTime`, `ServerStatus` and `Server` also work as `-n` values.
+
+## Security
+
+opcuactl has the same client security options as go-opcua.
+
+| Concern | How to set it |
+|---|---|
+| Channel protection | `--security-policy` and `--security-mode`, or `auto` for both |
+| Client application certificate | `--cert` and `--key` (required for Sign and SignAndEncrypt) |
+| Trusting the server | `--trusted-cert` (repeatable), `--server-cert`, or `--insecure-skip-verify` for development only |
+| User identity | `--auth anonymous\|username\|certificate\|issued` |
+
+The key type of `--cert` decides which policies you can use. `auto`, and `discover endpoints --best --cert ...`, only consider endpoints that fit the certificate: a server that offers both gets an ECC channel from a client with an ECC certificate and an RSA channel otherwise. `auto` also fills in the remote certificate and the user token PolicyId from the endpoint. With an explicit secure policy, opcuactl looks up the server certificate from the matching endpoint (one GetEndpoints round trip) unless you pass `--server-cert`.
+
+<Steps>
+
+1. **See what the server offers.**
+
+    ```sh
+    opcuactl discover endpoints -e opc.tcp://host:4840 --best -v
+    ```
+
+2. **Connect with auto-selection, a client certificate and a trusted CA.**
+
+    ```sh
+    opcuactl get value -e opc.tcp://host:4840 -n i=2258 \
+      --auth username --username operator --password "$OPCUACTL_PASSWORD" \
+      --security-policy auto --security-mode auto \
+      --cert client.pem --key client.key \
+      --trusted-cert server-ca.pem
+    ```
+
+3. **If the server rejects your certificate**, move it from the server's rejected store to its trusted store, and check its ApplicationUri and validity.
+
+</Steps>
+
+Other identities, from the README:
+
+```sh
+# ECC: an ECDSA P-256 certificate over an authenticated-encryption policy
+opcuactl get value -e opc.tcp://host:4840 -n i=2258 \
+  --security-policy ECC_nistP256_AesGcm --security-mode SignAndEncrypt \
+  --cert client-ecc.pem --key client-ecc.key \
+  --trusted-cert server-ca.pem
+
+# X.509 user identity (same certificate for channel and user token)
+opcuactl get value -e opc.tcp://host:4840 -n i=2258 \
+  --auth certificate --cert client.pem --key client.key \
+  --security-policy auto --security-mode auto \
+  --trusted-cert server-ca.pem
+
+# Issued token (JWT, SAML or opaque, depending on the server policy)
+opcuactl get value -e opc.tcp://host:4840 -n i=2258 \
+  --auth issued --token-file ./token.jwt \
+  --security-policy auto --security-mode auto \
+  --cert client.pem --key client.key
+```
+
+Keep secrets in environment variables rather than flags: command-line arguments can appear in process listings and shell history. Keep private keys at `chmod 600`. Never send a username over a `None/None` channel. A `BadSecurityPolicyRejected` or "no endpoint" error with an ECC policy usually means the key type does not fit: `ECC_nistP256*` needs ECDSA P-256, `ECC_nistP384` P-384 (or P-256), `ECC_curve25519` Ed25519. An opaque BadIdentityToken error is often fixed by `auto`, which takes the right PolicyId from the endpoint.
+
+**Reverse connect.** Configure the server with the address opcuactl listens on, then add `--reverse-listen` to any command. `--endpoint` becomes optional. The ReverseHello is not authenticated, so use a secure mode and validate the server certificate on untrusted networks.
+
+```sh
+opcuactl get value --reverse-listen 0.0.0.0:4841 --timeout 60s -n i=2258 \
+  --reverse-server-uri urn:plant1:plc7
+```
+
+## Most useful commands
+
+Start read-only. For an unknown server:
+
+```sh
+CONN=(-e opc.tcp://your-server:4840 --auth anonymous --security-mode None --security-policy None)
+
+opcuactl ping "${CONN[@]}" -v                 # TCP, secure channel + session, browse
+opcuactl discover endpoints "${CONN[@]}" --best
+opcuactl get server "${CONN[@]}"
+opcuactl find namespace "${CONN[@]}"
+opcuactl browse tree "${CONN[@]}" --depth 2
+```
+
+Find and read a variable:
+
+```sh
+opcuactl find node "${CONN[@]}" --display-name Temperature
+opcuactl browse path "${CONN[@]}" --path Server.ServerStatus
+opcuactl get value "${CONN[@]}" -n "ns=2;s=Temperature" --timestamps
+opcuactl get value "${CONN[@]}" -n "ns=2;s=ArrayNode" --index-range "0:2"
+opcuactl get node "${CONN[@]}" -n "ns=2;s=Temperature" --full
+opcuactl get vars "${CONN[@]}" -n "ns=3;s=PLC" --recursive --paths
+```
+
+Monitor changes and events:
+
+```sh
+opcuactl monitor value "${CONN[@]}" -n "ns=2;s=Temperature" \
+  --interval 1s --sampling 100ms --queue-size 10 --jsonl --duration 60s
+
+opcuactl monitor value "${CONN[@]}" -n "ns=2;s=Temperature" \
+  --deadband-type absolute --deadband 0.5
+
+opcuactl monitor event "${CONN[@]}" -n i=2253 \
+  --of-type i=2041 --severity-min 500 --severity-max 1000 \
+  --select EventType --select Message --select Severity
+```
+
+`--interval` is the publishing interval (default `100ms`), `--sampling` the server's sampling interval, `--queue-size` (default `10`) and `--discard-oldest` the queue. `--trigger status|status-value|status-value-timestamp` and `--deadband-type none|absolute|percent` set a DataChangeFilter; a percent deadband needs an `EURange` property. `--count` stops after N samples. Queue overflow shows as `[OVERFLOW]` in tables and `"overflow": true` in JSON.
+
+History and export:
+
+```sh
+opcuactl history value "${CONN[@]}" -n "ns=2;s=Temperature" \
+  --start 2026-03-10T00:00:00Z --end 2026-03-11T00:00:00Z \
+  --mode processed --interval 1h --aggregate average
+
+opcuactl export values "${CONN[@]}" --start-node "ns=2;i=1" --depth 2 \
+  -f csv --output subtree-values.csv
+```
+
+History modes are `raw` (default), `modified`, `processed` and `attime` (repeatable `--at`); `--aggregate` accepts `average`, `min`, `max` and `count`.
+
+## Writes and method calls
+
+<Aside type="caution" title="Writes reach live equipment">
+Run `--dry-run` first. It reads the node's display name, data type, access level and current value and shows what would be written, without writing. Without `--yes`, `write value` asks for confirmation.
+</Aside>
+
+```sh
+# Validate only
+opcuactl write value "${CONN[@]}" -n "ns=2;s=Setpoint" --value 42.5 --type double --dry-run
+
+# Write with a confirmation prompt, then verify
+opcuactl write value "${CONN[@]}" -n "ns=2;s=Setpoint" --value 42.5 --type double
+opcuactl get value "${CONN[@]}" -n "ns=2;s=Setpoint"
+```
+
+`--type` accepts `bool`, `int16`, `uint16`, `int32`, `uint32`, `int64`, `uint64`, `float`, `double`, `string`, `bytes` (base64), `datetime`, `guid`, `nodeid`, `json`, and `ua-json` or `ua-xml` for any data type as an OPC UA JSON or XML Variant. `--yes` skips the prompt for scripts.
+
+Inspect a method before calling it:
+
+```sh
+opcuactl call method "${CONN[@]}" --object "ns=2;i=1" --method "ns=2;i=2" --introspect
+opcuactl call method "${CONN[@]}" --object "ns=2;i=1" --method "ns=2;i=2" \
+  --arg 42 --arg hello --types int32,string
+```
+
+## Output and exit codes
+
+`-f, --format` selects `table` (default), `json`, `yaml`, `csv` or `jsonl`; `--pretty` indents JSON and YAML; `-q, --quiet` prints only the primary value; `-v` writes diagnostics to stderr. Data goes to stdout and errors to stderr. `get value --ua-encoding json|json-verbose|json-reversible|json-nonreversible|xml` prints the DataValue in the OPC UA Part 6 encoding for exchange with other stacks.
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | Usage or validation error |
+| `2` | Connection or transport failure |
+| `3` | OPC UA service or status-code failure |
+| `4` | Partial success (batch and export operations) |
+
+`monitor value` exits with code 3 when the server rejected every monitored item; rejected items are reported on stderr while the others keep running.
+
+## Simulation
+
+opcuactl is a client only; it has no server or simulation mode. To practise, run a go-opcua server (the library's `examples/server/*_server` programs) or an opcua-interop reference server, as described in [Testing and interop](/docs/protocols/opc-ua/testing/).

@@ -1,0 +1,313 @@
+---
+title: Go library
+description: Connect to Siemens S7 PLCs from Go with go-s7comm, read and write memory areas, inspect CPUs and blocks, and handle structured read results.
+sidebar:
+  label: Go library
+  order: 1
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+[go-s7comm](https://github.com/otfabric/go-s7comm) is a pure Go S7comm client. It needs no cgo and no Snap7 library. It covers:
+
+- connection setup over TCP, COTP Class 0 and S7 Setup Communication
+- reads and writes for data blocks (DB), inputs, outputs and markers, with a structured `ReadResult`
+- native single-bit reads and writes using the S7 BIT transport size, not a byte read-modify-write
+- SZL-based identification, CPU state, protection level and the diagnostic buffer
+- block listing, block metadata and block upload
+- discovery over CIDR ranges, rack/slot probing, readable range scans and compare reads
+- low-level PDU encoding and parsing in the `wire` package
+
+It is a client only. There is no S7 server in the library. For a server to test against, see [Testing and interop](/docs/protocols/s7/testing/).
+
+## Install
+
+```sh
+go get github.com/otfabric/go-s7comm
+```
+
+go-s7comm requires Go 1.23 or later. The module has three packages you import:
+
+| Package | Purpose |
+|---|---|
+| `client` | High-level operations: connect, read, write, discovery, probing, SZL, blocks |
+| `model` | Areas, addresses, device and connection info, value encoders and decoders |
+| `wire` | S7 PDU encoding and parsing, TSAP helpers, frame inspection |
+
+The transport stack is `client` → [go-cotp](https://github.com/otfabric/go-cotp) (Class 0 transport service) → [go-tpkt](https://github.com/otfabric/go-tpkt) (RFC 1006 framing). go-cotp owns go-tpkt, so go-s7comm does not import go-tpkt directly.
+
+## Connect and read
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/otfabric/go-s7comm/client"
+)
+
+func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	c := client.New("192.168.0.10", client.WithRackSlot(0, 1))
+	if err := c.Connect(ctx); err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = c.Close() }()
+
+	result, err := c.ReadDB(ctx, 1, 0, 16)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := result.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("DB1.DBB0..15 = % X\n", result.Data)
+}
+```
+
+`Connect` dials TCP, runs the COTP handshake with two-byte TSAP selectors, and performs Setup Communication. After it returns, `c.PDUSize()` gives the negotiated PDU size and `c.ConnectionInfo()` gives the host, port, TSAPs, rack, slot and AMQ values in use.
+
+### Client options
+
+| Option | Default | Purpose |
+|---|---|---|
+| `WithPort(port)` | 102 | TCP port |
+| `WithRackSlot(rack, slot)` | 0 / 1 | Rack and slot, packed into the remote TSAP |
+| `WithTSAP(local, remote)` | | Explicit local and remote TSAPs; skips rack/slot packing |
+| `WithAutoRackSlot(brute)` | | Try common rack/slot pairs, or a brute-force range when `brute` is true |
+| `WithTimeout(d)` | 5s | Bounds `Connect` and the dial. It does not bound later requests. |
+| `WithMaxPDU(size)` | 480 | PDU size offered in Setup Communication |
+| `WithRateLimit(d)` | | Minimum delay between requests |
+| `WithLogger(l)` | nil (silent) | Logger; see [Logging](#logging) |
+
+<Aside>
+The default slot is 1. Many S7-300 CPUs sit in slot 2, and the snap7-interop test servers use rack 0, slot 2. If you do not know the right pair, run `ProbeRackSlots` or `s7commctl probe rackslot` first.
+</Aside>
+
+## Reading memory
+
+The byte read methods return `(*ReadResult, error)`:
+
+```go
+func (c *Client) ReadArea(ctx context.Context, addr model.Address) (*ReadResult, error)
+func (c *Client) ReadDB(ctx context.Context, dbNum, offset, size int) (*ReadResult, error)
+func (c *Client) ReadInputs(ctx context.Context, offset, size int) (*ReadResult, error)
+func (c *Client) ReadOutputs(ctx context.Context, offset, size int) (*ReadResult, error)
+func (c *Client) ReadMerkers(ctx context.Context, offset, size int) (*ReadResult, error)
+```
+
+`ReadArea` takes a `model.Address` with an `Area` (`model.AreaDB`, `AreaInputs`, `AreaOutputs`, `AreaMerkers`, `AreaCounter` or `AreaTimer`), a `DBNumber` for data blocks, a byte `Start` and a byte `Size`. It splits a read that is larger than the negotiated PDU into several requests.
+
+The top-level `error` reports only invalid input. Everything that happens on the wire is in the result:
+
+| `ReadResult.Status` | Meaning |
+|---|---|
+| `success` | Returned length equals the requested length |
+| `short-read` | Fewer bytes than requested, but more than zero |
+| `empty-read` | Zero bytes returned |
+| `rejected` | The PLC refused the item or job; `ReturnCode` holds the item return code |
+| `timeout` | Context or network timeout |
+| `transport-error` | Connection, send or receive failure, including not connected |
+| `protocol-error` | COTP or S7 parse error, PDU size or framing error |
+
+Short and empty reads are never reported as success. `result.Err()` returns nil only for `success`. Treat `Status` and `ReturnCode` as the stable contract; `Message` is descriptive text.
+
+### Decoding values
+
+S7 values are big-endian. The `model` package has encoders and decoders for the common types:
+
+```go
+import "github.com/otfabric/go-s7comm/model"
+
+res, err := c.ReadDB(ctx, 1, 0, 10)
+if err != nil {
+	return err
+}
+if err := res.Err(); err != nil {
+	return err
+}
+
+speed := model.DecodeInt(res.Data[0:2])    // INT, int16
+count := model.DecodeDInt(res.Data[2:6])   // DINT, int32
+level := model.DecodeReal(res.Data[6:10])  // REAL, float32
+```
+
+Also available: `DecodeBool(data, bit)`, `DecodeByte`, `DecodeWord`, `DecodeDWord`, `DecodeString`, and the matching `Encode*` functions. `EncodeString(val, maxLen)` writes the S7 string layout (maximum length and current length bytes, then the characters).
+
+## Writing memory
+
+<Aside type="caution">
+Writes change the memory of a running PLC and can change the process it controls. Test against a simulator first, and only write to equipment you are authorized to change.
+</Aside>
+
+```go
+func (c *Client) WriteArea(ctx context.Context, addr model.Address, data []byte) error
+func (c *Client) WriteDB(ctx context.Context, dbNum, offset int, data []byte) error
+```
+
+Writes return a plain `error`. `WriteArea` writes `len(data)` bytes and ignores `addr.Size`. Large payloads are split into several requests.
+
+```go
+// Write INT 123 to DB1.DBW0
+if err := c.WriteDB(ctx, 1, 0, model.EncodeInt(123)); err != nil {
+	return err
+}
+```
+
+### Single bits
+
+Bit access uses the S7 BIT transport size, so the PLC changes one bit and nothing else in the byte:
+
+```go
+// DB1.DBX10.3
+if err := c.WriteDBBit(ctx, 1, 10, 3, true); err != nil {
+	return err
+}
+bit, err := c.ReadDBBit(ctx, 1, 10, 3)
+```
+
+For other areas, use `ReadBit` and `WriteBit` with a `model.BitAddress` (`Area`, `DBNumber`, `ByteOffset`, `BitOffset`). `BitOffset` must be 0 to 7. Bit methods return a plain `error`, not a `ReadResult`.
+
+## Identification, diagnostics and blocks
+
+```go
+info, err := c.Identify(ctx)            // *model.DeviceInfo: order number, module name, firmware, ...
+state, err := c.GetCPUState(ctx)        // RUN, STOP, STARTUP, HOLD or UNKNOWN
+level, err := c.GetProtectionLevel(ctx)
+diag, err := c.ReadDiagBuffer(ctx)      // partly parsed; ReadDiagBufferRaw returns the raw SZL 0x00A0 payload
+
+blocks, err := c.ListAllBlocks(ctx)
+```
+
+`ListBlocks(ctx, blockType)`, `GetBlockInfo(ctx, blockType, number)` and `UploadBlock(ctx, blockType, number)` work on a single block type. `UploadBlock` always sends an end-upload request when it finishes, with its own 500 ms timeout.
+
+`Identify`, `GetBlockInfo`, `ListAllBlocks` and `ReadDiagBuffer` are best-effort. They can return a partial value **and** an error at the same time, so check both. What a PLC exposes through SZL depends on its family and firmware.
+
+## Discovery and probing
+
+These helpers open their own connections, so you call them on the package, not on a client. Everything they send is read-only: connection, setup and harmless follow-up queries.
+
+<Tabs>
+<TabItem label="Rack/slot probe">
+
+```go
+result, err := client.ProbeRackSlots(ctx, client.RackSlotProbeRequest{
+	Address: "192.168.0.10",
+	Port:    102,
+	Strict:  true, // only count candidates where a follow-up query succeeded
+})
+for _, v := range result.Valid {
+	fmt.Println(v.Rack, v.Slot, v.PDUSize, v.Status)
+}
+```
+
+Each candidate gets a status: `valid-query`, `valid-connect`, `setup-only`, `cotp-only`, `tcp-only`, `unreachable`, `rejected`, `timeout` or `flaky`. Without `Strict`, any candidate where setup succeeded is valid. With `Strict`, only `valid-query` is. `Confirm` picks the follow-up query: `client.ConfirmSZL`, `ConfirmCPUState` or `ConfirmAny` (the default in strict mode).
+
+</TabItem>
+<TabItem label="Discovery">
+
+```go
+results, err := client.Discover(ctx, "192.168.0.0/24",
+	client.WithDiscoverParallel(20),
+	client.WithDiscoverRackSlotRange(0, 3, 0, 5),
+)
+```
+
+Each result reports reachability, detected rack and slot, negotiated PDU size and TSAP. Defaults: 2000 ms timeout, 10 workers, rack 0 to 3, slot 0 to 5. Keep ranges small (a `/24` or less) on OT networks. Every host probed is a connection the device has to handle.
+
+</TabItem>
+<TabItem label="Readable ranges">
+
+```go
+result, err := c.ProbeReadableRanges(ctx, client.RangeProbeRequest{
+	Area:      model.AreaInputs,
+	Start:     0,
+	End:       256,
+	Step:      8,
+	ProbeSize: 8,
+})
+// result.Spans: merged [Start, End) ranges with one status each
+```
+
+</TabItem>
+<TabItem label="Compare read">
+
+```go
+result, err := client.CompareRead(ctx, client.CompareReadRequest{
+	Address:    "192.168.0.10",
+	Port:       102,
+	Candidates: []client.RackSlot{{0, 1}, {0, 2}},
+	Area:       model.AreaDB,
+	DBNumber:   1,
+	Offset:     0,
+	Size:       32,
+})
+// result.RackSlotInsensitive is true when every candidate returned identical data
+```
+
+</TabItem>
+</Tabs>
+
+## Errors
+
+| Situation | How it is reported |
+|---|---|
+| Invalid input (address, options, CIDR, block number) | `*client.ValidationError`; use `errors.As` |
+| Byte read outcome | `ReadResult.Status` and `result.Err()` |
+| Bit reads and writes, byte writes, `Connect`, `UploadBlock`, `GetCPUState` | Plain `error` |
+| No active session | `client.ErrNotConnected` (for reads, in `ReadResult.Cause`) |
+| Request larger than the negotiated PDU | `client.ErrRequestExceedsPDU` |
+| Response PDU reference does not match the request | `*client.PDURefMismatchError` |
+| PLC header or item rejection | `*wire.S7Error` with `Class` and `Code` |
+
+```go
+var s7err *wire.S7Error
+if errors.As(err, &s7err) {
+	log.Printf("PLC rejected request: class=%#x code=%#x", s7err.Class, s7err.Code)
+}
+```
+
+COTP and TPKT errors come from go-cotp and go-tpkt.
+
+## Context, reconnects and concurrency
+
+- Cancelling the context works during the dial and during transport reads and writes. A cancel in the middle of a request usually aborts the COTP connection, so call `Connect` again afterwards.
+- `WithTimeout` bounds only `Connect`. Give every request a context with a deadline (`context.WithTimeout`). Without a cancel and without a deadline, a request on an open session can block forever.
+- The client does not reconnect by itself. Calling `Connect` on a connected client replaces the session only once the new handshake succeeds, so a failed reconnect keeps the old session.
+- A client is safe for concurrent use, but requests are serialized. A long operation such as `UploadBlock` blocks other requests on the same client.
+
+## Logging
+
+The client is silent by default. `WithLogger` takes a printf-style `Logger` with `Debug`, `Info` and `Error` methods. Calls run synchronously on the request path, so keep them fast. To use `log/slog`:
+
+```go
+logger := client.NewSlogLogger(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+	Level: slog.LevelDebug,
+}))
+c := client.New("10.0.0.1", client.WithLogger(logger))
+```
+
+There is no metrics interface.
+
+## Limitations
+
+- Classic S7comm only. S7comm-plus and optimized (symbolic) data blocks on S7-1200 and S7-1500 are not supported.
+- Client only. There is no server.
+- What `Identify` and the diagnostics return depends on the PLC model and firmware. Missing fields are normal.
+- Block upload depends on the CPU's capabilities and protection level.
+
+## The transport packages
+
+You only need these when building another ISO-on-TCP protocol or inspecting raw traffic.
+
+- **[go-cotp](https://github.com/otfabric/go-cotp)** is a COTP Class 0 (TP0) transport service over RFC 1006: `Connect`, `Accept`, `ReadTSDU`, `WriteTSDU` and `Close` over a `net.Conn`, with connection request and confirm negotiation, TSAP selectors and segmentation. It also has an encoder and decoder for all ten connection-oriented TPDU types. It does not implement Class 2, expedited data or the full RFC 2126 profile. go-mms uses it for IEC 61850 as well.
+- **[go-tpkt](https://github.com/otfabric/go-tpkt)** does TPKT framing only: `EncodePacket` and `DecodePacket` for whole buffers, and a streaming `Reader` and `Writer`. It validates the version and the length (7 to 65535 octets) and does not interpret TPDUs.
+
+To look inside a captured frame, strip the TPKT header and pass the TPDU to `wire.InspectTPDU`, which returns the COTP type and, for S7 data, the ROSCTR, function, parameter and data lengths and any error class and code.

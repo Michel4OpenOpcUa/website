@@ -1,0 +1,157 @@
+---
+title: Testing and interop
+description: How go-opcua and opcuactl are tested against open62541 and Eclipse Milo with the opcua-interop containers, and what has and has not been validated.
+sidebar:
+  label: Testing and interop
+  order: 3
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+OT Fabric tests its OPC UA implementation against two independent stacks rather than only against itself. [opcua-interop](https://github.com/otfabric/opcua-interop) packages the reference stacks as Docker images; [go-opcua](https://github.com/otfabric/go-opcua) owns the test cases and the published compatibility claims.
+
+## Reference stacks
+
+| Adapter | Language | Stack version | Notes |
+|---|---|---|---|
+| open62541 | C | open62541 v1.5.9, OpenSSL crypto backend, mDNS via mdnsd | ECC policies, reverse connect, LDS and mDNS |
+| Eclipse Milo | Java | Eclipse Milo v1.1.8 with `milo-encoding-json` and `milo-encoding-xml` | No ECC policy, no ReverseHello, not a discovery server |
+
+The images are `ghcr.io/otfabric/opcua-interop-open62541:<version>` and `ghcr.io/otfabric/opcua-interop-milo:<version>`, for linux/amd64 and linux/arm64. The current release is v0.7.0; tags are immutable. go-opcua pins both images by digest to v0.7.0.
+
+Each image has the same modes: `server` (start a server from a fixture), `client` (run one probe operation), `test`, `validate-fixture` and `print-capabilities`.
+
+## Using the reference servers as simulators
+
+The reference servers are a safe target for the library and for opcuactl. They build a deterministic address space from a shared fixture, so both stacks expose the same nodes.
+
+<Steps>
+
+1. **Start a server.** From a checkout of opcua-interop (needs Docker with BuildKit, `make`, `jq`, and `openssl` 1.1 or later for certificates):
+
+    ```sh
+    make run-open62541   # open62541 server on port 4840
+    make run-milo        # Milo server on port 4841
+    ```
+
+2. **Probe it with the reference client.**
+
+    ```sh
+    docker run --rm --network host \
+      ghcr.io/otfabric/opcua-interop-open62541:latest \
+      client read \
+      --endpoint opc.tcp://localhost:4840/opcua-interop \
+      --node 'nsu=urn:otfabric:opcua-interop:model;s=Scalar.Int32'
+    ```
+
+    On macOS with Docker Desktop, use `--add-host=host.docker.internal:host-gateway` and `host.docker.internal` instead of `--network host`.
+
+3. **Point your own client at it**, for example `opcuactl browse tree -e opc.tcp://localhost:4840/opcua-interop --depth 2`.
+
+</Steps>
+
+The baseline fixture lives under `Objects/Compatibility` in namespace `urn:otfabric:opcua-interop:model`. Always reference nodes by that namespace URI; the index differs between stacks.
+
+| Folder | Content |
+|---|---|
+| Scalars | One read/write variable per built-in type, with values chosen to expose encoding errors |
+| Arrays | Empty, one-element, multi-element, String, ByteString, 2D matrix |
+| Dynamic | `Counter` (Int64, 250 ms), `Toggle` (Boolean, 500 ms), `Ramp` (Double, 100 ms) |
+| Access | Read-write, read-only, write-only |
+| Methods | `Add`, `Multiply`, `Echo`, `NoArguments`, `MultipleOutputs`, `Fail` |
+| Events | `Events.Source` emits a BaseEvent about every 2 s, Severity 500 |
+| History | `History.Temperature`: 5 raw samples |
+| Analog | `Analog.Level`, `Analog.Setpoint`: AnalogItemType with EURange 0..100, for deadband tests |
+
+The fixture user is `test-user` / `test-password`. A secured server needs `--certificate`, `--private-key` and `--pki-dir`; the fixture's `securityProfiles` decide which secure endpoints are advertised.
+
+<Aside type="caution" title="Test PKI only">
+`make certs` generates a test CA and identities under `certs/test-pki/`, including ECC certificates per curve. These private keys are for isolated test environments. Never use them in production or expose them to untrusted networks.
+</Aside>
+
+Without opcua-interop, the go-opcua repository has runnable servers in `examples/server/node_server`, `map_server`, `NodeSet2_server` and `method_server`.
+
+## What each adapter supports
+
+Run `print-capabilities` to see the client operations, client and server features, security profiles and codec support of an image:
+
+```sh
+docker run --rm ghcr.io/otfabric/opcua-interop-open62541:latest print-capabilities
+docker run --rm ghcr.io/otfabric/opcua-interop-milo:latest print-capabilities
+```
+
+| Feature (v0.7.0) | open62541 | Eclipse Milo |
+|---|:---:|:---:|
+| DataChangeFilter (absolute and percent deadband, trigger), client and server | Yes | Yes |
+| Reverse connect | Yes | No |
+| ECC security policies | Yes | No |
+| LDS server, mDNS | Yes | No |
+| Register with an LDS, `register-server`, `find-servers-on-network` | Yes | Yes |
+| `codec` JSON (OPC UA 1.05) | Compact | Compact and verbose |
+| `codec` XML | Yes, without DataValue, DiagnosticInfo or matrices | Yes |
+
+The client mode has eighteen operations, including `endpoints`, `read`, `write`, `browse`, `call`, `subscribe`, `event-subscribe`, `history-read`, `republish`, `transfer-subscriptions`, `node-management` and `codec`. All write JSON to stdout. Client exit codes are 0 success, 2 invalid input, 3 transport or connect failure, 4 OPC UA service failure, 5 fixture validation failure, 6 internal failure and 7 timeout. `--channel-lifetime-ms` requests a short SecureChannel lifetime to force token renewals during a command.
+
+## Running the go-opcua interop suite
+
+The suite lives in go-opcua's `interop/` directory behind the `interop` build tag. Tests start and stop the containers themselves; no pre-running containers or manual steps are needed.
+
+<Tabs>
+  <TabItem label="Release images">
+    ```sh
+    # Test PKI for the security, ECC and secured reverse connect tests
+    (cd ../opcua-interop && certs/generate.sh)
+    export OPCUA_INTEROP_PKI_DIR=$PWD/../opcua-interop/certs/test-pki
+
+    make interop
+
+    # Release verification: fail instead of skip on any missing capability
+    OPCUA_INTEROP_REQUIRE_CAPABILITIES=1 make interop
+    ```
+  </TabItem>
+  <TabItem label="Local images">
+    ```sh
+    cd ../opcua-interop && make image-open62541 image-milo
+    cd ../go-opcua
+    OPEN62541_IMAGE=ghcr.io/otfabric/opcua-interop-open62541:dev \
+    MILO_IMAGE=ghcr.io/otfabric/opcua-interop-milo:dev \
+    make interop
+    ```
+  </TabItem>
+</Tabs>
+
+The mDNS tests create a user-defined Docker bridge network and cross-compile a go-opcua discovery server into a container, so the daemon must allow bridge networks and Go must be able to build for `GOOS=linux` with `CGO_ENABLED=0`. A go-opcua server in a container must be published on the same port it listens on.
+
+Every capability is tested in four directions: Go client to open62541 server (C→O), Go client to Milo server (C→M), open62541 client to Go server (O→S) and Milo client to Go server (M→S). The ledger in `interop/COVERAGE.md` marks a direction verified only when a named peer test ran against the pinned images without skipping. Go-to-Go tests never earn a verified mark. The README counts 341 verified ledger rows.
+
+## What has been validated
+
+Verified in all four directions, among others:
+
+- Reads of every built-in scalar type, arrays and matrices, batch reads, IndexRange, TimestampsToReturn, write and read-back, access-level rejections.
+- Browse, BrowseNext, ResultMask and filtering, TranslateBrowsePaths, RegisterNodes.
+- Method calls including argument validation and Bad results.
+- Subscriptions: queue size and DiscardOldest windows, timestamps, publishing and monitoring modes, DataChangeFilter absolute and percent deadband, triggers, sampling interval.
+- Security: Basic256Sha256 Sign and SignAndEncrypt, Aes128_Sha256_RsaOaep and Aes256_Sha256_RsaPss SignAndEncrypt, trusted and untrusted certificates, valid and invalid usernames, SecureChannel renewal under a live subscription.
+- Event subscription with OfType and severity filters; raw HistoryRead and continuation points.
+- JSON and XML encodings of Variants.
+
+Verified with open62541 only (C→O and O→S), because Milo 1.1.8 lacks the feature: all five ECC policies including username tokens and renewal (the AEAD policies in SignAndEncrypt only), clean refusal of the brainpool and Curve448 policies, reverse connect including Basic256Sha256, ECC_nistP256 and ECC_nistP384 channels, and mDNS discovery. LDS registration is verified with open62541 in both roles and with Milo registering at a go-opcua LDS; Milo itself is not a discovery server.
+
+## What has not been validated
+
+- **Deferred:** NodeSet2 import, cross-stack custom DataTypes, Query, IssuedIdentityToken, Alarms and Conditions, GDS, custom event emission, the general WhereClause surface for peer clients, HistoryRead modified, at-time, processed and events, HistoryUpdate, certificate chains and CRLs, and secured LDS registration against a peer LDS.
+- **Unsupported by a peer:** Milo soft-accepts writes with an EncodingMask; the Milo reference server has no NodeManagement; Milo cannot decode a JSON DataValue in the 1.05 inlined form; open62541 1.5.9 has no XML DataValue.
+- **ECC `Sign` mode** is tested between two go-opcua instances; against open62541 it was checked once by hand and is not part of the suite.
+- Not certified by the OPC Foundation.
+
+## Other test layers
+
+| Layer | Command | What it covers |
+|---|---|---|
+| Unit and race tests | `make test-norace`, `make test` | All packages; coverage gate of 90% on core packages |
+| Integration | `make integration`, `make selfintegration` | Go client against a FreeOpcUa Python server, and against an in-process Go server |
+| Chaos | `make chaos` | Faults on unsecured and secured channels (bit flips, replayed, lost and reordered chunks), DataChangeFilter, reverse connect, discovery, codecs; seeds are logged for replay |
+| Fuzzing | `ua`, `uasc`, `uacp` fuzz tests | Binary, JSON and XML decoders, secure channel, transport |
+
+opcuactl v0.3.0 adds end-to-end tests that run the CLI against a go-opcua server. Its published example outputs were captured against a WAGO 750-8102 PFC100 PLC (anonymous and username over `None/None` only, no events or history) and against a go-opcua v1.6.0 demo server for the ECC, reverse connect, discovery, filter and encoding features.

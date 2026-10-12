@@ -1,0 +1,247 @@
+---
+title: iec61850ctl
+description: Browse, read, subscribe to reports, operate controls and run an SCL-driven MMS server from the command line with iec61850ctl.
+sidebar:
+  label: iec61850ctl
+  order: 2
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+[iec61850ctl](https://github.com/otfabric/iec61850ctl) is a command-line tool for IEC 61850 over MMS. It is built on [go-iec61850](https://github.com/otfabric/go-iec61850) and [go-mms](https://github.com/otfabric/go-mms) and ships as a static Go binary with no CGO and no libiec61850 at runtime. It browses and reads IEDs, subscribes to reports, operates controls, writes scalar settings, transfers files, reads journals, parses SCL offline, runs a local MMS server from SCL, and can expose a small read-only HTTP/JSON API.
+
+The current release is v0.2.0, built on go-iec61850 v1.0.6 and go-mms v1.0.5.
+
+## Install
+
+<Tabs>
+  <TabItem label="Release binary">
+    Download a binary for your platform from [GitHub Releases](https://github.com/otfabric/iec61850ctl/releases). Builds exist for Linux, macOS and Windows on amd64 and arm64, plus Linux arm/v7.
+  </TabItem>
+  <TabItem label="go install">
+    Requires Go 1.24 or later.
+
+    ```sh
+    go install github.com/otfabric/iec61850ctl@latest
+    ```
+  </TabItem>
+  <TabItem label="From source">
+    ```sh
+    git clone https://github.com/otfabric/iec61850ctl.git
+    cd iec61850ctl
+    make build-nocheck
+    # binary: ./bin/iec61850ctl
+    ```
+
+    `make build-all` cross-compiles into `release/`.
+  </TabItem>
+</Tabs>
+
+## Connecting
+
+Most client commands need `--host`. Host, port and IED name can also come from the environment; flags win.
+
+| Flag | Environment | Default | Meaning |
+|---|---|---|---|
+| `--host` | `IEC61850_HOST` | none (required) | IED address |
+| `--port` | `IEC61850_PORT` | `102` | MMS port |
+| `--ied-name` | `IEC61850_IED_NAME` | empty | IED name used as the MMS domain prefix; also selects the IED for `server start` |
+| `--debug` | | off | Log the underlying IEC 61850 and MMS calls |
+
+Set `--ied-name` when the server names its domains `<IED><LD>` (libiec61850 and IEC61850bean do this), so LD names appear bare. Leave it unset against `iec61850ctl server start`, whose domains are already bare LD names; setting it there breaks browse and read.
+
+Each command opens one association, writes `Connecting to host:port` to stderr, and on exit closes with a bounded Conclude (about 2 s) followed by Abort if that fails.
+
+## Command tree
+
+```text
+iec61850ctl
+├── discover / scan     Scan a subnet or IP range for MMS (port 102) responders
+├── list                lds | lns | dos | das | dss | reports | journals | files
+├── get                 object | ds | report | journal | file
+├── tree                Full or scoped model tree (--flatten / --serialize)
+├── find                path | bulk
+├── subscribe report    Subscribe to a URCB or BRCB
+├── control             inspect | operate
+├── set object          Write a scalar attribute (rejects FC=CO)
+├── scl                 parse | convert
+├── server              start | generate-config
+├── http                Read-only REST API for one device
+├── version
+└── completion          bash | zsh | fish | powershell
+```
+
+## Discover and browse
+
+```sh
+# Find MMS responders; --host is a CIDR or range here
+iec61850ctl discover --host 192.0.2.0/24
+
+export IEC61850_HOST=192.0.2.10
+iec61850ctl list lds --detailed --format table
+iec61850ctl list lns --ld MNSREF615LD0 --detailed
+iec61850ctl list dos --ld MNSREF615LD0 --ln FMMXU1
+iec61850ctl list das --ld MNSREF615LD0 --ln FMMXU1 --do Hz --detailed
+
+# Walk part of the model as flat paths
+iec61850ctl tree --flatten --path MNSREF615LD0/FMMXU1
+
+# Find paths: --ln is a regex, --path an exact DO or DO.DA
+iec61850ctl find path --ln MMXU --path A.phsA --include-das --detailed
+```
+
+`discover --resolve-mac` reads the ARP cache and needs root.
+
+## Read
+
+```sh
+iec61850ctl get object --object MNSREF615LD0/FMMXU1.Hz.mag.f --fc MX --detailed
+iec61850ctl get ds --ld MNSREF615LD0 --ln LLN0 --name MeasFlt --detailed
+```
+
+`get object` takes the reference without the FC and the FC separately in `--fc` (default `MX`). Use `ST` for status, `CF` for configuration, `DC` for descriptions.
+
+## Reports
+
+<Steps>
+1. List the report control blocks. Instance names on the device can differ from the SCL (`urcb01` versus `urcb0101`), so always discover first.
+
+   ```sh
+   iec61850ctl list reports --ld MNSREF615LD0 --ln LLN0
+   iec61850ctl get report --ld MNSREF615LD0 --ln LLN0 --report rcbMeasFlt01
+   ```
+
+2. Subscribe. `--type BR` for buffered, `--type RP` for unbuffered. `--interrogation` triggers a general interrogation after enable; `--sync` reads the dataset once as a baseline.
+
+   ```sh
+   iec61850ctl subscribe report \
+     --ld MNSREF615LD0 --ln LLN0 --report rcbMeasFlt01 --type BR \
+     --show-values --interrogation --sync --duration 30s
+   ```
+
+3. For a BRCB, purge the buffer or resume from an EntryID (hex). These are written before `RptEna`.
+
+   ```sh
+   iec61850ctl subscribe report \
+     --ld MNSREF615LD0 --ln LLN0 --report rcbMeasFlt01 --type BR \
+     --purge-buf --interrogation --max-reports 1 --format jsonl
+   ```
+</Steps>
+
+`--purge-buf`, `--entry-id` and `--resv-tms` are only valid with `--type BR`. The subscription disables the RCB cleanly on exit (Ctrl+C, `--duration` or `--max-reports`).
+
+## Control and scalar writes
+
+<Aside type="caution">
+`control operate` and `set object` change the state of the IED. On a protection relay or bay controller that can mean opening a breaker. Practise against `iec61850ctl server start` or an mms-interop adapter, inspect the control model first, and use `--confirm-ref` so the tool checks the result.
+</Aside>
+
+```sh
+# Read ctlModel and whether a select is needed
+iec61850ctl control inspect --object InteropLD/GGIO1.SPCSO2 --format json
+
+# Select (if required) and operate on one association, then confirm
+iec61850ctl control operate \
+  --object InteropLD/GGIO1.SPCSO2 \
+  --value true --type bool --mode auto \
+  --confirm-ref 'InteropLD/GGIO1.SPCSO2.stVal[ST]' \
+  --format json
+
+# Scalar setting write with read-back verification
+iec61850ctl set object \
+  --object InteropLD/GGIO1.SetInt1.setVal --fc SP \
+  --value 5 --type int --verify --format json
+```
+
+The safety model:
+
+- **Controls only through `control`.** `set object` rejects `--fc CO` before it dials. Use `control operate` for controllable objects.
+- **Atomic journeys.** `control operate` reads `ctlModel` and runs select and operate on one association. `--mode` is `auto` (recommended), `direct`, `sbo` or `sbow`; a mode that does not match the device fails. A selection cannot survive between CLI processes, and there is no standalone `control select`.
+- **Explicit types.** `--type` is required (`bool`, `int`, `uint`, `float`, `enum`, `string`). Values are never inferred.
+- **Confirmation is opt-in.** Only `--confirm-ref` triggers a read-back. `--verify` does the same for `set object`.
+- **Cleanup is not rollback.** If select succeeds but operate does not complete, the tool sends a best-effort Cancel. It does not undo an operate.
+- **HTTP is read-only.** `iec61850ctl http` serves browse, read and find only.
+
+There is no documented dry-run flag.
+
+`control operate --format json` reports a `status`: `planned`, `operated`, `confirmed`, `operated-unconfirmed`, `confirmation-mismatch` or `failed`. The last three exit non-zero. With `--test` or `--no-confirm` the status is `operated`.
+
+## Files and journals
+
+```sh
+iec61850ctl list files --detailed
+iec61850ctl get file --name conf.xml.gz --output ./conf.xml.gz --detailed
+
+iec61850ctl list journals --ld MNSREF615LD0
+iec61850ctl get journal --domain MNSREF615LD0 --journal LLN0\$EventLog \
+  --from 2024-10-30T12:00:00Z --to 2024-10-30T13:00:00Z
+```
+
+`--from` and `--to` accept RFC 3339, space-separated UTC or Unix milliseconds. Omit `--to` to read everything after `--from`.
+
+## SCL offline
+
+```sh
+iec61850ctl scl parse --input device.cid --flatten
+```
+
+`scl parse` and `scl convert` (SCL to CSV) need no device. go-iec61850 also ships a separate SCL tool, `sclparse`, with `summary`, `validate`, `detect`, `inspect`, `dump-json` and `list-*` subcommands:
+
+```sh
+go install github.com/otfabric/go-iec61850/scl/cmd/sclparse@latest
+sclparse summary station.scd
+sclparse validate --strict station.scd
+sclparse list-reports --json station.scd
+```
+
+`sclparse` exits 0 on success, 1 on usage errors, 2 on parse failure and 3 when `validate` finds errors.
+
+## Server mode
+
+`server start` runs a pure-Go MMS server from an ICD, CID or SCD file. It is the safest target for trying controls and reports.
+
+```sh
+# First IED in the file, or pick one with --ied-name
+iec61850ctl server start --scl device.cid --host 0.0.0.0 --port 102
+
+# Seed values captured from a live device
+iec61850ctl tree --host 192.0.2.10 --serialize --include all --output device.json
+iec61850ctl server start --scl device.cid --values device.json --port 102
+```
+
+| Flag | Meaning |
+|---|---|
+| `--scl` | SCL file (required) |
+| `--ied-name` | IED in the SCL (default: first) |
+| `--values` | Serialized JSON from `tree --serialize` to seed leaf values |
+| `--host` / `--port` | Bind address (default `0.0.0.0:102`) |
+| `--ready-json` | Print one readiness JSON line on stdout after bind |
+| `--fixture-id` | Fixture revision included in the readiness line |
+| `--max-connections` | Reserved; not enforced |
+
+Binding port 102 may need elevated privileges; use `--port 1102` for testing. Every server registers handlers for `InteropLD/GGIO1.SPCSO1` (direct), `SPCSO2` (SBO) and `SPCSO3` (SBOw), which update the matching `stVal`; for other models they are inert. `server generate-config` exports a libiec61850 `.cfg` from serialized JSON for external C tooling; iec61850ctl does not run `.cfg` files.
+
+## Output and exit codes
+
+| Commands | `--format` |
+|---|---|
+| `list lds`, `list lns`, `list dos`, `list das` | `text`, `json`, `csv`, `table`, `yaml` |
+| `list dss`, `list reports`, `get object`, `get ds`, `get report` | `text`, `json` |
+| `control inspect`, `control operate`, `set object` | `text`, `json` |
+| `subscribe report` | `text`, `jsonl` |
+
+Results go to stdout; connection status, warnings and diagnostics go to stderr. Every JSON command prints exactly one document. An unknown format exits non-zero.
+
+```json
+{"object":"InteropLD/MMXU1.TotW.mag.f","fc":"MX","type":"float","value":1234.5}
+```
+
+`subscribe report --format jsonl` emits `baseline`, `report` and a final `summary` event, one per line. Report events carry `rpt_id`, `sequence_number`, hex `entry_id` for BRCBs, `values` (with `--show-values`) and `reasons` (`gi`, `dchg`, `qchg`, `dupd`, `integrity`).
+
+Booleans, integers, floats and strings have a stable JSON encoding. Timestamps, bit strings, octet strings, arrays and structures do not yet; do not script against their current form.
+
+Exit code is `0` on success and non-zero for invalid flags, validation failures, connection failures and remote errors. With `--format json`, `control operate` and `set object` still print their JSON document when they fail after reaching execution, and the exit code follows `status` or `write_ok`.
+
+## Scope
+
+Not supported: GOOSE and Sampled Values, standalone or cross-process select, time-activated controls, complex (structured) MMS writes, and writes or controls over HTTP.
