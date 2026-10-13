@@ -3,7 +3,8 @@ import { getEntry, render } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import PageHeader from '../../components/site/PageHeader.astro';
 import ProjectGrid from '../../components/ProjectGrid.astro';
-import { getProtocols, projectsFor, type Protocol } from '../../data/projects';
+import { getProtocols, projectsFor, repoUrl, type Protocol } from '../../data/projects';
+import { absolute, breadcrumbs, orgRef } from '../../data/seo';
 
 export async function getStaticPaths() {
 	const protocols = await getProtocols();
@@ -18,9 +19,35 @@ const { Content } = await render(protocol);
 const projects = await projectsFor(protocol.id);
 // Link to the detailed docs only once they exist.
 const hasDocs = Boolean(await getEntry('docs', `docs/protocols/${protocol.id}`));
+const url = absolute(`/protocols/${protocol.id}/`);
+const schema = [
+	breadcrumbs([
+		{ name: 'Protocols', path: '/protocols/' },
+		{ name: protocol.data.name, path: `/protocols/${protocol.id}/` },
+	]),
+	{
+		'@type': 'TechArticle',
+		'@id': `${url}#article`,
+		headline: protocol.data.name,
+		description: protocol.data.summary,
+		url,
+		mainEntityOfPage: { '@id': `${url}#webpage` },
+		author: orgRef,
+		publisher: orgRef,
+		inLanguage: 'en',
+		about: {
+			'@type': 'DefinedTerm',
+			name: protocol.data.name,
+			description: protocol.data.summary,
+			inDefinedTermSet: protocol.data.standard,
+		},
+		...(protocol.data.docs && hasDocs ? { relatedLink: absolute(protocol.data.docs) } : {}),
+		mentions: projects.map((p) => ({ '@type': 'SoftwareSourceCode', name: p.data.name, codeRepository: repoUrl(p.data.repo!) })),
+	},
+];
 ---
 
-<BaseLayout title={protocol.data.name} description={protocol.data.summary}>
+<BaseLayout title={protocol.data.name} description={protocol.data.summary} schema={schema}>
 	<PageHeader label={protocol.data.standard} title={protocol.data.name} lead={protocol.data.summary}>
 		<dl class="facts">
 			{protocol.data.facts.map((fact) => (

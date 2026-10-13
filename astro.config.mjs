@@ -35,6 +35,7 @@ export default defineConfig({
         baseUrl: 'https://github.com/otfabric/website/edit/main/',
       },
       components: {
+        Head: './src/components/overrides/Head.astro',
         Header: './src/components/overrides/Header.astro',
         MobileMenuFooter: './src/components/overrides/MobileMenuFooter.astro',
       },

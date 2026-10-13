@@ -2,9 +2,33 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import PageHeader from '../../components/site/PageHeader.astro';
 import ProjectCatalog from '../../components/ProjectCatalog.astro';
+import { getProjects, repoUrl } from '../../data/projects';
+import { absolute, breadcrumbs } from '../../data/seo';
+
+const projects = (await getProjects()).filter((p) => p.data.status === 'available');
+const schema = [
+	breadcrumbs([{ name: 'Projects', path: '/projects/' }]),
+	{
+		'@type': 'ItemList',
+		name: 'OT Fabric open-source projects',
+		itemListElement: projects.map((p, i) => ({
+			'@type': 'ListItem',
+			position: i + 1,
+			name: p.data.name,
+			description: p.data.description,
+			url: absolute(`/projects/${p.id}/`),
+			sameAs: repoUrl(p.data.repo!),
+		})),
+	},
+];
 ---
 
-<BaseLayout title="Projects" description="Every OT Fabric library, CLI tool, building block and interoperability suite, plus what is on the roadmap.">
+<BaseLayout
+	title="Projects"
+	description="Every OT Fabric library, CLI tool, building block and interoperability suite, plus what is on the roadmap."
+	pageType="CollectionPage"
+	schema={schema}
+>
 	<PageHeader
 		label="Projects"
 		title="Project catalog"

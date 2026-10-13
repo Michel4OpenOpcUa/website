@@ -3,6 +3,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import PageHeader from '../../components/site/PageHeader.astro';
 import ProjectGrid from '../../components/ProjectGrid.astro';
 import { categories, getProjects, getProtocols, repoUrl, type Project } from '../../data/projects';
+import { absolute, breadcrumbs, orgRef } from '../../data/seo';
 
 export async function getStaticPaths() {
 	const projects = (await getProjects()).filter((p) => p.data.status === 'available');
@@ -20,9 +21,32 @@ const related = (await getProjects()).filter(
 	(p) => p.id !== project.id && p.data.status === 'available' && p.data.protocols.some((id) => data.protocols.includes(id)),
 );
 const releases = data.category === 'cli' ? `${repoUrl(data.repo!)}/releases` : undefined;
+const url = absolute(`/projects/${project.id}/`);
+const schema = [
+	breadcrumbs([
+		{ name: 'Projects', path: '/projects/' },
+		{ name: data.name, path: `/projects/${project.id}/` },
+	]),
+	{
+		'@type': 'SoftwareSourceCode',
+		'@id': `${url}#software`,
+		name: data.name,
+		description: data.description,
+		url,
+		codeRepository: repoUrl(data.repo!),
+		programmingLanguage: 'Go',
+		applicationCategory: category.label,
+		author: orgRef,
+		publisher: orgRef,
+		isAccessibleForFree: true,
+		keywords: ['OT', 'industrial automation', ...protocols.map((p) => p.data.name)].join(', '),
+		about: protocols.map((p) => ({ '@type': 'Thing', name: p.data.name, url: absolute(`/protocols/${p.id}/`) })),
+		mainEntityOfPage: { '@id': `${url}#webpage` },
+	},
+];
 ---
 
-<BaseLayout title={data.name} description={data.description}>
+<BaseLayout title={data.name} description={data.description} schema={schema}>
 	<PageHeader label={category.label} title={data.name} lead={data.description}>
 		<div class="actions">
 			<a class="ot-btn primary" href={repoUrl(data.repo!)}>View on GitHub</a>

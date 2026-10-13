@@ -1,0 +1,55 @@
+---
+// Docs head: Starlight's own tags plus the site's social image and JSON-LD,
+// so /docs/ pages describe themselves the same way as the website pages.
+import { getEntry } from 'astro:content';
+import Default from '@astrojs/starlight/components/Head.astro';
+import { absolute, breadcrumbs, jsonLd, ogImage, organization, orgRef, website, websiteRef } from '../../data/seo';
+
+const { entry, id, head } = Astro.locals.starlightRoute;
+const isNotFound = id === '404';
+const url = absolute(Astro.url.pathname);
+
+// Protocol subpages share short titles ("Go library", "Testing and interop"), so the
+// social title and headline name the protocol too: "Modbus: Go library | OT Fabric".
+const parent = /^docs\/protocols\/[^/]+\/[^/]+$/.test(id) ? await getEntry('docs', id.split('/').slice(0, 3).join('/')) : undefined;
+const headline =
+	parent && !entry.data.title.includes(parent.data.title) ? `${parent.data.title}: ${entry.data.title}` : entry.data.title;
+const ogTitle = head.find((tag) => tag.tag === 'meta' && tag.attrs?.property === 'og:title');
+if (ogTitle?.attrs) ogTitle.attrs.content = `${headline} | OT Fabric`;
+
+let schema: string | undefined;
+if (!isNotFound) {
+	// Breadcrumbs follow the URL: /docs/protocols/modbus/cli/ -> Docs > Protocols > Modbus > CLI.
+	const segments = id.split('/').filter(Boolean);
+	const crumbs = [];
+	for (let i = 1; i <= segments.length; i++) {
+		const slug = segments.slice(0, i).join('/');
+		const doc = await getEntry('docs', slug);
+		if (doc) crumbs.push({ name: i === 1 ? 'Docs' : doc.data.title, path: `/${slug}/` });
+	}
+	schema = jsonLd(organization, website, breadcrumbs(crumbs), {
+		'@type': 'TechArticle',
+		'@id': `${url}#article`,
+		headline,
+		description: entry.data.description,
+		url,
+		mainEntityOfPage: url,
+		isPartOf: websiteRef,
+		author: orgRef,
+		publisher: orgRef,
+		inLanguage: 'en',
+		image: absolute(ogImage.src),
+		...(entry.data.lastUpdated instanceof Date ? { dateModified: entry.data.lastUpdated.toISOString() } : {}),
+	});
+}
+---
+
+<Default />
+<meta property="og:image" content={absolute(ogImage.src)} />
+<meta property="og:image:width" content={String(ogImage.width)} />
+<meta property="og:image:height" content={String(ogImage.height)} />
+<meta property="og:image:alt" content={ogImage.alt} />
+<meta name="twitter:image" content={absolute(ogImage.src)} />
+<meta name="twitter:image:alt" content={ogImage.alt} />
+{isNotFound && <meta name="robots" content="noindex" />}
+{schema && <script type="application/ld+json" set:html={schema} />}

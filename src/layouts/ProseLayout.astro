@@ -2,14 +2,22 @@
 // Layout for standalone Markdown/MDX pages in src/pages (About and similar).
 import BaseLayout from './BaseLayout.astro';
 import PageHeader from '../components/site/PageHeader.astro';
+import { breadcrumbs } from '../data/seo';
 
 interface Props {
 	frontmatter: { title: string; description?: string; label?: string; lead?: string };
 }
 const { frontmatter } = Astro.props;
+const path = Astro.url.pathname;
+const pageType = path.startsWith('/about') ? 'AboutPage' : 'WebPage';
 ---
 
-<BaseLayout title={frontmatter.title} description={frontmatter.description}>
+<BaseLayout
+	title={frontmatter.title}
+	description={frontmatter.description}
+	pageType={pageType}
+	schema={[breadcrumbs([{ name: frontmatter.label ?? frontmatter.title, path }])]}
+>
 	<PageHeader label={frontmatter.label} title={frontmatter.title} lead={frontmatter.lead ?? frontmatter.description} />
 	<div class="ot-container">
 		<article class="ot-prose"><slot /></article>

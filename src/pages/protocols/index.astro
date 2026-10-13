@@ -3,11 +3,31 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import PageHeader from '../../components/site/PageHeader.astro';
 import ProtocolMatrix from '../../components/ProtocolMatrix.astro';
 import { getProtocols } from '../../data/projects';
+import { absolute, breadcrumbs } from '../../data/seo';
 
 const protocols = await getProtocols();
+const schema = [
+	breadcrumbs([{ name: 'Protocols', path: '/protocols/' }]),
+	{
+		'@type': 'ItemList',
+		name: 'OT protocols supported by OT Fabric',
+		itemListElement: protocols.map((p, i) => ({
+			'@type': 'ListItem',
+			position: i + 1,
+			name: p.data.name,
+			description: p.data.summary,
+			url: absolute(`/protocols/${p.id}/`),
+		})),
+	},
+];
 ---
 
-<BaseLayout title="Protocols" description="The OT protocols OT Fabric supports, with the library, CLI and interop suite for each.">
+<BaseLayout
+	title="Protocols"
+	description="The OT protocols OT Fabric supports, with the library, CLI and interop suite for each."
+	pageType="CollectionPage"
+	schema={schema}
+>
 	<PageHeader
 		label="Protocols"
 		title="Every protocol, the same toolkit"

@@ -2,7 +2,9 @@
 import { render } from 'astro:content';
 import { Image } from 'astro:assets';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getImage } from 'astro:assets';
 import { formatDate, getPosts, readingTime, type Post } from '../../data/blog';
+import { absolute, breadcrumbs, ogImage, orgRef } from '../../data/seo';
 
 export async function getStaticPaths() {
 	const posts = await getPosts();
@@ -20,9 +22,45 @@ interface Props {
 const { post, newer, older } = Astro.props;
 const { Content, headings } = await render(post);
 const { data } = post;
+// Social cards need a raster image; SVG covers fall back to the site image.
+const cover =
+	data.cover && data.cover.image.format !== 'svg'
+		? (await getImage({ src: data.cover.image, width: 1200, format: 'png' })).src
+		: undefined;
+const url = absolute(`/blog/${post.id}/`);
+const schema = [
+	breadcrumbs([
+		{ name: 'Blog', path: '/blog/' },
+		{ name: data.title, path: `/blog/${post.id}/` },
+	]),
+	{
+		'@type': 'BlogPosting',
+		'@id': `${url}#article`,
+		headline: data.title,
+		description: data.description,
+		url,
+		mainEntityOfPage: { '@id': `${url}#webpage` },
+		datePublished: data.date.toISOString(),
+		dateModified: (data.updated ?? data.date).toISOString(),
+		author: data.authors.map((name) => (name === 'OT Fabric' ? orgRef : { '@type': 'Person', name })),
+		publisher: orgRef,
+		image: absolute(cover ?? ogImage.src),
+		keywords: data.tags.join(', '),
+		wordCount: (post.body ?? '').split(/\s+/).length,
+		inLanguage: 'en',
+	},
+];
 ---
 
-<BaseLayout title={data.title} description={data.description} type="article">
+<BaseLayout
+	title={data.title}
+	description={data.description}
+	type="article"
+	image={cover}
+	imageAlt={data.cover?.alt}
+	article={{ published: data.date, modified: data.updated, tags: data.tags, authors: data.authors }}
+	schema={schema}
+>
 	<article class="ot-container post">
 		<header>
 			<a class="back" href="/blog/">← Blog</a>

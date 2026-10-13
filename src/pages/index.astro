@@ -5,13 +5,14 @@ import Tiles from '../components/home/Tiles.astro';
 import ProtocolMatrix from '../components/ProtocolMatrix.astro';
 import PostList from '../components/blog/PostList.astro';
 import { getPosts } from '../data/blog';
+import { homeDescription } from '../data/seo';
 import light from '../assets/logo-light.svg';
 import dark from '../assets/logo-dark.svg';
 
 const latest = (await getPosts()).slice(0, 2);
 ---
 
-<BaseLayout>
+<BaseLayout description={homeDescription}>
 	<section class="hero">
 		<div class="ot-container hero-inner">
 			<div class="hero-copy">
