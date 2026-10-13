@@ -1,0 +1,85 @@
+---
+name: "OpenADR"
+standard: "OpenADR 3.1.0 (OpenADR Alliance)"
+summary: "Demand response and dynamic tariffs between utilities or aggregators and the energy resources of their customers."
+order: 8
+facts:
+  - { label: 'Transport', value: 'HTTPS, REST and JSON' }
+  - { label: 'Notifications', value: 'Webhook, MQTT, WebSocket (extension)' }
+  - { label: 'Version', value: '3.1.0' }
+  - { label: 'Library', value: 'go-openadr' }
+  - { label: 'Interop', value: 'openadr-interop' }
+icon: go-openadr
+docs: /docs/protocols/openadr/
+---
+
+import Callout from '../../components/Callout.astro';
+
+OpenADR (Open Automated Demand Response) is how a utility or an aggregator tells the energy resources of its customers what is coming: a price for every hour of tomorrow, a request to shed load, a limit on export. Version 3 is a REST API over HTTPS with three roles. The **VTN** (virtual top node) is the server in the middle. **Business Logic** on the utility's side publishes **programs** and **events** to it. A **VEN** (virtual end node) at the customer site, such as an energy management system, a charger or a gateway, reads the events meant for it and sends **reports** back.
+
+## Where you meet it
+
+- Dynamic electricity tariffs sent to home and building energy management systems
+- Demand response and flexibility programs run by utilities and aggregators
+- EV chargers, heat pumps and batteries that follow a price or a grid signal
+
+## Quickstart
+
+OpenADR has no OT Fabric command-line tool. The library ships example programs instead: a standalone VTN, a VEN and a Business Logic client that publishes a tariff from a CSV file.
+
+### Run the example programs
+
+From a checkout of [go-openadr](https://github.com/otfabric/go-openadr), run a VTN, a Business Logic client and a VEN through the program, event and report workflow in one process:
+
+```sh
+go run ./examples/quickstart
+```
+
+### From Go
+
+```sh
+go get github.com/otfabric/go-openadr
+```
+
+A VEN that reads the active events of a program and prints the prices (abridged from the go-openadr README):
+
+```go title="main.go"
+ven, err := client.NewVEN(client.Config{
+	BaseURL:     "https://vtn.example.com/openadr3",
+	Credentials: &client.Credentials{ClientID: id, ClientSecret: secret},
+})
+if err != nil {
+	return err
+}
+
+events, err := ven.Events(ctx, client.EventQuery{ProgramID: programID, ActiveOnly: true})
+if err != nil {
+	return err
+}
+for _, event := range events {
+	for _, interval := range event.Intervals {
+		for _, payload := range interval.Payloads {
+			if price, ok := payload.Values[0].Number(); ok && payload.Type == "PRICE" {
+				fmt.Println(interval.ID, price)
+			}
+		}
+	}
+}
+```
+
+The client finds the token endpoint from the VTN, gets a token with OAuth2 client credentials, and renews it when it expires.
+
+## What go-openadr supports
+
+| | |
+|---|---|
+| Roles | VEN client, Business Logic client, and a VTN as an embeddable `http.Handler` |
+| Operations | All 45 operations of OpenADR 3.1.0 in the VTN |
+| Authentication | OAuth2 client credentials, JSON Web Tokens with static keys or JWKS, scopes, object ownership, targeting; anonymous clients when allowed |
+| Notifications | Webhooks and MQTT; WebSocket and resource groups as opt-in extensions shared with OpenLEADR |
+| Extras | Intervals as a table with the timing rules applied (`timeline`), CSV in and out, mDNS discovery of a local VTN |
+| Dependencies | None outside the Go standard library |
+
+<Callout type="note" title="Pre-release">
+go-openadr implements OpenADR 3.1.0 only, and its API may still change. OpenADR 3.0.1 is planned, and 2.x is out of scope. The clients are tested against the OpenLEADR VTN and the VTN against the ElaadNL client, through [openadr-interop](https://github.com/otfabric/openadr-interop). Passing those tests is not an OpenADR Alliance certification.
+</Callout>

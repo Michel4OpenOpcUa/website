@@ -1,0 +1,166 @@
+---
+title: OpenADR
+description: How OpenADR 3 works (roles, REST resources, intervals, targeting, OAuth2, notifications and local discovery) and which OT Fabric projects implement it.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import { Aside, Badge, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+OpenADR (Open Automated Demand Response) is the protocol between a utility or aggregator and the energy resources of its customers. A utility publishes a price schedule or a request to limit load, the customer's equipment reads it and acts on it, and the customer's side reports back, for example with metered usage. OpenADR 3 does this with a REST API over HTTPS, JSON bodies and OAuth2 bearer tokens.
+
+This page explains OpenADR 3 as the OT Fabric projects implement it. The reference is **OpenADR 3.1.0**, as published by the OpenADR Alliance: the OpenAPI document, the Definition and the User Guide. The documents are public in [grid-coordination/openadr3-specification](https://github.com/grid-coordination/openadr3-specification).
+
+<Aside type="caution" title="Pre-release">
+go-openadr is pre-release software. It implements OpenADR 3.1.0 only, and its API may still change. Pin a version and read the release notes before you upgrade.
+</Aside>
+
+## The three roles
+
+An OpenADR 3 system has three kinds of participant.
+
+| Role | What it does |
+|---|---|
+| **VTN** (virtual top node) | The server in the middle. It stores programs, events and reports, authenticates the other two, decides who may see what, and notifies clients of changes. It does not make prices or decisions. |
+| **Business Logic** (BL) | The utility's or aggregator's application. It creates programs, publishes events (a tariff, say) and reads the reports that come back. It is a client of the VTN, not a protocol of its own. |
+| **VEN** (virtual end node) | The customer's side: an energy management system, a charger, a gateway. It reads the events meant for it, hands them to whatever controls the equipment, and reports back. It is also a client of the VTN. |
+
+Data flows from Business Logic through the VTN to the VEN (programs and events), and from the VEN through the VTN back to Business Logic (reports). Every request is made by one of the two clients to the VTN. The clients never talk to each other, and the VTN contacts a client on its own only to notify it of a change.
+
+## Resource model
+
+OpenADR 3.1.0 defines a small set of REST resources. Each object carries metadata that the VTN owns: an ID, a creation time and a modification time.
+
+| Resource | Path | What it holds | Written by |
+|---|---|---|---|
+| Program | `/programs` | A named program a customer can take part in: descriptions, payload descriptors, attributes, targets, a default interval period | Business Logic |
+| Event | `/events` | Belongs to a program. Carries intervals with payloads (prices, limits), a priority, a duration, targets and report descriptors that say what to report | Business Logic |
+| Report | `/reports` | Belongs to an event. The VEN's answer: resources, each with intervals of payloads such as `USAGE` | VEN |
+| VEN | `/vens` | A registered customer endpoint, with attributes and targets | Business Logic, or the VEN itself without targets |
+| Resource | `/resources` | A device or meter behind a VEN, with attributes and targets | Business Logic, or the VEN itself without targets |
+| Subscription | `/subscriptions` | Which objects and operations a client wants to be told about, and where | Either client |
+
+Two further endpoints sit beside the objects. `GET /auth/server` names the token endpoint. `GET /notifiers` says how the VTN can notify clients, and twelve MQTT topic operations below `/notifiers/mqtt/topics/...` tell a client which topics to subscribe to. go-openadr counts 45 operations in the specification and implements all of them in its VTN.
+
+Searches return at most 50 objects per page, with `skip` and `limit` parameters. Names, targets and payload types are limited to 128 characters, and object IDs to 1 to 128 characters of `[a-zA-Z0-9_-]`.
+
+OpenADR 3.1 is not backward compatible with 3.0: targets changed from `valuesMap` objects to strings, VEN resources moved from `/vens/{venID}/resources` to `/resources`, and the scopes were redefined.
+
+## Intervals, payloads and timing
+
+An event carries its schedule as **intervals**. Each interval has an ID, an optional interval period (a start and an ISO 8601 duration) and a list of **payloads**. A payload is a `valuesMap`: a `type` string such as `PRICE`, `USAGE` or `IMPORT_CAPACITY_LIMIT`, and a list of values. A value is a number, a string, a boolean or a point. Payload types, units and other enumerations of the specification are suggestions: private values are allowed.
+
+The specification writes schedules compactly, and the User Guide ("Event and Interval Timing") gives the rules to expand them:
+
+- **Defaults.** An interval without a period, or without a start or duration in it, takes them from the event. An interval without a start follows the one before it.
+- **"Now".** A start of `0001-01-01` on the event, or on the first interval of an event without a default, means the current time. On a later interval it means "after the previous one". The User Guide writes this as `0001-01-01` and as `0001-01-01T00:00:00`; neither is a valid date-time in the schema, and go-openadr accepts both in an interval period only.
+- **No end.** A duration of `P9999Y` means the interval does not end.
+- **Sub-intervals.** A payload with several values may be a series of equal sub-intervals. Nothing in the event says which, so it is a choice of the reader.
+- **Event duration.** An event `duration` shorter than its intervals cuts them short. A longer one repeats them.
+- **`randomizeStart`** on an interval period is a duration. go-openadr carries it with each row of a schedule and does not apply it: the table shows the times as announced.
+
+The go-openadr `timeline` package applies these rules and returns the schedule as rows with a start and an end. See the [Go library](/docs/protocols/openadr/library/#timeline) page.
+
+Reports use report descriptors on the event to say what the VTN wants back (payload type, how many intervals, whether historical, how often). The defaults of the specification are not the zero values, so go-openadr provides `NewReportDescriptor` to build one correctly.
+
+## Targeting
+
+Targets are strings on programs, events, VENs and resources. Business Logic grants targets to a VEN (for example `group-a`) and puts targets on programs and events. A VEN then sees a targeted program or event only for targets it was granted, and only those targets of it are shown. This is how one VTN serves many customers without each seeing the others' schedules.
+
+The specification leaves room in how matching works. The go-openadr VTN reads it as follows:
+
+- An object matches on any common target.
+- A VEN that names no targets in a search sees only untargeted programs and events. To see both, it searches twice: once without targets and once with its own.
+- A read by ID uses the VEN's granted targets, since the by-ID operations have no targets parameter.
+- An object a client may not see does not exist for it: another client's report, VEN or resource answers 404, not 403.
+
+Other VTNs read this differently. OpenLEADR v0.2.7 shows a VEN targeted objects without the VEN naming the target. Privacy holds either way.
+
+## Authentication and scopes
+
+OpenADR 3.1 uses the **OAuth2 client credentials grant**. Each client has a client ID and secret. The client asks the VTN where the token endpoint is (`GET /auth/server`), requests a bearer token there, and sends it with each request. The VTN may serve the token endpoint itself (`POST /auth/token`, optional in the specification) or point at an external identity provider.
+
+What a token may do is decided by its scopes:
+
+| Scope | Granted to | Lets the client |
+|---|---|---|
+| `read_all` | Business Logic | Read everything. A token with it is treated as Business Logic |
+| `read_targets` | VEN | Read programs and events, subject to targeting |
+| `read_ven_objects` | VEN | Read the reports, VENs and resources with its own client ID |
+| `write_programs`, `write_events` | Business Logic | Write programs and events |
+| `write_reports` | VEN | Write its own reports |
+| `write_vens` | Business Logic, VEN | Write VENs and resources. A VEN only its own, and never targets |
+| `write_subscriptions` | Business Logic, VEN | Manage subscriptions |
+
+The VTN writes the client ID of a report, VEN or resource that a VEN creates from the token, so a VEN cannot create objects on behalf of another.
+
+The specification also allows a **non-authenticating VTN** for public information such as a price list. In go-openadr this is a switch on a VTN that otherwise authenticates: a request without a token may read programs and events that have no targets, and nothing else.
+
+## Notifications
+
+A client can poll, or it can subscribe and be told when objects change. A notification carries the object type, the operation (`CREATE`, `UPDATE` or `DELETE`) and the object.
+
+| Mechanism | In OpenADR 3.1.0 | How it works |
+|---|---|---|
+| Webhook | Yes | The subscription names a callback URL and a bearer token. The VTN verifies the URL with an echo challenge before it accepts the subscription, then POSTs each notification to it. |
+| MQTT | Yes | The VTN publishes notifications to an MQTT broker. `GET /notifiers` names the broker and its authentication method, and the topic operations name the topics a client may read. |
+| WebSocket | **No**, an OpenLEADR extension <Badge text="non-standard" variant="caution" /> | The client opens `GET /notifiers/ws` with its bearer token and receives each notification as a text message. Subscription entries name the mechanism `WEBSOCKET` instead of a callback URL. |
+
+None of the three keeps notifications for a client that is away. A client that must not miss a change searches the VTN again after every reconnect. With MQTT, the broker's access control decides who can read which topic, not the VTN: a broker that lets every client subscribe to `#` lets every VEN read every other VEN's events.
+
+## Discovery on the local network
+
+OpenADR 3 describes how a VTN on a local network (a gateway at a customer site, for example) announces itself with **DNS-SD over Multicast DNS** (mDNS), as the service type `_openadr3._tcp`. The TXT record carries `version`, `base_path`, `local_url`, `program_names`, `requires_auth` and `openapi_url`. A VEN on the same network can then find the VTN without configuration.
+
+mDNS is not authenticated. Anyone on the link can answer. What discovery finds is an address to try, not a VTN to trust: a VEN must still verify the TLS certificate of what it connects to, and should not send its client secret to a VTN it cannot verify. An announcement of `requires_auth=False` is a claim, too.
+
+## Versions
+
+| Revision | Status in go-openadr |
+|---|---|
+| OpenADR 3.1.0 | Implemented. All 45 operations in the VTN |
+| OpenADR 3.0.1 | Planned, not implemented |
+| OpenADR 2.x | Out of scope |
+
+Two features go beyond 3.1.0, both shared with OpenLEADR and both off unless configured: WebSocket notifications, and **resource groups** (`/resource_groups`), which are proposed for a later revision and will change when a revision adopts them.
+
+## Security
+
+OpenADR messages move load and reveal usage. Whoever can write events to a VTN can move load; whoever can read reports learns how a site uses energy.
+
+- **TLS is required** by OpenADR 3.1. go-openadr configures none itself: serve the VTN with TLS or behind a proxy that terminates it, and give clients an `http.Client` with the TLS settings you need. Do not use `http://` outside tests: bearer tokens and client secrets would travel in the clear.
+- **Webhooks are a server-side request forgery surface.** A VTN makes requests to URLs its clients choose. go-openadr's webhook sender allows https only, public addresses only (checked after name resolution), no redirects and no proxy, and verifies each URL first.
+- **Set a bearer token on webhook receivers.** Without one, anyone who can reach the URL can feed a client forged events.
+- **The broker enforces MQTT privacy.** Allow only Business Logic to read the topics for all objects, only each VEN to read its own `vens/{venID}/` topics, and only the VTN to publish.
+- There is **no rate limiting and no audit log** in the library. Put them in front of the VTN.
+
+<Aside type="caution" title="Events act on equipment">
+An event a VEN acts on can switch a heat pump, charger or battery. Test with the example programs or the reference containers on loopback before you connect a VEN to a VTN that controls live equipment.
+</Aside>
+
+## Where OpenADR is used in energy
+
+- **Demand response.** A utility or aggregator asks enrolled sites to reduce or shift load during peaks, for example with an `IMPORT_CAPACITY_LIMIT` event targeted at a group of sites.
+- **Dynamic tariffs.** A VTN publishes a price schedule as an event of `PRICE` intervals, such as 24 hourly day-ahead prices. A VTN can make such a public tariff readable without authentication.
+- **Flexibility.** Batteries, chargers and heat pumps behind a VEN follow the schedule, and the VEN reports metered usage per interval so that the response can be checked.
+
+## No command-line tool
+
+OT Fabric has no OpenADR command-line tool. A CLI is out of scope for go-openadr. The closest equivalents are three example programs in the repository, one per role: `examples/vtn` (a standalone VTN), `examples/tariff` (Business Logic that publishes a schedule from a CSV file) and `examples/ven` (a VEN that prints its schedule and reports). See [Example programs](/docs/protocols/openadr/library/#example-programs) on the library page.
+
+## OT Fabric for OpenADR
+
+| Project | What it is |
+|---|---|
+| [go-openadr](/projects/go-openadr/) | OpenADR 3.1.0 for Go: VEN and Business Logic clients, an embeddable VTN, webhook, MQTT and WebSocket notifications, a timeline of intervals, and mDNS discovery. No dependencies outside the standard library. Pre-release. |
+| [openadr-interop](/projects/openadr-interop/) | Docker images of reference OpenADR 3 implementations (the OpenLEADR VTN and the ElaadNL client), deterministic fixtures, and a conformance suite that checks any VTN against the specification's OpenAPI document. |
+
+<CardGrid>
+  <LinkCard title="go-openadr" description="Project page for the Go library." href="/projects/go-openadr/" />
+  <LinkCard title="openadr-interop" description="Project page for the reference containers and conformance suite." href="/projects/openadr-interop/" />
+  <LinkCard title="Go library" description="Clients, a VTN, notifications, timeline and discovery with go-openadr." href="/docs/protocols/openadr/library/" />
+  <LinkCard title="Testing and interop" description="Reference stacks, the conformance suite and what has been validated." href="/docs/protocols/openadr/testing/" />
+  <LinkCard title="go-openadr on GitHub" description="github.com/otfabric/go-openadr" href="https://github.com/otfabric/go-openadr" />
+  <LinkCard title="openadr-interop on GitHub" description="github.com/otfabric/openadr-interop" href="https://github.com/otfabric/openadr-interop" />
+</CardGrid>

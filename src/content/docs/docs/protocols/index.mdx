@@ -8,7 +8,7 @@ sidebar:
 
 import { LinkCard, CardGrid } from '@astrojs/starlight/components';
 
-Each protocol has four guides. The **overview** explains how the protocol works on the wire and which OT Fabric projects implement it. The **Go library** guide covers installing, connecting, reading, writing and error handling. The **CLI** guide walks through the command-line tool. **Testing and interop** shows how each implementation is checked against independent reference stacks.
+Each protocol has four guides. The **overview** explains how the protocol works on the wire and which OT Fabric projects implement it. The **Go library** guide covers installing, connecting, reading, writing and error handling. The **CLI** guide walks through the command-line tool, for every protocol that has one. **Testing and interop** shows how each implementation is checked against independent reference stacks.
 
 For a shorter introduction to a protocol, start with its page in the [protocol overview](/protocols/).
 
@@ -20,4 +20,5 @@ For a shorter introduction to a protocol, start with its page in the [protocol o
   <LinkCard title="IEC 60870-5-104" description="Telecontrol for power grids over TCP. go-iec104, iec104ctl." href="/docs/protocols/iec-104/" />
   <LinkCard title="IEC 61850 / MMS" description="Substation automation data models over MMS. go-iec61850, go-mms, iec61850ctl." href="/docs/protocols/iec-61850/" />
   <LinkCard title="Siemens S7" description="S7comm over ISO-on-TCP for S7 PLCs. go-s7comm, s7commctl." href="/docs/protocols/s7/" />
+  <LinkCard title="OpenADR" description="Demand response and dynamic tariffs over a REST API. go-openadr." href="/docs/protocols/openadr/" />
 </CardGrid>

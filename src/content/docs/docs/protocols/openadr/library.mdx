@@ -1,0 +1,555 @@
+---
+title: Go library
+description: Use go-openadr to build OpenADR 3.1.0 VEN and Business Logic clients and an embeddable VTN, with webhook, MQTT and WebSocket notifications, timelines, discovery, errors and observability.
+sidebar:
+  label: Go library
+  order: 1
+---
+
+import { Aside, Tabs, TabItem, Steps, LinkCard } from '@astrojs/starlight/components';
+
+[go-openadr](/projects/go-openadr/) implements both sides of the OpenADR 3.1.0 REST API in Go: a VEN client and a Business Logic client for any OpenADR 3.1 VTN, and a VTN as an embeddable `http.Handler`. The authoritative reference for each symbol is the godoc on [pkg.go.dev](https://pkg.go.dev/github.com/otfabric/go-openadr); [API.md](https://github.com/otfabric/go-openadr/blob/main/API.md) in the repository is the map.
+
+<Aside type="caution" title="Pre-release">
+go-openadr is pre-release. It implements OpenADR 3.1.0 only, and the API may still change. Pin a version.
+</Aside>
+
+## Install
+
+```sh
+go get github.com/otfabric/go-openadr
+```
+
+go-openadr requires **Go 1.23** or later and has **no dependencies outside the standard library**. It carries its own MQTT 3.1.1 client, WebSocket framing and DNS codec for that reason.
+
+| Package | Purpose |
+|---|---|
+| `openadr` (module root) | The domain model both sides share: `Program`, `Event`, `Report`, `VEN`, `Resource`, values, durations, validation, errors. No I/O |
+| `client` | `client.VEN` and `client.BL` |
+| `server` | The VTN, an `http.Handler` |
+| `server/storage` | The `Store` interface, an in-memory store and a journal file |
+| `auth` | Validators: an in-memory token issuer and a JSON Web Token validator |
+| `notification/webhook`, `notification/mqtt`, `notification/websocket` | Notification bindings for both sides |
+| `timeline` | The intervals of an event or report as a table, and as CSV |
+| `discovery` | Announcing and finding VTNs with mDNS |
+
+## A VEN
+
+A VEN reads the events meant for it and reports back. This program lists the active events of a program, prints the prices, and reports usage on the first event.
+
+```go title="main.go"
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+
+	openadr "github.com/otfabric/go-openadr"
+	"github.com/otfabric/go-openadr/client"
+)
+
+func main() {
+	ctx := context.Background()
+	programID := os.Args[1]
+
+	ven, err := client.NewVEN(client.Config{
+		BaseURL: "https://vtn.example.com/openadr3",
+		Credentials: &client.Credentials{
+			ClientID:     os.Getenv("VEN_CLIENT_ID"),
+			ClientSecret: os.Getenv("VEN_CLIENT_SECRET"),
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	events, err := ven.Events(ctx, client.EventQuery{ProgramID: programID, ActiveOnly: true})
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, event := range events {
+		for _, interval := range event.Intervals {
+			for _, payload := range interval.Payloads {
+				if price, ok := payload.Values[0].Number(); ok && payload.Type == "PRICE" {
+					fmt.Println(interval.ID, price)
+				}
+			}
+		}
+	}
+	if len(events) == 0 {
+		return
+	}
+
+	_, err = ven.CreateReport(ctx, openadr.Report{
+		EventID:    events[0].ID,
+		ClientName: "site-42",
+		Resources: []openadr.ReportResource{{
+			ResourceName: "main-meter",
+			Intervals: []openadr.Interval{{ID: 0, Payloads: []openadr.ValuesMap{
+				{Type: "USAGE", Values: []openadr.Value{openadr.Number(1.8)}},
+			}}},
+		}},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```
+
+`NewVEN` validates the configuration and returns without contacting the VTN. There is nothing to close: a client holds no connection of its own, only what its `http.Client` pools.
+
+`client.Config` fields:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `BaseURL` | required | What `/programs` is appended to |
+| `HTTPClient` | a client with a 30 s timeout | Pass your own for TLS settings, proxies or other limits |
+| `Credentials` | none | OAuth2 client credentials (`ClientID`, `ClientSecret`, optional `TokenURL`) |
+| `Tokens` | none | Any other `TokenSource`; `StaticToken` always returns the same token |
+| `UserAgent` | | |
+| `MaxResponseBytes` | 16 MiB | Larger answers fail with `ErrProtocol` |
+| `RetryPolicy` | `NoRetry()` | See [Timeouts, retries, concurrency and paging](#timeouts-retries-concurrency-and-paging) |
+| `RetryCreates` | false | Let the policy retry a create whose fate is not known |
+| `Metrics` | none | Callbacks per call |
+| `Logger` | none | `*slog.Logger` |
+
+## Business Logic
+
+`client.NewBL` takes the same `Config`. A `BL` creates, updates and deletes programs and events, provisions VENs and resources with their targets, and reads all reports. A `VEN` reads programs and events, writes its own reports, and reads only its own reports, VENs and resources.
+
+| Method | `VEN` | `BL` |
+|---|:---:|:---:|
+| `Programs`, `Program`, `Events`, `Event` | yes | yes |
+| `CreateProgram`, `UpdateProgram`, `DeleteProgram`, and the same for events | | yes |
+| `Reports`, `Report` | own reports | all reports |
+| `CreateReport`, `UpdateReport`, `DeleteReport` | yes | |
+| `VENs`, `VEN`, `Resources`, `Resource` | own objects | all objects |
+| `CreateVEN`, `UpdateVEN`, `DeleteVEN`, and the same for resources | VEN request | Business Logic request |
+| `Subscriptions`, `Subscription` | own | all |
+| `CreateSubscription`, `UpdateSubscription`, `DeleteSubscription` | yes | yes |
+| `Notifiers` | yes | yes |
+| `MQTTTopics` | its own VEN's topics | all topics |
+
+What a client may actually do is decided by its token. A `BL` built with a VEN's credentials gets 403.
+
+- A create returns the object as the VTN stored it. A delete returns the object as it last was.
+- **An update replaces the whole object**: read it, change it, send it back.
+- Objects are validated against the 3.1.0 schema before they are sent. An invalid object is an `*openadr.ValidationError` and no request is made.
+- Leave `Metadata` zero in an object to create. An update names its object by `Metadata.ID`.
+- Build report descriptors with `openadr.NewReportDescriptor(payloadType)`. The zero `ReportDescriptor` does not have the specification's defaults and fails `Validate`.
+
+## A VTN
+
+The VTN is a `server.Server`, an `http.Handler` for the root of the API. It owns no listener: TLS, timeouts and shutdown belong to the `http.Server` you give it to.
+
+```go
+vtn, err := server.New(server.Config{
+    Store:     storage.NewMemory(),
+    Validator: validator,              // resolves a bearer token to a client ID and scopes
+    TokenURL:  "https://idp.example.com/oauth/token",
+})
+if err != nil {
+    return err
+}
+http.Handle("/openadr3/", http.StripPrefix("/openadr3", vtn))
+```
+
+| `server.Config` field | Meaning |
+|---|---|
+| `Store` | Required. `storage.Store` |
+| `Validator` | Required (unless `AllowAnonymous`). `auth.Validator` |
+| `TokenURL` | Required (unless `AllowAnonymous`). Absolute URL announced by `GET /auth/server`, as clients see it |
+| `TokenHandler` | Serves `POST /auth/token`; without it that answers 501 |
+| `Webhooks` | Turns subscriptions to webhooks on |
+| `MQTT` | `*MQTTConfig{Publisher, URIs, Authentication, TopicPrefix}`; without it the 12 topic operations answer 501 |
+| `WebSocket` | `*WebSocketConfig`; notifications over WebSockets (not 3.1.0) |
+| `ResourceGroups` | Serve `/resource_groups` (not 3.1.0) |
+| `AllowAnonymous` | Answer requests without a token |
+| `DisableCompression` | No gzip or deflate |
+| `MaxBodyBytes` | Default 1 MiB |
+| `Logger`, `Metrics` | See [Logging and metrics](#logging-and-metrics) |
+| `Now` | Clock |
+
+Without `Webhooks` and without `WebSocket`, `/subscriptions` and `GET /notifiers` answer 501. A VTN with WebSockets owns those connections: call `Server.Close` when it stops, before the `http.Server`'s `Shutdown`.
+
+The VTN generates IDs as 32 hexadecimal characters from `crypto/rand` and timestamps in UTC. It compresses answers of 1 KiB or more with gzip or deflate when the client's `Accept-Encoding` allows it.
+
+The [examples/quickstart](https://github.com/otfabric/go-openadr/blob/main/examples/quickstart/main.go) program runs a VTN, a Business Logic client and a VEN through the program, event and report workflow in one process:
+
+```sh
+go run ./examples/quickstart
+```
+
+## Authentication options
+
+**Client side.** With `Credentials`, the client performs the OAuth2 client credentials grant:
+
+- The token endpoint is `Credentials.TokenURL`, or, when empty, what the VTN names at `GET /auth/server`. A relative name is resolved against `BaseURL`. For an `https` VTN an `http` token endpoint is refused.
+- The client ID and secret are sent in the form body.
+- A token is reused until 10 seconds before it expires. Concurrent calls wait for one token request.
+- A 401 from the VTN discards the token and the request is sent once more with a fresh one.
+
+A VTN can name any HTTPS token endpoint. Configure `TokenURL` yourself when the VTN is not trusted to choose it.
+
+**VTN side.** The server takes an `auth.Validator`, called once per request, that returns an `Identity{ClientID, Scopes}`. The `ClientID` must be stable for a client across tokens. Two are provided:
+
+<Tabs>
+<TabItem label="auth.Issuer">
+An in-memory token service for the client credentials grant, for tests and small deployments. Give it as both `Config.Validator` and `Config.TokenHandler`. It accepts credentials in the form body or as HTTP Basic authentication, issues opaque tokens (one hour by default, `IssuerConfig.TokenTTL`) and narrows scopes to those requested. Tokens do not survive a restart, secrets are held in memory in the clear, and there is no rate limiting of failed attempts.
+
+`auth.BusinessLogicScopes()` and `auth.VENScopes()` return the scopes of each role.
+</TabItem>
+<TabItem label="auth.JWTValidator">
+Validates JSON Web Tokens from an identity provider, with static keys or the provider's key set (JWKS).
+
+```go
+type JWTConfig struct {
+	Keys          []JWTKey       // {ID, Key}: *rsa.PublicKey, *ecdsa.PublicKey, ed25519.PublicKey, or []byte for an HMAC
+	JWKSURL       string         // the provider's key set, fetched when needed
+	HTTPClient    *http.Client
+	Issuer        string         // required iss, when set
+	Audiences     []string       // aud must name one, when set
+	ClientIDClaim string         // default: client_id, then azp, then sub
+	ScopeClaim    string         // default: scope, then scp
+	Leeway        time.Duration
+}
+```
+
+Algorithms: RS256/384/512, ES256/384/512, EdDSA (Ed25519), HS256/384/512. The signature and `exp` are always checked, `nbf` when present, `iss` and `aud` when configured. Set `Audiences` whenever the provider also issues tokens for other services. A token without a client ID is invalid.
+</TabItem>
+</Tabs>
+
+A validator returns `auth.ErrInvalidToken` for a token that is unknown, malformed or expired (answered 401). Any other error is answered 500.
+
+## Anonymous access
+
+A VTN whose programs are for everyone, a price list say, can let clients in without a token:
+
+```go
+vtn, err := server.New(server.Config{ /* ... */ AllowAnonymous: true})
+```
+
+A request without an `Authorization` header may read programs and events that have no targets, and nothing else. Every write, every operation on objects that belong to a client, and the WebSocket answer 401. A request that carries a token is validated as always: a wrong token is a 401, not an anonymous request. With `AllowAnonymous`, `Validator` and `TokenURL` may be left out, and `GET /auth/server` then answers 501.
+
+A client is anonymous by having no credentials:
+
+```go
+ven, err := client.NewVEN(client.Config{BaseURL: url})
+```
+
+<Aside type="caution">
+With `AllowAnonymous`, every program and event without targets is readable by anyone who can reach the VTN, with all its payloads. A program that was only "not targeted yet" becomes public.
+</Aside>
+
+## Notifications
+
+None of the three mechanisms keeps notifications for a client that is away. A client that must not miss a change searches the VTN after every reconnect, and polls now and then.
+
+<Tabs>
+<TabItem label="Webhook">
+The client serves a `webhook.Handler` at its callback URL, then subscribes. The VTN verifies the URL with `GET <url>?echo=<random>` before it accepts the subscription, so the handler must be reachable first.
+
+```go
+http.Handle("/openadr", &webhook.Handler{
+    BearerToken: hookToken, // made up for this subscription
+    Notify: func(ctx context.Context, n openadr.Notification) error {
+        if event, ok := n.Object.(openadr.Event); ok {
+            // n.Operation is CREATE, UPDATE or DELETE
+        }
+        return nil
+    },
+})
+
+_, err = ven.CreateSubscription(ctx, openadr.Subscription{
+    ClientName: "site-42",
+    ObjectOperations: []openadr.ObjectOperation{{
+        Objects:     []openadr.ObjectType{openadr.ObjectEvent},
+        Operations:  []openadr.Operation{openadr.OperationCreate, openadr.OperationUpdate},
+        CallbackURL: "https://site-42.example.com/openadr",
+        BearerToken: hookToken,
+    }},
+})
+```
+
+`Notify` returning an error answers 500, which asks the VTN to send again. `Notify` may be called concurrently and more than once for one notification. Always set `BearerToken`: without it anyone who can reach the URL can feed the client events.
+
+On the VTN, give it a sender:
+
+```go
+sender := webhook.NewSender(webhook.SenderConfig{})
+defer sender.Close(ctx)
+vtn, err := server.New(server.Config{ /* ... */ Webhooks: sender})
+```
+
+| `webhook.SenderConfig` | Default |
+|---|---|
+| `Timeout` | 10 s per request |
+| `Attempts` | 4 |
+| `Backoff` | 1 s, then doubled |
+| `MaxBackoff` | 1 minute |
+| `Queue` | 256 per worker |
+| `Workers` | 4 |
+| `AllowInsecure` | false: https only, public addresses only, no redirects |
+
+`Send` never blocks: a notification for a full queue is dropped and logged. Delivery is at least once, in order per callback URL, and not durable.
+</TabItem>
+<TabItem label="MQTT">
+A VTN with `server.Config.MQTT` publishes notifications to a broker you run. A client asks the VTN where the broker is and which topics it may read, then subscribes:
+
+```go
+notifiers, err := ven.Notifiers(ctx)                              // where the broker is
+topics, err := ven.MQTTTopics(ctx, client.EventsForVEN(venID))    // what this VEN may hear
+sub, err := mqtt.NewSubscriber(mqtt.SubscriberConfig{
+    Broker: mqtt.Broker{URL: notifiers.MQTT.URIs[0]},
+    Topics: []string{topics.All},
+    Notify: func(ctx context.Context, topic string, n openadr.Notification) { /* ... */ },
+})
+```
+
+- `Broker.URL` is `mqtt://host` (port 1883) or `mqtts://host` (port 8883, TLS). `ClientID` must be unique per broker.
+- Neither `NewPublisher` nor `NewSubscriber` waits for the broker. They connect in the background and reconnect with `Backoff` doubling to a minute. `Subscriber.Ready` waits for the first subscription.
+- The publisher sends at QoS 1, in order, and queues while the broker is away.
+- Sessions are clean: what is published while a subscriber is disconnected is lost. `Sessions()` grows with every reconnect.
+- For `OAUTH2_BEARER_TOKEN` broker authentication, put the announced user name in `Username` and the client's access token in `Password`. For `CERTIFICATE`, set `TLS`. The subscriber does not do this by itself.
+
+The VTN's topics, below an optional prefix, are `programs/<op>`, `events/<op>`, `reports/<op>` and so on for Business Logic, and `vens/{id}/...` for what one VEN may see. `<op>` is `create`, `update` or `delete`. The broker's access control must enforce who reads which.
+</TabItem>
+<TabItem label="WebSocket">
+Not part of OpenADR 3.1.0: an OpenLEADR extension. A VTN offers it when given `server.Config.WebSocket`, and `GET /notifiers` reports it.
+
+```go
+_, err = ven.CreateSubscription(ctx, openadr.Subscription{
+    ClientName: "site-42",
+    ObjectOperations: []openadr.ObjectOperation{{
+        Objects:    []openadr.ObjectType{openadr.ObjectEvent},
+        Operations: []openadr.Operation{openadr.OperationCreate, openadr.OperationUpdate},
+        Mechanism:  openadr.MechanismWebSocket,      // in place of a callback URL
+    }},
+})
+sub, err := websocket.NewSubscriber(websocket.SubscriberConfig{
+    Dial:   ven.NotificationStream,
+    Notify: func(ctx context.Context, n openadr.Notification) { /* ... */ },
+})
+```
+
+The subscriber reconnects by itself and pings every 30 s by default. `WebSocketConfig{PingInterval, MaxPerClient, Queue}` on the VTN allows 4 connections per client by default (OpenLEADR allows 1) and disconnects a client that lets 256 notifications queue up. The token is checked when the connection opens, not again.
+</TabItem>
+</Tabs>
+
+Runnable examples: [examples/notifications](https://github.com/otfabric/go-openadr/blob/main/examples/notifications/main.go) (webhooks) and [examples/websocket](https://github.com/otfabric/go-openadr/blob/main/examples/websocket/main.go).
+
+## Timeline
+
+An event writes its intervals compactly. `timeline` applies the timing rules of the User Guide (defaults, "now", sub-intervals, `P9999Y`, events that repeat) and returns rows with a start and an end:
+
+```go
+rows, err := timeline.OfEvent(event, timeline.Options{SubIntervals: true})
+if err != nil {
+    return err
+}
+for _, row := range rows.At(time.Now()) {      // what applies now
+    fmt.Println(row.Type, row.Values, "until", row.End)
+}
+err = rows.WriteCSV(os.Stdout)
+```
+
+`Options` has `Now` (the current time when zero), `SubIntervals` and `Until` (how far to lay out an event that repeats without end). A row with a zero `End` does not end. `RandomizeStart` is carried on the row and not applied. `timeline.Of` does the same for a list of intervals with a default period, which is what a report resource carries. A table of more than about a million rows fails with `timeline.ErrTooLarge`.
+
+The other way, a CSV table becomes the intervals of an event:
+
+```go
+table, err := timeline.ReadCSV(file)   // columns: start, end, type, values
+event := openadr.Event{ProgramID: programID, Intervals: table.Intervals()}
+```
+
+`ReadCSV` needs a header and the columns `start`, `type` and `values` in any order. `WriteCSV` writes `interval,sub,start,end,type,values,randomize_start`, with RFC 3339 times and `values` as JSON.
+
+## Discovery
+
+A VTN announces itself with DNS-SD over Multicast DNS as `_openadr3._tcp`, and a VEN on the same network finds it:
+
+```go
+ad, err := discovery.Advertise(discovery.Advertisement{Port: 8443, BasePath: "openadr3"})
+defer ad.Close()
+```
+
+```go
+vtns, err := discovery.Browse(ctx, discovery.Options{First: true})
+if err == nil && len(vtns) > 0 {
+    ven, err = client.NewVEN(client.Config{BaseURL: vtns[0].URL(), Credentials: credentials})
+}
+```
+
+- `Browse` waits `Timeout` (3 s) for answers. Finding none is not an error.
+- `VTN.URL()` is the announced `local_url`, or `https://host:port/base_path`. `Addrs` are for systems that cannot resolve `.local` names.
+- `RequiresAuth` is false only when the VTN announces `requires_auth=False`.
+- `Advertise` requires `Port`, defaults `Version` to 3.1.0, shares port 5353 with the system's resolver, and fails where that is not possible. `NoAuth` announces a VTN with `AllowAnonymous`.
+- Limits: IPv4 multicast only, no probing for name conflicts, and many cloud networks carry no multicast.
+
+What is found is an address, not a VTN to trust. Verify the TLS certificate before sending credentials.
+
+## Storage
+
+The VTN keeps its objects behind `storage.Store`, with one `Collection` per kind of object (`Create`, `Get`, `Update`, `Delete`, `List`).
+
+| Store | Behaviour |
+|---|---|
+| `storage.NewMemory()` | Everything in the process |
+| `storage.OpenFile(path, opts)` | Memory plus a journal file: every change is appended and synced before the write returns. Survives a restart. One process per file. Created with mode 0600, since it holds subscription bearer tokens. A journal it cannot replay is `storage.ErrCorrupt` |
+| Your own | Implement the interface; `storage.Encode` and `storage.Decode` give a stable JSON form, and `storagetest.Run` is the test suite the built-in stores pass |
+
+A store enforces names that must be unique (programs, VENs, resources within a VEN), references (an event needs a program, a report an event, a resource a VEN), and that a program with events or a VEN with resources cannot be deleted. Violations are `*storage.ConstraintError`, answered 409. [examples/storage](https://github.com/otfabric/go-openadr/blob/main/examples/storage/README.md) implements the store on SQLite and PostgreSQL as a separate module; it is an example, not covered by the module's support, and needs Go 1.26.
+
+## Errors
+
+Every failure matches a sentinel of package `openadr` with `errors.Is`. Never compare error strings.
+
+| Situation | Error |
+|---|---|
+| VTN answered 400, 401, 403, 404, 409, 429 | `*openadr.Error`; `ErrBadRequest`, `ErrUnauthorized`, `ErrForbidden`, `ErrNotFound`, `ErrConflict`, `ErrTooManyRequests` |
+| VTN answered 501 | `ErrNotImplemented` and `ErrServer` |
+| 502, 503, 504 | `ErrUnavailable` and `ErrServer` |
+| Object or ID violates the schema (nothing sent) | `*openadr.ValidationError`, `ErrInvalid` |
+| Token endpoint refused the client | wraps `*client.TokenError`, matches `ErrUnauthorized` |
+| Answer could not be decoded, or too large | `ErrProtocol` |
+| Out of time | `ErrTimeout`, and `context.DeadlineExceeded` where that is what happened |
+| Constructor given a bad configuration | `ErrConfiguration` |
+| Use after close | `ErrClosed` |
+| No connection, TLS failure | the `net/http` error (`*url.Error`) |
+
+```go
+event, err := ven.Event(ctx, id)
+switch {
+case err == nil:
+case errors.Is(err, openadr.ErrNotFound):
+	// gone, or never visible to this VEN
+case errors.Is(err, context.DeadlineExceeded):
+	// out of time
+default:
+	var apiErr *openadr.Error
+	var tokenErr *client.TokenError
+	var invalid *openadr.ValidationError
+	switch {
+	case errors.As(err, &tokenErr):
+		// credentials: tokenErr.Code is "invalid_client", ...
+	case errors.As(err, &apiErr):
+		// the VTN said no: apiErr.StatusCode, apiErr.Problem.Detail
+	case errors.As(err, &invalid):
+		// a bad ID (nothing was sent), or an answer this client cannot read: invalid.Field
+	default:
+		// transport
+	}
+}
+```
+
+`openadr.Error.RetryAfter` holds the wait a 429 or 503 asked for. The go-openadr VTN answers 404 for an object the client may not see; other VTNs may differ (OpenLEADR answers 403 to a token it did not issue).
+
+## Timeouts, retries, concurrency and paging
+
+- **Timeouts.** Every client method takes a `context.Context` that bounds the whole call, including any token request and retries. The default HTTP client has a 30 s timeout.
+- **Retries.** None by default, beyond one retry with a fresh token after a 401. `RetryPolicy` adds them:
+
+  ```go
+  ven, err := client.NewVEN(client.Config{
+      BaseURL:     url,
+      Credentials: creds,
+      RetryPolicy: client.ExponentialBackoff(200*time.Millisecond, 30*time.Second, 4),
+  })
+  ```
+
+  The client asks the policy only about failures another attempt can cure (no answer, 429, 502, 503, 504) and only for requests safe to send twice. A create that may have reached the VTN is not retried unless `RetryCreates` is set; events, reports and subscriptions have no unique name to guard against a duplicate. `Retry-After` is honoured. `NewExponentialBackoff` adds options such as `RetryOnTimeout` and `NoJitter`.
+- **Concurrency.** `client.VEN`, `client.BL`, `server.Server`, the stores, validators, senders and subscribers are safe for concurrent use. Two updates of one object at the same time both succeed and the later one wins.
+- **Paging.** A VTN returns at most 50 objects per search. Each query struct embeds `Page{Skip, Limit}`. `client.Each` iterates over a whole result, 50 at a time:
+
+  ```go
+  for event, err := range client.Each(ctx, func(ctx context.Context, p client.Page) ([]openadr.Event, error) {
+  	return ven.Events(ctx, client.EventQuery{ProgramID: id, Page: p})
+  }) { ... }
+  ```
+
+  It is not a snapshot: objects created or deleted while it runs may be skipped or seen twice.
+- **Values.** Payload numbers are `float64`, exact for integers up to 2^53.
+
+## Logging and metrics
+
+The library is silent and counts nothing unless configured. Each part takes a `*slog.Logger` and a small metrics interface; there is no metrics library dependency, so an implementation feeds Prometheus, OpenTelemetry or `expvar` in a few lines.
+
+```go
+logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+ven, err := client.NewVEN(client.Config{BaseURL: url, Credentials: creds, Logger: logger})
+```
+
+| Who | Logs | Metrics |
+|---|---|---|
+| Client | debug per call, info on token renewal, warn per retry | `OnRequest`, `OnResponse`, `OnError`, `OnTimeout`; optional `OnAttempt` |
+| VTN | debug per request; error for each 500 | `OnRequest`, `OnResponse(op, status, duration)`; optional `OnNotification`, `OnSocketOpened`, `OnSocketClosed` |
+| Webhook sender | dropped or failed deliveries | `OnDelivered`, `OnFailed`, `OnDropped` |
+| MQTT publisher and subscriber, WebSocket subscriber | connection loss, drops | `OnPublished` or `OnReceived`, `OnDropped`, `OnConnected`, `OnDisconnected` |
+
+Operations are labelled by route (`GET /events/{id}`), a small fixed set fit to be a metric label. Bodies, tokens, secrets and callback URL queries are never logged. Alert on `OnDropped`, webhook `OnFailed`, and subscribers that disconnect without reconnecting. [examples/observability](https://github.com/otfabric/go-openadr/blob/main/examples/observability/main.go) shows all of it.
+
+## Example programs
+
+go-openadr has no command-line tool. The closest equivalents are three example programs, one per role, that work together. Each runs with `go run` from a checkout of the repository.
+
+| Program | Role | Flags |
+|---|---|---|
+| `examples/vtn` | VTN | `-addr` (default `127.0.0.1:8080`), `-public-url`, `-client id:secret:role` (repeatable, role `bl` or `ven`), `-store FILE`, `-webhooks`, `-insecure-webhooks`, `-mqtt URL`, `-mqtt-user` (password from `$VTN_MQTT_PASSWORD`), `-mqtt-public-url`, `-websocket`, `-resource-groups`, `-anonymous`, `-advertise NAME` |
+| `examples/tariff` | Business Logic | `-url`, `-client-id` (secret from `$BL_CLIENT_SECRET`), `-program`, `-csv` (default standard input), `-name`, `-target`, `-reports` |
+| `examples/ven` | VEN | `-url`, `-discover`, `-client-id` (secret from `$VEN_CLIENT_SECRET`), `-name`, `-insecure`, `-watch`, `-target`, `-report` |
+
+<Steps>
+1. Start the VTN with a client for each of the other two:
+
+   ```sh
+   go run ./examples/vtn -client utility:utility-secret:bl -client site-42:site-42-secret:ven -websocket &
+   ```
+
+2. Business Logic publishes a tariff from `prices.csv`:
+
+   ```sh
+   BL_CLIENT_SECRET=utility-secret go run ./examples/tariff -url http://127.0.0.1:8080 -client-id utility -program day-ahead -csv prices.csv
+   ```
+
+3. The VEN reads it and reports its usage (with `-watch` it stays and is told of changes):
+
+   ```sh
+   VEN_CLIENT_SECRET=site-42-secret go run ./examples/ven -url http://127.0.0.1:8080 -client-id site-42 -report
+   ```
+
+4. Business Logic reads the report:
+
+   ```sh
+   BL_CLIENT_SECRET=utility-secret go run ./examples/tariff -url http://127.0.0.1:8080 -client-id utility -program day-ahead -reports
+   ```
+</Steps>
+
+`prices.csv` has a header line and one line per period:
+
+```text
+start,end,type,values
+2026-10-14T00:00:00Z,2026-10-14T01:00:00Z,PRICE,0.11
+2026-10-14T01:00:00Z,2026-10-14T02:00:00Z,PRICE,0.12
+```
+
+<Aside type="caution">
+`examples/vtn` serves plain HTTP and is for local use only. The `ven` example reports made-up usage numbers, and `-insecure` accepts an unverifiable TLS certificate. Do not point these programs at a production VTN.
+</Aside>
+
+Other self-contained examples: `quickstart`, `notifications`, `websocket`, `prices` (a public tariff and an anonymous client), `resourcegroups`, `discovery`, `observability` and `storage`.
+
+## Limitations
+
+- **OpenADR 3.1.0 only.** 3.0.1 is planned; 2.x is out of scope.
+- **Not implemented:** notifications of `READ`, and keeping properties the schema does not define (they are ignored).
+- **Notifications are not durable.** A notification is lost when its attempts are used up or the process stops.
+- **No TLS configuration, rate limiting or audit log** in the library. Put them in the embedding program or a proxy.
+- **Not tested against another implementation:** webhooks, and the VTN's side of MQTT, WebSockets and resource groups. See [Testing and interop](/docs/protocols/openadr/testing/).
+- The MQTT client has met only Mosquitto with a login, and no broker but the module's own test broker with TLS.
+- Resource groups and WebSocket notifications are not 3.1.0, and resource groups will change when a revision adopts them.
+- No ready-made Prometheus or OpenTelemetry adapters.
+- Out of scope: dispatch or optimization logic, integrations with physical resources (Modbus, OPC UA), a web UI and a CLI.
+
+<LinkCard title="go-openadr on GitHub" description="Source, API.md, ERRORS.md, OBSERVABILITY.md and SECURITY.md." href="https://github.com/otfabric/go-openadr" />

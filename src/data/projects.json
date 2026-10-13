@@ -106,6 +106,19 @@
 		"icon": "go-sunspec"
 	},
 	{
+		"id": "go-openadr",
+		"name": "go-openadr",
+		"repo": "go-openadr",
+		"category": "library",
+		"protocols": [
+			"openadr"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-openadr",
+		"description": "OpenADR 3.1 VEN and Business Logic clients and an embeddable VTN, with webhook, MQTT and WebSocket notifications. No dependencies.",
+		"icon": "go-openadr"
+	},
+	{
 		"id": "modbusctl",
 		"name": "modbusctl",
 		"repo": "modbusctl",
@@ -313,6 +326,18 @@
 		"status": "available",
 		"description": "Fixture-driven Snap7 servers (native and pure Python) for testing S7 clients.",
 		"icon": "go-s7comm"
+	},
+	{
+		"id": "openadr-interop",
+		"name": "openadr-interop",
+		"repo": "openadr-interop",
+		"category": "interop",
+		"protocols": [
+			"openadr"
+		],
+		"status": "available",
+		"description": "OpenADR 3 reference stacks: the OpenLEADR VTN and the ElaadNL client, plus a specification-driven conformance suite.",
+		"icon": "go-openadr"
 	},
 	{
 		"id": "ui-apps",

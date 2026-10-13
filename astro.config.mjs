@@ -57,6 +57,7 @@ export default defineConfig({
             { label: 'IEC 60870-5-104', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/iec-104' } }] },
             { label: 'IEC 61850 / MMS', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/iec-61850' } }] },
             { label: 'Siemens S7', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/s7' } }] },
+            { label: 'OpenADR', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/openadr' } }] },
           ],
         },
         {
