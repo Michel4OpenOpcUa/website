@@ -11,7 +11,7 @@ import { Aside, Tabs, TabItem, Steps, LinkCard } from '@astrojs/starlight/compon
 [go-openadr](/projects/go-openadr/) implements both sides of the OpenADR 3.1.0 REST API in Go: a VEN client and a Business Logic client for any OpenADR 3.1 VTN, and a VTN as an embeddable `http.Handler`. The authoritative reference for each symbol is the godoc on [pkg.go.dev](https://pkg.go.dev/github.com/otfabric/go-openadr); [API.md](https://github.com/otfabric/go-openadr/blob/main/API.md) in the repository is the map.
 
 <Aside type="caution" title="Pre-release">
-go-openadr is pre-release. It implements OpenADR 3.1.0 only, and the API may still change. Pin a version.
+go-openadr is pre-release. It implements OpenADR 3.1.0 only, and the API may still change. Pin a version. This page follows v0.4.0.
 </Aside>
 
 ## Install
@@ -167,12 +167,28 @@ http.Handle("/openadr3/", http.StripPrefix("/openadr3", vtn))
 | `WebSocket` | `*WebSocketConfig`; notifications over WebSockets (not 3.1.0) |
 | `ResourceGroups` | Serve `/resource_groups` (not 3.1.0) |
 | `AllowAnonymous` | Answer requests without a token |
+| `Outbox` | `storage.Outbox`; makes webhook notifications durable. See [Durable webhooks](#durable-webhooks) |
+| `NotificationTTL`, `RedeliverEvery` | With `Outbox`: how long an undelivered notification is kept (a day) and how often what is left is tried again (a minute) |
+| `Limiter` | `server.Limiter`, asked for every request of an identified client; a refusal is answered 429 with `Retry-After` |
+| `NotifyReads` | Notify subscribers of `READ` when an object of their type is read, by ID or in a search |
 | `DisableCompression` | No gzip or deflate |
 | `MaxBodyBytes` | Default 1 MiB |
 | `Logger`, `Metrics` | See [Logging and metrics](#logging-and-metrics) |
 | `Now` | Clock |
 
-Without `Webhooks` and without `WebSocket`, `/subscriptions` and `GET /notifiers` answer 501. A VTN with WebSockets owns those connections: call `Server.Close` when it stops, before the `http.Server`'s `Shutdown`.
+Without `Webhooks` and without `WebSocket`, `/subscriptions` and `GET /notifiers` answer 501. A VTN with WebSockets or an `Outbox` has work of its own: call `Server.Close` when it stops, before the `http.Server`'s `Shutdown`. Code that builds `server.Config` with unkeyed fields has to be adjusted on upgrade, since each release so far has added fields.
+
+### Rate limiting
+
+```go
+vtn, err := server.New(server.Config{ /* ... */ Limiter: server.NewRateLimiter(5, 10)})
+```
+
+`Limiter` is asked once per request, after the token was checked and its scope found sufficient, with the client ID (empty for an anonymous request) and the operation. A refusal is answered 429 with a problem object and `Retry-After` in whole seconds, which go-openadr's clients honour when they have a retry policy. `NewRateLimiter(perSecond, burst)` is a token bucket per client ID, kept in memory per process. It guards against a client gone wrong: what arrives without a valid token never reaches it and is a gateway's to limit.
+
+### Notifications of reads
+
+OpenADR 3.1.0 lists the operation `READ` for subscriptions and does not say what it means. With `NotifyReads`, every object that is read, by ID or in a search, is notified to the subscribers that asked for `READ` of its type and may see it, by webhook and over WebSockets (MQTT has no topic for it). That is one notification per object per read, so it is off by default.
 
 The VTN generates IDs as 32 hexadecimal characters from `crypto/rand` and timestamps in UTC. It compresses answers of 1 KiB or more with gzip or deflate when the client's `Accept-Encoding` allows it.
 
@@ -245,7 +261,7 @@ With `AllowAnonymous`, every program and event without targets is readable by an
 
 ## Notifications
 
-None of the three mechanisms keeps notifications for a client that is away. A client that must not miss a change searches the VTN after every reconnect, and polls now and then.
+Only webhooks can be made durable, with an [outbox](#durable-webhooks) on the VTN. A client that must not miss a change searches the VTN after every reconnect, and polls now and then.
 
 <Tabs>
 <TabItem label="Webhook">
@@ -293,7 +309,7 @@ vtn, err := server.New(server.Config{ /* ... */ Webhooks: sender})
 | `Workers` | 4 |
 | `AllowInsecure` | false: https only, public addresses only, no redirects |
 
-`Send` never blocks: a notification for a full queue is dropped and logged. Delivery is at least once, in order per callback URL, and not durable.
+`Send` never blocks: a notification for a full queue is dropped and logged. Delivery is at least once and in order per callback URL. By itself the sender loses a notification when its attempts are used up or the process stops; a VTN with an outbox hands it to the sender again (see below). The sender waits as long as a webhook's `Retry-After` asks, up to `MaxBackoff`.
 </TabItem>
 <TabItem label="MQTT">
 A VTN with `server.Config.MQTT` publishes notifications to a broker you run. A client asks the VTN where the broker is and which topics it may read, then subscribes:
@@ -390,6 +406,31 @@ if err == nil && len(vtns) > 0 {
 
 What is found is an address, not a VTN to trust. Verify the TLS certificate before sending credentials.
 
+## Durable webhooks
+
+A VTN with `server.Config.Outbox` records each webhook notification before it hands it to the sender, and forgets it when the webhook has confirmed it, has refused it for good, its subscription is deleted, or `NotificationTTL` has passed. What is recorded and not on its way is sent again when the VTN starts and every `RedeliverEvery`. One callback URL gets one notification at a time, oldest first, so the order holds across failures and restarts, and a webhook that is down holds back only its own notifications.
+
+```go
+store, err := storage.OpenFile("vtn.journal", storage.FileOptions{})
+if err != nil {
+    return err
+}
+sender := webhook.NewSender(webhook.SenderConfig{})
+vtn, err := server.New(server.Config{
+    Store:    store,
+    Outbox:   store, // the journal file is the outbox too
+    Webhooks: sender,
+    // Validator, TokenURL, ...
+})
+defer vtn.Close()
+```
+
+`storage.Memory` and `storage.File` implement `storage.Outbox`, and so do the SQLite and PostgreSQL stores of `examples/storage`; `storagetest.Run` tests the outbox of your own store when it implements the interface. `Webhooks` has to be a `server.ConfirmingSender`, which `*webhook.Sender` is: its `SendConfirmed` reports what became of each notification.
+
+- **At least once.** A VTN that stops between a webhook's answer and the removal of the record sends that notification again, so a webhook has to accept duplicates.
+- **One VTN per outbox.** Two VTN processes on one database would each send what is recorded.
+- **Webhooks only.** MQTT notifications are left to the broker's persistence, and a WebSocket client searches after it reconnects.
+
 ## Storage
 
 The VTN keeps its objects behind `storage.Store`, with one `Collection` per kind of object (`Create`, `Get`, `Update`, `Delete`, `List`).
@@ -397,8 +438,8 @@ The VTN keeps its objects behind `storage.Store`, with one `Collection` per kind
 | Store | Behaviour |
 |---|---|
 | `storage.NewMemory()` | Everything in the process |
-| `storage.OpenFile(path, opts)` | Memory plus a journal file: every change is appended and synced before the write returns. Survives a restart. One process per file. Created with mode 0600, since it holds subscription bearer tokens. A journal it cannot replay is `storage.ErrCorrupt` |
-| Your own | Implement the interface; `storage.Encode` and `storage.Decode` give a stable JSON form, and `storagetest.Run` is the test suite the built-in stores pass |
+| `storage.OpenFile(path, opts)` | Memory plus a journal file: every change is appended and synced before the write returns. Survives a restart, and holds the webhook outbox when given as `Outbox`. One process per file. Created with mode 0600, since it holds subscription bearer tokens. A journal it cannot replay is `storage.ErrCorrupt` |
+| Your own | Implement the interface, and `storage.Outbox` beside it for durable webhooks; `storage.Encode` and `storage.Decode` give a stable JSON form, and `storagetest.Run` is the test suite the built-in stores pass |
 
 A store enforces names that must be unique (programs, VENs, resources within a VEN), references (an event needs a program, a report an event, a resource a VEN), and that a program with events or a VEN with resources cannot be deleted. Violations are `*storage.ConstraintError`, answered 409. [examples/storage](https://github.com/otfabric/go-openadr/blob/main/examples/storage/README.md) implements the store on SQLite and PostgreSQL as a separate module; it is an example, not covered by the module's support, and needs Go 1.26.
 
@@ -496,7 +537,7 @@ go-openadr has no command-line tool. The closest equivalents are three example p
 
 | Program | Role | Flags |
 |---|---|---|
-| `examples/vtn` | VTN | `-addr` (default `127.0.0.1:8080`), `-public-url`, `-client id:secret:role` (repeatable, role `bl` or `ven`), `-store FILE`, `-webhooks`, `-insecure-webhooks`, `-mqtt URL`, `-mqtt-user` (password from `$VTN_MQTT_PASSWORD`), `-mqtt-public-url`, `-websocket`, `-resource-groups`, `-anonymous`, `-advertise NAME` |
+| `examples/vtn` | VTN | `-addr` (default `127.0.0.1:8080`), `-public-url`, `-client id:secret:role` (repeatable, role `bl` or `ven`), `-store FILE` (with `-webhooks`, also the outbox), `-webhooks`, `-insecure-webhooks`, `-mqtt URL`, `-mqtt-user` (password from `$VTN_MQTT_PASSWORD`), `-mqtt-public-url`, `-websocket`, `-resource-groups`, `-anonymous`, `-advertise NAME`, `-rate` (requests a second per client), `-notify-reads` |
 | `examples/tariff` | Business Logic | `-url`, `-client-id` (secret from `$BL_CLIENT_SECRET`), `-program`, `-csv` (default standard input), `-name`, `-target`, `-reports` |
 | `examples/ven` | VEN | `-url`, `-discover`, `-client-id` (secret from `$VEN_CLIENT_SECRET`), `-name`, `-insecure`, `-watch`, `-target`, `-report` |
 
@@ -543,11 +584,11 @@ Other self-contained examples: `quickstart`, `notifications`, `websocket`, `pric
 ## Limitations
 
 - **OpenADR 3.1.0 only.** 3.0.1 is planned; 2.x is out of scope.
-- **Not implemented:** notifications of `READ`, and keeping properties the schema does not define (they are ignored).
-- **Notifications are not durable.** A notification is lost when its attempts are used up or the process stops.
-- **No TLS configuration, rate limiting or audit log** in the library. Put them in the embedding program or a proxy.
-- **Not tested against another implementation:** webhooks, and the VTN's side of MQTT, WebSockets and resource groups. See [Testing and interop](/docs/protocols/openadr/testing/).
-- The MQTT client has met only Mosquitto with a login, and no broker but the module's own test broker with TLS.
+- **Not implemented:** keeping properties the schema does not define (they are ignored).
+- **Durable means webhooks**, at least once and with one VTN per outbox. MQTT and WebSocket notifications are not kept.
+- **No TLS configuration or audit log** in the library, and the rate limiter sees only identified clients. Put TLS and limits for unauthenticated traffic in the embedding program or a proxy.
+- **Not received by another implementation:** this VTN's webhooks and WebSocket notifications. Neither reference has a webhook receiver or a WebSocket client, so they are tested between go-openadr's own two sides. See [Testing and interop](/docs/protocols/openadr/testing/).
+- MQTT with a login or over TLS has met no other implementation's client, and the MQTT client has met only Mosquitto with a login.
 - Resource groups and WebSocket notifications are not 3.1.0, and resource groups will change when a revision adopts them.
 - No ready-made Prometheus or OpenTelemetry adapters.
 - Out of scope: dispatch or optimization logic, integrations with physical resources (Modbus, OPC UA), a web UI and a CLI.

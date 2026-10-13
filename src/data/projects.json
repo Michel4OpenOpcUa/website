@@ -102,7 +102,7 @@
 		],
 		"status": "available",
 		"install": "go get github.com/otfabric/go-sunspec",
-		"description": "SunSpec over Modbus: discovers 112 built-in models and decodes typed, scaled values. Includes the sunspecctl CLI.",
+		"description": "SunSpec over Modbus, both sides: discovers and decodes 112 built-in models into typed, scaled values, and serves simulated or real SunSpec devices.",
 		"icon": "go-sunspec"
 	},
 	{
@@ -140,8 +140,21 @@
 			"modbus"
 		],
 		"status": "available",
-		"description": "Deterministic, stateful Modbus TCP device simulator driven by JSON fixtures, for integration tests.",
+		"description": "Deterministic, stateful Modbus TCP and TLS device simulator driven by JSON fixtures, with fault injection, request traces and CI assertions.",
 		"icon": "go-modbus"
+	},
+	{
+		"id": "sunspecctl",
+		"name": "sunspecctl",
+		"repo": "sunspecctl",
+		"category": "cli",
+		"protocols": [
+			"sunspec",
+			"modbus"
+		],
+		"status": "available",
+		"description": "Detect, list, read and poll SunSpec inverters, meters and batteries, and serve a simulated device from a JSON file or a capture of a real one.",
+		"icon": "go-sunspec"
 	},
 	{
 		"id": "opcuactl",

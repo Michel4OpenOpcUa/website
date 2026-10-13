@@ -1,6 +1,6 @@
 ---
 title: Go library
-description: Use go-sunspec to discover SunSpec models on a Modbus device and decode every point into typed, scaled values, over TCP, RTU or any go-modbus transport.
+description: Use go-sunspec to discover SunSpec models on a Modbus device and decode every point into typed, scaled values, and to serve SunSpec devices of your own, over TCP, RTU, TLS or any go-modbus transport.
 sidebar:
   label: Go library
   order: 1
@@ -8,7 +8,7 @@ sidebar:
 
 import { Aside, Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
 
-[go-sunspec](/projects/go-sunspec/) reads SunSpec devices over Modbus. It finds the `SunS` marker, walks the model chain, and decodes every point of the 112 compiled SunSpec models into typed values with scale factors and units applied. It is pure Go, read-only, and built on [go-modbus](/projects/go-modbus/), which supplies the transport.
+[go-sunspec](/projects/go-sunspec/) reads and serves SunSpec devices over Modbus. As a client it finds the `SunS` marker, walks the model chain, and decodes every point of the 112 compiled SunSpec models into typed values with scale factors and units applied. As a server it lays out a model chain from point values given by name and serves it through go-modbus, as a simulator or as the SunSpec interface of your own equipment. It is pure Go with no cgo, and built on [go-modbus](/projects/go-modbus/), which supplies the transport. The command-line tool built on it, [sunspecctl](/docs/protocols/sunspec/cli/), has its own repository since go-sunspec v0.5.0; go-sunspec is the library only.
 
 ## Install
 
@@ -16,7 +16,7 @@ import { Aside, Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
 go get github.com/otfabric/go-sunspec
 ```
 
-go-sunspec requires **Go 1.23** or later and go-modbus **v1.3.0** or later. The packages are `sunspec` (discovery, reading, decoding) and `sunspec/registry` (model metadata).
+go-sunspec requires **Go 1.23** or later and go-modbus **v1.4.2** or later, and depends on nothing else. The packages are `sunspec` (discovery, reading, decoding, encoding and serving) and `sunspec/registry` (model metadata). This page follows go-sunspec v0.5.1.
 
 ## Connect and read
 
@@ -125,6 +125,8 @@ device, err := sunspec.Discover(ctx, client, &sunspec.DiscoverOptions{
 
 `sunspec.Open` is an alias of `Discover`. Despite the name, it does not open the Modbus connection; call `client.Open()` first.
 
+The chain walk stops after `MaxModels` headers (256 by default) without an error. When it has not reached the end marker by then, `Device.Discovery.Warnings` says "model chain not terminated": the device has more models, or what was walked is not a model chain.
+
 ## Reading models and points
 
 ```go
@@ -140,7 +142,7 @@ point, err := device.ReadPoint(ctx, *inst, "W")
 fmt.Printf("Power: %g W\n", *point.ScaledValue)
 ```
 
-Reads longer than 125 registers are split into several Modbus requests for you.
+Every read of a model includes its two header registers (ID and length) and compares them with the discovery result. A device whose model chain changed since `Discover` (a firmware update, a reconfiguration, another device behind the same address) fails the read with `ErrModelChanged` instead of having its registers decoded with a stale layout; call `Discover` again. A model that needs more than one request is read from its header address in chunks of 125 registers, so a model of 124 or 125 data registers takes two requests.
 
 Each decoded point is a `DecodedPoint`:
 
@@ -194,6 +196,89 @@ all := registry.All()    // map[uint16]*ModelMeta (shallow copy)
 
 The registry is generated from the official [sunspec/models](https://github.com/sunspec/models) JSON. A weekly workflow in the repository checks upstream for new and changed models.
 
+## Serving a device
+
+A `Server` is a SunSpec device held in memory: the `SunS` marker, each model with its ID and length registers and its data, and the end marker. You give the models as point values by SunSpec name, and the library encodes them with the registry's schemas.
+
+```go title="serve.go"
+srv, err := sunspec.NewServer(&sunspec.ServerOptions{BaseAddress: 40000, UnitID: 1},
+	sunspec.ServerModel{ID: 1, Values: (&sunspec.Values{}).
+		Set("Mn", "Acme").Set("Md", "PV-5000").Set("SN", "A-0001")},
+	sunspec.ServerModel{ID: 103, Values: (&sunspec.Values{}).
+		Set("W", 4200).Set("W_SF", 0).        // 4200 W
+		Set("PhVphA", 230.4).Set("V_SF", -1). // stored as 2304
+		Set("St", "MPPT")},                   // enum by symbol name
+	sunspec.ServerModel{ID: 64900, Registers: []uint16{1, 2, 3}}, // vendor model, raw
+)
+if err != nil {
+	return err
+}
+
+// A Server is a go-modbus RequestHandler: the Modbus server stays yours.
+ms, err := modbus.NewServer(&modbus.ServerConfig{URL: "tcp://0.0.0.0:1502"}, srv)
+if err != nil {
+	return err
+}
+if err := ms.Start(); err != nil {
+	return err
+}
+defer ms.Stop()
+
+// Change values while the device is being read.
+err = srv.SetPoint(1, "W", 4350) // the model at index 1 of the chain
+```
+
+`srv.Serve(ctx, &modbus.ServerConfig{...})` does the `NewServer`, `Start`, wait and shutdown sequence in one call, for when you do not need the Modbus server yourself. The `Server` owns no listener: go-modbus does, with its idle timeout, client limit, TLS (`tcp+tls://`), logging and metrics.
+
+| `ServerOptions` field | Meaning |
+|---|---|
+| `UnitID` | The unit ID the device answers; 0 selects 1 |
+| `BaseAddress` | Address of the `SunS` marker. The zero value is address 0 |
+| `RegType` | `modbus.HoldingRegister` (default) or `modbus.InputRegister` |
+| `OnWrite` | Called with each client write, decoded, before it takes effect; returning an error refuses it |
+| `SilentToOtherUnits` | Leave requests for other unit IDs unanswered instead of answering exception 0x0B, as a device on a serial line would (since v0.5.1) |
+
+### Values
+
+`Values` holds a group instance's `Points` (by name) and nested `Groups`, with the chainable `Set`, `Add` (adds an instance of a repeating group and returns it) and `Clone`.
+
+- **Engineering values.** A point with a scale factor takes the real value. The exponent is the value you give the `sunssf` point of that name, looked up the way the decoder does it; the stored integer is `value / 10^sf`, rounded to the nearest integer with halves away from zero. Without the `sunssf` point the value is stored unscaled.
+- **Never wrapped or clamped.** A value outside the point's range after scaling fails with `ErrValueOutOfRange`. So does giving a type's "not implemented" sentinel explicitly (65535 for a `uint16`, NaN for a float), so that a measurement cannot turn into "not implemented" by accident.
+- **Not implemented.** A point you do not set, or set to `nil`, is served as its type's "not implemented" value.
+- **Types.** Numbers for integer, accumulator, float, `count` and `sunssf` points; a symbol name or a number for enums; a `[]string` of bit names or a number for bitfields; strings for `string`, `ipaddr`, `ipv6addr` and `eui48`; or, for any point, a `[]uint16` with exactly its registers.
+- **Groups.** Count points such as `NPt` or `NCrv` are filled in from the number of instances you add. Groups with fewer instances than an explicit count are completed with not-implemented ones.
+
+### Updates and client writes
+
+`SetPoint` sets one top-level point, `SetValues` replaces all values of a model, `Update` hands a copy of the current values to a function and encodes what it leaves, and `SetRegisters` replaces a model's data registers. Each is atomic for a reader: a model read in one Modbus request never shows half an update. An update cannot change a model's length (`ErrModelLayout`), and nothing changes when an update fails. `Server.Model(index)` returns a decoded snapshot, `Server.Models()` the layout as discovery would find it. `index` is the position in the chain, starting at 0, because a device can hold several models with the same ID.
+
+What a client sees:
+
+| Request | Answer |
+|---|---|
+| Read of the configured register type inside the device map (it may span models) | The registers |
+| Read or write touching an address outside the map, or the other register type | Exception 2 |
+| Write (FC 6, FC 16) covering whole points with SunSpec access `RW`, in a model served from `Values` | Accepted, after `OnWrite` |
+| Write to a read-only point, the marker, a header, a count point, part of a point, a model served from `Registers` | Exception 2; nothing changes |
+| Request for another unit ID | Exception 0x0B; no answer with `SilentToOtherUnits` |
+| Request for unit ID 0 (broadcast) | No answer, and not carried out (since v0.5.1) |
+| Coils, discrete inputs, FC 22, FC 23 | Exception 1 |
+
+With `RegType` set to input registers nothing is writable. The `Server` stores an accepted write as it is and does not judge the value: that is what `OnWrite` is for. `OnWrite` and the function given to `Update` run with the `Server` locked, so they must not call its methods.
+
+### Encoding without I/O
+
+```go
+values := dm.Values()                                      // a decoded model back into Values
+regs, err := sunspec.EncodeModel(registry.ByID(103), values) // ID and length registers, then the data
+```
+
+`EncodeModel` is the inverse of `DecodeModel`. `DecodedModel.Values()` returns what `EncodeModel` needs to rebuild a model that was read: for a model that decoded without warnings, decoding the encoded values gives the same points. That is how a real device can be captured and served again, which is what `sunspecctl capture` and `serve` do.
+
+<Aside type="caution" title="No authentication in Modbus">
+Whoever can reach a served device can read it and write its writable points. Keep it on loopback or a test network, or serve it over `tcp+tls://` with client certificates. A simulated device stores the setpoints it is sent; it does not act on them.
+</Aside>
+
 ## Errors
 
 Use `errors.Is` and `errors.As`:
@@ -205,9 +290,15 @@ Use `errors.Is` and `errors.As`:
 | Point name not in the decoded model | `ErrPointNotFound` |
 | Register slice too short, or decode failure | `*DecodeError` wrapping `ErrDecode` |
 | Multi-chunk read failed part way | `ErrPartialRead`, wrapping the Modbus cause |
-| Model chain malformed or over its limit | `ErrModelChainInvalid`, `ErrModelChainLimitExceeded` (re-exported from go-modbus) |
+| The device no longer has the discovered model at that address | `ErrModelChanged` |
+| Model chain malformed, a model that runs past address 65535 or leaves no room for the next header, or a chain over its limit | `ErrModelChainInvalid`, `ErrModelChainLimitExceeded` (re-exported from go-modbus) |
+| Chain longer than `MaxModels` | not an error: a warning in `Device.Discovery.Warnings` |
 | Nil client, or a register range past 65535 | error wrapping `modbus.ErrUnexpectedParameters`; nothing is sent |
 | Unsupported point type | not an error: a warning on `DecodedModel`, raw registers kept |
+| A value that cannot be encoded: unknown point, wrong Go type, unknown symbol | `*EncodeError` matching `ErrEncode` (and `ErrPointNotFound` for an unknown point) |
+| A value that does not fit its point after scaling | `*EncodeError` matching `ErrEncode` and `ErrValueOutOfRange` |
+| Models that do not fit the address space, or an update that would change a model's length | `ErrModelLayout` |
+| `Server` model index out of range | `ErrUnknownModel` |
 | Transport, timeout, Modbus exception | the go-modbus error, often wrapped |
 
 ```go
@@ -225,16 +316,19 @@ if errors.As(err, &dec) {
 
 `ErrUnknownModel` does not mean "no local schema". A model without a compiled definition is still discovered, with `ModelInstance.SchemaKnown` set to `false`, and `ReadModel` returns it with raw registers and a warning.
 
-Reads can be partial. `ReadAll` returns the models decoded so far together with the first error, and `ReadModel` can return a partial `DecodedModel` with a non-nil error after a transport failure. Inspect both return values.
+Reads can be partial. `ReadAll` returns the models decoded so far together with the first error, and `ReadModel` can return a partial `DecodedModel` with a non-nil error after a transport failure. A model that fails with `ErrModelChanged` comes back with the data registers that were read and no decoded group. Inspect both return values.
+
+A context deadline overrides the client's `Timeout` in go-modbus. `ReadAll` makes several requests under one context, so when one response is lost, that request uses up the rest of the context's time and the models after it fail with the context's error. Give long multi-model reads a deadline that suits a single request, or none and rely on `Timeout`.
 
 ## Timeouts, retries, concurrency and observability
 
-go-sunspec defines no logger, metrics, retry or timeout settings of its own. Configure them on the go-modbus client (`Timeout`, `RetryPolicy`, `Logger`, `Metrics`, `MaxConns`) and they apply to every SunSpec read. `Device` methods are safe for concurrent use to the same extent as the underlying `*modbus.Client`. The registry is safe for concurrent reads; do not call `registry.Register`, which is for generated code only.
+go-sunspec defines no logger, metrics, retry or timeout settings of its own. Configure them on the go-modbus client (`Timeout`, `RetryPolicy`, `Logger`, `Metrics`, `MaxConns`) and they apply to every SunSpec read, or on the go-modbus server for a served device. `Device` methods are safe for concurrent use to the same extent as the underlying `*modbus.Client`. `Server` methods are safe for concurrent use with each other and with the requests being served. The registry is safe for concurrent reads; do not call `registry.Register`, which is for generated code only.
 
 ## Limitations
 
-- **Read only.** go-sunspec does not write SunSpec control points. You can write registers with the same go-modbus client (`client.WriteRegisters`) using the address and offset from the discovered model, but go-sunspec does not help you encode or validate the value.
-- Only models in the compiled registry are decoded. Others come back as raw registers.
+- **The client side only reads.** `Device` does not write SunSpec control points. You can write registers with the same go-modbus client (`client.WriteRegisters`) at the address and offset of the discovered model, and `EncodeModel` gives you the registers for values by point name, but go-sunspec does not validate what the value does to the device.
+- Only models in the compiled registry are decoded and encoded by name. Others are read and served as raw registers.
+- A served device's layout is fixed when the `Server` is created. A model longer than 125 registers takes several requests to read and can show a different update in each, as with any Modbus device.
 - Treat decoded values as untrusted input. Validate ranges before using them for control decisions, and escape strings such as the manufacturer or serial number before putting them in HTML, SQL or shell commands.
 
 <Aside type="caution" title="Writing DER controls">
@@ -258,4 +352,4 @@ result, err := sunspec.Discover(ctx, reader{client}, &sunspec.Options{UnitID: 1,
 
 Here `sunspec` is `github.com/otfabric/go-modbus/sunspec`, not the go-sunspec package. See the [Modbus overview](/docs/protocols/modbus/) for the rest of go-modbus.
 
-<LinkCard title="go-sunspec on GitHub" href="https://github.com/otfabric/go-sunspec" description="Source, API.md and ERRORS.md." />
+<LinkCard title="go-sunspec on GitHub" href="https://github.com/otfabric/go-sunspec" description="Source, API.md (with the full serving contract) and ERRORS.md." />

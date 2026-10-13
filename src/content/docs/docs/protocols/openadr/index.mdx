@@ -99,7 +99,7 @@ The specification also allows a **non-authenticating VTN** for public informatio
 
 ## Notifications
 
-A client can poll, or it can subscribe and be told when objects change. A notification carries the object type, the operation (`CREATE`, `UPDATE` or `DELETE`) and the object.
+A client can poll, or it can subscribe and be told when objects change. A notification carries the object type, the operation (`CREATE`, `UPDATE` or `DELETE`) and the object. OpenADR 3.1.0 also lists the operation `READ` without saying what it means; go-openadr notifies of reads only when the VTN is configured to (`NotifyReads`).
 
 | Mechanism | In OpenADR 3.1.0 | How it works |
 |---|---|---|
@@ -107,7 +107,7 @@ A client can poll, or it can subscribe and be told when objects change. A notifi
 | MQTT | Yes | The VTN publishes notifications to an MQTT broker. `GET /notifiers` names the broker and its authentication method, and the topic operations name the topics a client may read. |
 | WebSocket | **No**, an OpenLEADR extension <Badge text="non-standard" variant="caution" /> | The client opens `GET /notifiers/ws` with its bearer token and receives each notification as a text message. Subscription entries name the mechanism `WEBSOCKET` instead of a callback URL. |
 
-None of the three keeps notifications for a client that is away. A client that must not miss a change searches the VTN again after every reconnect. With MQTT, the broker's access control decides who can read which topic, not the VTN: a broker that lets every client subscribe to `#` lets every VEN read every other VEN's events.
+No mechanism guarantees that a client that is away gets what it missed. A go-openadr VTN with an outbox keeps webhook notifications until the webhook confirms them, across its own restarts, for up to a day by default; MQTT and WebSocket notifications are not kept. A client that must not miss a change searches the VTN again after every reconnect. With MQTT, the broker's access control decides who can read which topic, not the VTN: a broker that lets every client subscribe to `#` lets every VEN read every other VEN's events.
 
 ## Discovery on the local network
 
@@ -133,7 +133,7 @@ OpenADR messages move load and reveal usage. Whoever can write events to a VTN c
 - **Webhooks are a server-side request forgery surface.** A VTN makes requests to URLs its clients choose. go-openadr's webhook sender allows https only, public addresses only (checked after name resolution), no redirects and no proxy, and verifies each URL first.
 - **Set a bearer token on webhook receivers.** Without one, anyone who can reach the URL can feed a client forged events.
 - **The broker enforces MQTT privacy.** Allow only Business Logic to read the topics for all objects, only each VEN to read its own `vens/{venID}/` topics, and only the VTN to publish.
-- There is **no rate limiting and no audit log** in the library. Put them in front of the VTN.
+- **Rate limiting is a hook.** `server.Config.Limiter` is asked for every request of a client the VTN has identified, and a refusal is answered 429 with `Retry-After`; `server.NewRateLimiter` is a token bucket per client. Requests without a valid token never reach it, so limit those at a gateway in front of the VTN. There is no audit log in the library.
 
 <Aside type="caution" title="Events act on equipment">
 An event a VEN acts on can switch a heat pump, charger or battery. Test with the example programs or the reference containers on loopback before you connect a VEN to a VTN that controls live equipment.
@@ -153,8 +153,8 @@ OT Fabric has no OpenADR command-line tool. A CLI is out of scope for go-openadr
 
 | Project | What it is |
 |---|---|
-| [go-openadr](/projects/go-openadr/) | OpenADR 3.1.0 for Go: VEN and Business Logic clients, an embeddable VTN, webhook, MQTT and WebSocket notifications, a timeline of intervals, and mDNS discovery. No dependencies outside the standard library. Pre-release. |
-| [openadr-interop](/projects/openadr-interop/) | Docker images of reference OpenADR 3 implementations (the OpenLEADR VTN and the ElaadNL client), deterministic fixtures, and a conformance suite that checks any VTN against the specification's OpenAPI document. |
+| [go-openadr](/projects/go-openadr/) | OpenADR 3.1.0 for Go: VEN and Business Logic clients, an embeddable VTN, webhook (durable with an outbox), MQTT and WebSocket notifications, a rate limiting hook, a timeline of intervals, and mDNS discovery. No dependencies outside the standard library. Pre-release, v0.4.0. |
+| [openadr-interop](/projects/openadr-interop/) | Docker images of reference OpenADR 3 implementations (the OpenLEADR VTN and the ElaadNL client), deterministic fixtures, and a conformance suite that checks any VTN against the specification's OpenAPI document. v0.4.0, container contract 1.3. |
 
 <CardGrid>
   <LinkCard title="go-openadr" description="Project page for the Go library." href="/projects/go-openadr/" />

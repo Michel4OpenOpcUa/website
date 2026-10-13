@@ -1,13 +1,13 @@
 ---
 name: "SunSpec"
 standard: "SunSpec Information Models over Modbus"
-summary: "Standard register maps for solar inverters, meters, batteries and other DER equipment, read over Modbus."
+summary: "Standard register maps for solar inverters, meters, batteries and other DER equipment, read and served over Modbus."
 order: 7
 facts:
   - { label: 'Transport', value: 'Any Modbus transport' }
   - { label: 'Base address', value: '0, 40000 or 50000' }
   - { label: 'Library', value: 'go-sunspec' }
-  - { label: 'CLI', value: 'sunspecctl (in go-sunspec)' }
+  - { label: 'CLI', value: 'sunspecctl' }
 icon: go-sunspec
 docs: /docs/protocols/sunspec/
 ---
@@ -26,7 +26,7 @@ SunSpec is not a wire protocol of its own. It is a set of standard **models** (r
 
 ### From the command line
 
-`sunspecctl` ships with go-sunspec. Download it from [GitHub Releases](https://github.com/otfabric/go-sunspec/releases), then:
+[sunspecctl](/projects/sunspecctl/) is a single binary for Linux, macOS and Windows. Download it from [GitHub Releases](https://github.com/otfabric/sunspecctl/releases), then:
 
 ```sh
 # Is this a SunSpec device, and at which base address?
@@ -34,6 +34,10 @@ sunspecctl detect --url tcp://192.168.1.100:502
 
 # Which SunSpec models does it implement?
 sunspecctl models --url tcp://192.168.1.100:502
+
+# Copy the device into a file, and serve that copy as a simulated device
+sunspecctl capture --url tcp://192.168.1.100:502 -o device.json
+sunspecctl serve --file device.json --url tcp://127.0.0.1:1502
 ```
 
 `modbusctl client sunspec probe` gives a quick check from the Modbus CLI too.
@@ -69,6 +73,8 @@ for _, p := range inverter.Group.Points {
 }
 ```
 
+The same model definitions work the other way round: `sunspec.NewServer` builds a device from point values by name and serves it through go-modbus, as a simulator for an EMS or SCADA integration, or as the SunSpec interface of your own equipment. See [Serving a device](/docs/protocols/sunspec/library/#serving-a-device).
+
 ## What go-sunspec supports
 
 | | |
@@ -77,9 +83,12 @@ for _, p := range inverter.Group.Points {
 | Models | 112 built in: inverters, meters, nameplate and settings, multiple MPPT, DER (701–715), storage (801–809), environmental sensors, string combiners |
 | Decoding | Every SunSpec point type, scale factors applied, unimplemented points flagged, enums and bitfields by name |
 | Unknown models | Discovered and returned with raw registers |
+| Changed devices | A model whose header no longer matches discovery is reported as `ErrModelChanged`, never decoded with a stale layout |
+| Serving | A SunSpec device in memory, built from point values by name, served through go-modbus over TCP or TLS; accepts client writes to writable points and live updates |
+| Encoding | `EncodeModel` builds a model's registers from point values, the inverse of `DecodeModel` |
 | Transports | Every go-modbus transport: TCP, RTU, ASCII, TLS, UDP and serial bridges |
-| Go version | 1.23 or later |
+| Go version | 1.23 or later, with go-modbus v1.4.2 or later |
 
 <Callout type="caution">
-SunSpec control models (settings, DER curves) change how an inverter or battery behaves on the grid. Read first, and only write to equipment you are authorized to operate.
+SunSpec control models (settings, DER curves) change how an inverter or battery behaves on the grid. Read first, develop against a served device, and only write to equipment you are authorized to operate.
 </Callout>

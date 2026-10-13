@@ -12,21 +12,23 @@ Test against something that is not live equipment first. OT Fabric gives you thr
 
 | Tool | What it simulates | Best for |
 |---|---|---|
-| [modbus-simulator](/projects/modbus-simulator/) | A device described in a JSON fixture, with deterministic exceptions and a request trace | Integration tests and CI assertions for a gateway or client |
+| [modbus-simulator](/projects/modbus-simulator/) | One or more devices described in a JSON fixture, with deterministic exceptions, injected faults and a request trace, over TCP or TLS | Integration tests and CI assertions for a gateway or client |
 | `modbusctl server static` / `replay` | A real device, from an MCAP recording | Developing against realistic data without hardware |
 | [modbus-interop](/projects/modbus-interop/) | Five independent Modbus TCP stacks in Docker | Proving a library interoperates |
 
 ## modbus-simulator
 
-modbus-simulator is a deterministic, stateful **Modbus TCP** device simulator. You describe the device in a JSON fixture, it serves one or more devices on one listener (routed by unit ID 1-247), writes are kept in memory, and every request can be recorded to a JSON Lines trace that you assert on in CI.
+modbus-simulator is a deterministic, stateful **Modbus TCP** device simulator, plain or over TLS. You describe the devices in a JSON fixture, it serves them on one listener (routed by unit ID 1-247), writes are kept in memory, and every request can be recorded to a JSON Lines trace that you assert on in CI. This section follows v1.2.0, which was hardened with chaos, stress and fuzz test suites and fixed what they found.
 
 ### Install
+
+Pre-built binaries for Linux, macOS and Windows are on the [releases page](https://github.com/otfabric/modbus-simulator/releases). With Go 1.25 or later:
 
 ```sh
 go install github.com/otfabric/modbus-simulator@latest
 ```
 
-Building from source needs Go 1.25 or later (`make build` writes `bin/modbus-simulator`).
+From a checkout, `make build` runs the full checks and writes `bin/modbus-simulator`; `go build -o bin/modbus-simulator .` builds without them.
 
 ### Run a device
 
@@ -91,9 +93,48 @@ Building from source needs Go 1.25 or later (`make build` writes `bin/modbus-sim
 Fixture behaviour worth knowing:
 
 - `unknownAddress: exception` (the default) answers any address not in the fixture with Illegal Data Address. `zeroForReads` returns 0 for unknown reads. Writes to unknown addresses always fail, so a mis-mapped gateway write cannot silently grow the map.
-- `stateMode: persistent` keeps written values for the life of the process. `resetOnConnection` resets to the fixture on each new connection.
+- `stateMode: persistent` (the default) keeps one state, shared by all clients, for the life of the process. With `resetOnConnection` every connection works on its own copy of the fixture values, discarded when it disconnects, so clients never see each other's writes. Per-device `behavior` overrides the top-level `defaults`.
 - Exception rules match on `fc`, `area`, `address` or `addressRange`, and `quantity`, and are evaluated before normal handling, so a test can force an exception on a valid address.
+- A request for a unit ID that is not in the fixture is answered with Illegal Function.
 - Codec IDs come from go-modbus. `modbus-simulator codecs list` prints them; the repository ships fixtures that cover every codec.
+
+### Faults, broadcast and TLS
+
+Fault rules in a device's `behavior.faults` change how a matching request is answered, on the wire as their names say:
+
+| `fault` | On the wire | In the trace |
+|---|---|---|
+| `delay` | The normal response, after `delayMs` | `ok: true` |
+| `timeout` | No response; the connection stays open, so the client runs into its own timeout | `ok: false`, `fault: "timeout"` |
+| `connectionClose` | The connection is closed without a response | `ok: false`, `fault: "connectionClose"` |
+
+```json
+{ "id": "hr-100-timeout", "match": { "fc": 3, "address": 100 }, "fault": "timeout" }
+```
+
+Before v1.2.0, `timeout` and `connectionClose` were answered with a Server Device Failure exception, which never exercised a client's timeout or reconnect handling.
+
+With `"broadcast": true` at the top level of a fixture, unit 0 is the broadcast address, as on a serial line behind a gateway: a write (FC05, FC06, FC15, FC16, FC22) is carried out by every device that can take it and no response is sent, and any other request to unit 0 is ignored. Without it, unit 0 is an unknown unit.
+
+`--tls-cert`, `--tls-key` and `--tls-client-ca` together serve Modbus/TCP Security instead of plain TCP. All three are required, so clients must present a certificate that chains to the client CA. The trace records `"transport": "tcp+tls"`.
+
+```sh
+modbus-simulator run --fixture device.json --listen :8020 \
+  --tls-cert server.pem --tls-key server.key --tls-client-ca ca.pem
+```
+
+### Reset and reload between tests
+
+`--control 127.0.0.1:5021` serves a small HTTP API, so a test suite can start the simulator once and reset it between cases:
+
+| Request | Effect |
+|---|---|
+| `POST /reset` | Restore every unit to the fixture values, for all clients |
+| `POST /reset?unit=N` | Restore one unit (404 when it is not in the fixture) |
+| `POST /reload` | Read the fixture file again and serve it from then on. An invalid fixture is refused with 422 and the simulator carries on unchanged |
+| `GET /healthz` | 200 while the simulator runs |
+
+The control API has no authentication: bind it to a loopback address. Resets and reloads are not written to the trace.
 
 ### Assert in CI
 
@@ -127,14 +168,23 @@ An expectation file lists assertions over the trace. Kinds are `contains`, `notC
 modbus-simulator assert-trace trace.jsonl --expect expected.json
 ```
 
-Exit codes: 0 success, 2 usage, 3 validation, 4 transport or server, 8 assertion failure, 10 internal. Every flag has a `MODBUS_SIMULATOR_*` environment variable.
+The trace is written in `seq` order, which is the order in which requests took effect, also with concurrent clients, so `ordered` and `exact` assertions see the real history. Each record is flushed as it is written: you can read the trace while `run` is still serving, and it survives an abrupt stop. `--trace-decoded` adds the typed values of codec fields a request fully covers, and `--trace-raw` adds the request and response PDUs as hex, encoded from the decoded request and the returned response rather than captured from the wire.
+
+Other `run` flags: `--listen` (default `:5020`) and `--max-clients` (default 0, no limit; a client over the limit is disconnected). Exit codes: 0 success, 2 usage (an unknown `--format` included), 3 validation, 4 transport or server (also a trace record that could not be written), 8 assertion failure, 10 internal. Most flags have a `MODBUS_SIMULATOR_*` environment variable.
 
 ### Limits
 
-| Supported in v1 | Not supported in v1 |
+| Supported | Not supported |
 |---|---|
-| FC01, FC02, FC03, FC04, FC05, FC06, FC15, FC16, FC43/14 | FC22, FC23 (deferred) |
-| Modbus TCP | RTU or serial server (deferred) |
+| FC01, FC02, FC03, FC04, FC05, FC06, FC15, FC16, FC22, FC23, FC43/14 | Other function codes, such as FIFO, file records and diagnostics |
+| Modbus TCP, and TLS with client certificates | RTU or serial server |
+| Codec fields on registers | Codec fields on coils and discrete inputs |
+
+FC22 sets a register to `(current AND andMask) OR (orMask AND NOT andMask)`. FC23 makes the write first and then the read, as one step; when either is not allowed, nothing is written.
+
+### How modbus-simulator is tested
+
+Besides a TCP integration test for each of its 21 example fixtures, modbus-simulator has a stress suite (parallel clients that check every answer against a model of their own registers while contending for a shared block, connection churn, the client limit, shutdown with requests in flight), a chaos suite (misbehaving raw TCP clients sending garbage, truncated and oversized frames, slow loris, pipelining and abandoned connections next to well-behaved ones, which must not notice) and fuzz targets for fixtures, expectation files and request sequences. After each run the trace must be valid, numbered without gaps and replay as a sequential history of the fixture. `make soak` and `make fuzz` run them for longer; a failing run logs a seed that `MODBUS_SIMULATOR_TEST_SEED` replays.
 
 ## Replay a real device with modbusctl
 
@@ -199,7 +249,7 @@ To pin other builds, set `MODBUS_INTEROP_<ADAPTER>_IMAGE`; to run a subset, set 
 <Aside type="note" title="What is not validated">
 - The interop suite covers **Modbus TCP only**. RTU, ASCII, TLS, UDP and the tunnelled transports are covered by the go-modbus repository's own tests, not by independent stacks.
 - go-modbus has **not** been run against certified test equipment.
-- modbus-simulator and the modbusctl servers are TCP only. There is no OT Fabric RTU server simulator.
+- modbus-simulator and the modbusctl servers listen on TCP only (modbus-simulator also with TLS). There is no OT Fabric RTU server simulator.
 </Aside>
 
 The suite also found a bug in go-modbus, fixed in v1.3.0: the server closed the connection on an FC15, FC16 or FC23 request whose byte count did not match its quantity, where the specification asks for exception 3. The findings about the reference stacks themselves are in [COMPATIBILITY.md](https://github.com/otfabric/modbus-interop/blob/main/docs/COMPATIBILITY.md).

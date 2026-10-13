@@ -1,6 +1,6 @@
 ---
 title: Command-line tool
-description: Install sunspecctl and use it to detect, list, read and poll SunSpec devices over Modbus TCP or RTU, plus the SunSpec commands in modbusctl.
+description: Install sunspecctl and use it to detect, list, read and poll SunSpec devices over Modbus TCP, RTU or TLS, and to serve a simulated device from a JSON file or a capture of a real one. Plus the SunSpec commands in modbusctl.
 sidebar:
   label: sunspecctl
   order: 2
@@ -8,25 +8,25 @@ sidebar:
 
 import { Aside, Tabs, TabItem, Steps, LinkCard } from '@astrojs/starlight/components';
 
-`sunspecctl` is the command-line tool bundled with [go-sunspec](/projects/go-sunspec/). It detects SunSpec devices, lists their models, and reads or polls decoded points with scale factors and units applied. It only reads: there is no command that writes to a device.
+[sunspecctl](/projects/sunspecctl/) reads and simulates SunSpec devices over Modbus. As a client it detects a SunSpec device, lists its models, and reads or polls decoded points with scale factors and units applied; it never writes to a device. As a server, `sunspecctl serve` runs a simulated SunSpec device from a JSON device file, which `sunspecctl capture` writes from a real device and `sunspecctl template` starts for you. It is built on [go-sunspec](/projects/go-sunspec/), with the official SunSpec Alliance model definitions compiled in.
 
-For transport-level SunSpec work (marker, base address, model headers, capturing every model to a file), [modbusctl](/projects/modbusctl/) has its own SunSpec commands, covered at the end of this page.
+For transport-level SunSpec work (marker, base address, model headers), [modbusctl](/projects/modbusctl/) has its own SunSpec commands, covered at the end of this page.
 
 ## Install
 
-Pre-built binaries for Linux (x86-64, ARM64, ARMv7), macOS (Apple Silicon, Intel) and Windows (x86-64, ARM64) are on the [go-sunspec releases page](https://github.com/otfabric/go-sunspec/releases), with a `sunspecctl-<version>-checksums.txt` file of SHA-256 sums.
+Pre-built binaries for Linux (x86-64, ARM64, ARMv7), macOS (Apple Silicon, Intel) and Windows (x86-64, ARM64) are on the [sunspecctl releases page](https://github.com/otfabric/sunspecctl/releases), with a `sunspecctl-<version>-checksums.txt` file of SHA-256 sums. No Go toolchain is needed.
 
 <Tabs>
   <TabItem label="Linux">
     ```sh
-    VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/go-sunspec/releases/latest | sed 's|.*/v||')
+    VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/sunspecctl/releases/latest | sed 's|.*/v||')
     case "$(uname -m)" in
       x86_64)         ARCH=amd64 ;;
       aarch64|arm64)  ARCH=arm64 ;;
       armv7l)         ARCH=armv7 ;;
     esac
     FILE="sunspecctl-${VERSION}-linux-${ARCH}.tar.gz"
-    BASE="https://github.com/otfabric/go-sunspec/releases/download/v${VERSION}"
+    BASE="https://github.com/otfabric/sunspecctl/releases/download/v${VERSION}"
     curl -fsSLO "${BASE}/${FILE}"
     curl -fsSLO "${BASE}/sunspecctl-${VERSION}-checksums.txt"
     grep "${FILE}" "sunspecctl-${VERSION}-checksums.txt" | sha256sum -c -
@@ -41,13 +41,17 @@ Pre-built binaries for Linux (x86-64, ARM64, ARMv7), macOS (Apple Silicon, Intel
   <TabItem label="With Go">
     Requires Go 1.23 or later:
     ```sh
-    go install github.com/otfabric/go-sunspec/cmd/sunspecctl@latest
+    go install github.com/otfabric/sunspecctl@latest
     ```
-    From a checkout, `make build` (with code generation and checks) or `go build -o bin/sunspecctl ./cmd/sunspecctl`.
+    From a checkout, `make build` writes `./bin/sunspecctl`, and `make build-all` cross-compiles every release platform.
   </TabItem>
 </Tabs>
 
-The README also has a PowerShell script for Windows that verifies the checksum and adds the binary to your `PATH`. Check the install with `sunspecctl version`.
+The README also has a PowerShell script for Windows that verifies the checksum and adds the binary to your `PATH`. Check the install with `sunspecctl version`. To update, run the same commands again: they always fetch the latest release.
+
+<Aside type="note" title="Coming from go-sunspec">
+Up to go-sunspec v0.4.2, sunspecctl was released from the [go-sunspec](https://github.com/otfabric/go-sunspec) repository. It now has its own repository, and **its version numbering starts again at v0.1.0**: sunspecctl v0.1.0 is the successor of the one in go-sunspec v0.4.2, although its number is lower. `go install github.com/otfabric/go-sunspec/cmd/sunspecctl@latest` stays at v0.4.2 for good, and a script that only upgrades to a higher version number will not move from 0.4.2 to 0.1.0 by itself: point it at the new repository once. The commands, flags and output of v0.4.2 are unchanged.
+</Aside>
 
 ## Connecting
 
@@ -55,8 +59,8 @@ All commands share these global flags:
 
 | Flag | Default | Description |
 |---|---|---|
-| `--url` | `tcp://localhost:502` | Modbus device URL |
-| `--unit-id` | `1` | Modbus unit ID |
+| `--url` | `tcp://localhost:502` | Modbus device URL; for `serve`, the address to listen on |
+| `--unit-id` | `1` | Modbus unit ID; for `serve`, overrides the device file |
 | `--timeout` | `10s` | Operation timeout |
 | `--json` | `false` | Output as JSON |
 | `--raw` | `false` | Include raw register hex in the output |
@@ -64,8 +68,11 @@ All commands share these global flags:
 | `--data-bits` | `0` (8 for RTU, 7 for ASCII) | Serial data bits, 5 to 8 |
 | `--parity` | `none` | `none`, `even` or `odd` |
 | `--stop-bits` | `0` (2 without parity, 1 with) | Serial stop bits, 1 or 2 |
+| `--tls-cert` | | Certificate (PEM) this side presents, for `tcp+tls://` URLs |
+| `--tls-key` | | Private key (PEM) of `--tls-cert` |
+| `--tls-ca` | | CA certificates (PEM) that the other side's certificate must chain to |
 
-`--url` takes any go-modbus scheme: `tcp://host:port`, `rtu://<device>` (`rtu:///dev/ttyUSB0`, `rtu://COM3`), `ascii://<device>`, `udp://host:port`, `rtuovertcp://host:port` for a serial-to-Ethernet gateway, and the others listed in the [Modbus overview](/docs/protocols/modbus/). The serial flags are ignored for network URLs.
+`--url` takes any go-modbus scheme: `tcp://host:port`, `tcp+tls://host:port`, `rtu://<device>` (`rtu:///dev/ttyUSB0`, `rtu://COM3`), `ascii://<device>`, `udp://host:port`, `rtuovertcp://host:port` for a serial-to-Ethernet gateway, and the others listed in the [Modbus overview](/docs/protocols/modbus/). The serial flags are ignored for network URLs, and the TLS flags for anything but `tcp+tls://`.
 
 <Aside type="tip" title="RS-485 defaults">
 Many SunSpec devices on RS-485 use 9600 baud, 8 data bits, no parity and 1 stop bit, which is not the default. Pass `--baud 9600 --stop-bits 1` and the device's Modbus address as `--unit-id`.
@@ -83,6 +90,9 @@ sunspecctl
 ├── poll         Repeatedly read and decode all models
 ├── poll-model   Repeatedly read and decode a specific model by ID
 ├── poll-point   Repeatedly read a single named point from a model
+├── serve        Serve a simulated SunSpec device from a device file
+├── capture      Read a device and write it as a device file for serve
+├── template     Write a device file skeleton for the given models
 ├── completion   Generate shell completion script (bash/zsh/fish/powershell)
 └── version      Print the sunspecctl version
 ```
@@ -128,7 +138,7 @@ sunspecctl models --url rtu:///dev/ttyUSB0 --baud 9600 --stop-bits 1 --unit-id 3
 sunspecctl read --url rtuovertcp://192.168.1.50:4001 --unit-id 3
 ```
 
-If `detect` finds nothing, check the unit ID first (many inverters do not answer on unit 1), then whether SunSpec or Modbus has to be enabled in the device settings. The library can probe other base addresses and input registers; the documented CLI flags do not expose those options.
+If `detect` finds nothing, it prints every base address it tried (0, 40000 and 50000, and their off-by-one neighbours, in holding registers) and what the device answered. Check the unit ID first (many inverters do not answer on unit 1), then whether SunSpec or Modbus has to be enabled in the device settings, and on serial lines the baud rate, parity and stop bits. Models sunspecctl has no definition for are still listed, with `SCHEMA no`, and read as raw registers with a warning.
 
 ## Polling
 
@@ -150,15 +160,151 @@ sunspecctl poll-model --id 101 --interval 1m --count 5 --url tcp://192.168.1.100
 sunspecctl poll-point --model 103 --point W --interval 5s --json --url tcp://192.168.1.100:502
 ```
 
+The poll commands discover the device once. When the device later has another model at an address (a firmware update, a reconfiguration), a read reports `model changed since discovery` for that model instead of decoding its registers with the old layout.
+
+## Serving a simulated device
+
+`sunspecctl serve` runs a SunSpec device over Modbus TCP from a JSON device file: its models, their point values, its unit ID and base address. Anything that speaks SunSpec Modbus can read it: sunspecctl itself, an EMS, a data logger, a SCADA driver. Use it to develop and test an integration without an inverter, meter or battery on the desk.
+
+```sh
+# Serve the device described in device.json on port 1502 of this machine
+sunspecctl serve --file device.json --url tcp://127.0.0.1:1502
+
+# In another terminal: read it like any device
+sunspecctl read --url tcp://127.0.0.1:1502
+```
+
+```text
+$ sunspecctl serve --file device.json --url tcp://127.0.0.1:1502
+Serving SunSpec device on tcp://127.0.0.1:1502 (unit ID 1, base address 40000)
+ID     NAME                                    START  LENGTH
+1      Common                                  40002  66
+103    Inverter (Three Phase)                  40070  50
+160    Multiple MPPT Inverter Extension Model  40122  48
+64900  unknown_64900                           40172  3
+```
+
+The file is validated completely before the device listens: an error names the model and point it concerns, and the exit status is 1. The device runs until Ctrl-C or SIGTERM, then closes its connections, prints `shutting down` and exits with status 0.
+
+| Flag | Default | Description |
+|---|---|---|
+| `--file`, `-f` | (required) | The device file |
+| `--url` | `tcp://localhost:502` | Address to listen on. Ports below 1024 usually need privileges; `tcp://0.0.0.0:1502` accepts connections from other machines |
+| `--unit-id` | from the file, else `1` | Unit ID the device answers |
+| `--base-address` | from the file, else `40000` | Register address of the `SunS` marker |
+| `--check` | `false` | Validate the file, print the layout and exit without listening |
+| `--json` | `false` | Print the layout, and each client write, as JSON |
+
+### The device file
+
+```json title="device.json"
+{
+  "unit_id": 1,
+  "base_address": 40000,
+  "models": [
+    {
+      "id": 1,
+      "points": { "Mn": "Acme", "Md": "PV-5000", "SN": "A-0001" }
+    },
+    {
+      "id": 103,
+      "points": {
+        "A": 18.3, "A_SF": -1,
+        "PhVphA": 230.4, "V_SF": -1,
+        "W": 4200, "W_SF": 0,
+        "Hz": 50.01, "Hz_SF": -2,
+        "St": "MPPT",
+        "Evt1": ["GROUND_FAULT"]
+      }
+    },
+    {
+      "id": 160,
+      "points": { "DCW_SF": 0 },
+      "groups": {
+        "module": [
+          { "points": { "ID": 1, "DCW": 2150 } },
+          { "points": { "ID": 2, "DCW": 2050 } }
+        ]
+      }
+    },
+    { "id": 64900, "registers": [1, 2, 3] }
+  ]
+}
+```
+
+| Member | Meaning |
+|---|---|
+| `unit_id` | Modbus unit ID, 1 to 255. Default 1 |
+| `base_address` | Register address of the `SunS` marker. Default 40000. Clients find a device at 0, 40000 or 50000 without being told |
+| `models` | The models in chain order. Each has an `id` and either `points` (and `groups`) or `registers`. A model ID may occur more than once |
+| `points` | Point values by SunSpec point name, as in the model definition (`sunspecctl read` shows the names) |
+| `groups` | Repeating groups: group name to a list of instances, each with its own `points` and `groups`. Count points such as `NPt` or `NCrv` are filled in from the number of instances |
+| `registers` | The model's data registers as numbers 0 to 65535, for vendor models without a schema or anything you want served bit for bit |
+| `name` | Ignored. `capture` and `template` write the model's name here for the reader |
+
+Values are written the way you read them:
+
+| Point type | Write it as |
+|---|---|
+| Integers, accumulators, floats, `sunssf`, `count` | A JSON number. A point with a scale factor takes the **engineering value**: with `"A_SF": -1`, `"A": 18.3` is stored as 183. Give the scale factor point too; without it the number is stored as it is. A value that does not fit after scaling is an error |
+| `enum16`, `enum32` | The symbol name (`"MPPT"`) or the number |
+| `bitfield16` to `bitfield64` | A list of the names of the set bits (`["GROUND_FAULT", "OVER_TEMP"]`, `[]` for none) or the number |
+| `string` | A JSON string |
+| `ipaddr`, `ipv6addr`, `eui48` | A string: `"192.168.1.10"`, `"fe80::1"`, `"00:11:22:33:44:55"` |
+| Any point | A list of exactly as many register numbers as the point has: `"TmpCab": [65036]` |
+| Not implemented | `null`, or leave the point out |
+
+Unknown members, a point given twice and point names the model does not have are errors, so a typo does not silently serve an empty value.
+
+### Getting a device file
+
+```sh
+# Copy a real device: everything it exposes, as it is now
+sunspecctl capture --url tcp://192.168.1.100:502 -o device.json
+
+# Or start from the models you want, every point present and null
+sunspecctl template --model 1,103,160 -o device.json
+
+# Check a file without serving it
+sunspecctl serve --file device.json --check
+```
+
+`capture` writes models that decode cleanly as point values, which are easy to read and edit, and anything without a known schema, or that does not match its schema exactly, as `registers`. Either way, serving the file gives a device that reads the same as the original. With `--raw`, every model is written as `registers` and the copy is identical register for register. Enum and bitfield points are captured as numbers, so values the model definition does not name survive.
+
+A capture is a snapshot: its values do not change by themselves. It can hold serial numbers and network addresses of the device, so look before you share it.
+
+### What clients see
+
+- **Unit IDs.** The device answers one unit ID. A request for another is answered with exception 0x0B (gateway target device failed to respond), so a client learns at once that the unit is not there. A broadcast (unit ID 0) is neither answered nor carried out.
+- **Writes.** Clients can write the points SunSpec defines as writable (access `RW`) with function codes 6 and 16. Each accepted write is printed (`write from 127.0.0.1: model 123 at 40176: WMaxLimPct = 50.5`) and later reads return it. Writes to read-only points, model headers, count points, part of a multi-register point, models given as `registers` and unmapped addresses are refused with exception 2. The device stores what is written; it does not act on it, so writing a power limit does not change the served power.
+
+### Over TLS
+
+`tcp+tls://` is Modbus/TCP Security: TLS in which both sides present a certificate. `serve` and the client commands take the same three flags, each for its own side, and all three are required for a `tcp+tls://` URL. The device certificate must name the host or address clients connect to.
+
+```sh
+# The device presents device.pem and accepts clients with a certificate of ca.pem
+sunspecctl serve --file device.json --url tcp+tls://0.0.0.0:802 \
+  --tls-cert device.pem --tls-key device.key --tls-ca ca.pem
+
+# A client presents its own certificate and checks the device's against the same CA
+sunspecctl read --url tcp+tls://192.168.1.100:802 \
+  --tls-cert client.pem --tls-key client.key --tls-ca ca.pem
+```
+
+A client without a certificate of that CA, and a plain `tcp://` client, cannot read the device.
+
 ## Output
 
 The default output is a human-readable table. `--json` gives structured output for `jq` and scripts, and `--raw` adds the raw register hex next to the decoded values. When a value looks wrong, `sunspecctl read --raw` shows the registers behind it; include that output, together with `detect` and `models`, when you report a device problem.
 
-The README does not document exit codes or environment variables for `sunspecctl`. Do not rely on specific non-zero codes in scripts; check for zero and parse `--json` output.
+A command that fails exits with status 1 (from `main.go`; the README only says non-zero), and there are no environment variables for the flags. In scripts, check for zero and parse `--json` output.
 
 ## Safety
 
-`sunspecctl` only reads, so it cannot change a setpoint. It still sends real Modbus requests: use it only on devices and networks you are authorized to access, and keep inverter, meter and battery Modbus ports off the Internet. Output can contain serial numbers, network addresses and production figures, so treat it as operational data.
+As a client, sunspecctl only reads, so it cannot change a setpoint. It still sends real Modbus requests: use it only on devices and networks you are authorized to access, and keep inverter, meter and battery Modbus ports off the Internet. Output and captures can contain serial numbers, network addresses and production figures, so treat them as operational data.
+
+`serve` has no authentication on plain TCP: whoever can reach the port can read the device and write its writable points. Keep it on loopback or a test network, or serve over `tcp+tls://` with client certificates.
 
 ## SunSpec in modbusctl
 
@@ -178,15 +324,15 @@ modbusctl client sunspec map --url tcp://192.168.1.10:502 --unit 1
 modbusctl client sunspec probe --url tcp://192.168.1.10:502 --unit 1
 ```
 
-`--regtype` accepts `holding` or `input`, which is how you reach a device that keeps its SunSpec map in input registers from the command line. All four commands take `--format text|json|table`.
+`--regtype` accepts `holding` or `input`, which is how you reach a device that keeps its SunSpec map in input registers from the command line; the sunspecctl flags do not expose that option. All four commands take `--format text|json|table`.
 
-To capture every model body to a file, use the SunSpec scan algorithm. It detects the base, walks the chain and reads each model in chunks of up to 125 registers:
+To record every model body to an MCAP file at the Modbus level, use the SunSpec scan algorithm. It detects the base, walks the chain and reads each model in chunks of up to 125 registers:
 
 ```sh
 modbusctl client scan --ip 192.168.1.10 --algo sunspec --output sunspec.mcap
 modbusctl client scan --ip 192.168.1.10 --algo sunspec --sunspec-base 40000 --output sunspec.mcap
 ```
 
-The resulting MCAP file can be served back as a Modbus TCP device with `modbusctl server static --input sunspec.mcap --port 1502`.
+For a SunSpec copy you can read, edit and serve, `sunspecctl capture` and `sunspecctl serve` are the more direct route.
 
-<LinkCard title="go-sunspec on GitHub" href="https://github.com/otfabric/go-sunspec" description="Source, sunspecctl, API.md and ERRORS.md." />
+<LinkCard title="sunspecctl on GitHub" href="https://github.com/otfabric/sunspecctl" description="Source, releases, the device file format and SECURITY.md." />

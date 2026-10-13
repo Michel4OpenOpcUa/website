@@ -235,7 +235,7 @@ modbusctl mcap frequencies --input session.mcap
 
 ## SunSpec
 
-`client sunspec` does transport-level SunSpec discovery: the `SunS` marker, the base address and the model headers. It does not decode points; use [sunspecctl](/docs/protocols/sunspec/) for that.
+`client sunspec` does transport-level SunSpec discovery: the `SunS` marker, the base address and the model headers. It does not decode points; use [sunspecctl](/docs/protocols/sunspec/cli/) for that.
 
 ```sh
 modbusctl client sunspec detect --url tcp://192.168.1.10:502 --unit 1

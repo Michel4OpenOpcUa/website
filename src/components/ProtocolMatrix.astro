@@ -26,12 +26,10 @@ const rows = protocols.map((protocol) => {
 			{rows.map((row) => (
 				<tr>
 					<th scope="row"><a href={`/protocols/${row.protocol.id}/`}>{row.protocol.data.name}</a></th>
-					{[row.libraries, row.clis, row.interop].map((items, column) => (
+					{[row.libraries, row.clis, row.interop].map((items) => (
 						<td>
 							{items.length === 0
-								? column === 1 && row.protocol.id === 'sunspec'
-									? <code>sunspecctl</code>
-									: <span class="ot-none">–</span>
+								? <span class="ot-none">–</span>
 								: items.map((p, i) => <>{i > 0 && ', '}<a href={`/projects/${p.id}/`}><code>{p.data.name}</code></a></>)}
 						</td>
 					))}

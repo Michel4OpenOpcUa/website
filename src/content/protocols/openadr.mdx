@@ -8,7 +8,7 @@ facts:
   - { label: 'Notifications', value: 'Webhook, MQTT, WebSocket (extension)' }
   - { label: 'Version', value: '3.1.0' }
   - { label: 'Library', value: 'go-openadr' }
-  - { label: 'Interop', value: 'openadr-interop' }
+  - { label: 'Interop', value: 'openadr-interop v0.4.0' }
 icon: go-openadr
 docs: /docs/protocols/openadr/
 ---
@@ -76,10 +76,11 @@ The client finds the token endpoint from the VTN, gets a token with OAuth2 clien
 | Roles | VEN client, Business Logic client, and a VTN as an embeddable `http.Handler` |
 | Operations | All 45 operations of OpenADR 3.1.0 in the VTN |
 | Authentication | OAuth2 client credentials, JSON Web Tokens with static keys or JWKS, scopes, object ownership, targeting; anonymous clients when allowed |
-| Notifications | Webhooks and MQTT; WebSocket and resource groups as opt-in extensions shared with OpenLEADR |
+| Notifications | Webhooks (durable across restarts with an outbox) and MQTT; WebSocket and resource groups as opt-in extensions shared with OpenLEADR |
+| In production | Logging, metrics, client retries with `Retry-After`, and a rate limiting hook on the VTN that answers 429 |
 | Extras | Intervals as a table with the timing rules applied (`timeline`), CSV in and out, mDNS discovery of a local VTN |
 | Dependencies | None outside the Go standard library |
 
 <Callout type="note" title="Pre-release">
-go-openadr implements OpenADR 3.1.0 only, and its API may still change. OpenADR 3.0.1 is planned, and 2.x is out of scope. The clients are tested against the OpenLEADR VTN and the VTN against the ElaadNL client, through [openadr-interop](https://github.com/otfabric/openadr-interop). Passing those tests is not an OpenADR Alliance certification.
+go-openadr v0.4.0 implements OpenADR 3.1.0 only, and its API may still change. OpenADR 3.0.1 is planned, and 2.x is out of scope. Its clients are tested against the OpenLEADR VTN, and its VTN against the ElaadNL client (over TLS, with subscriptions, MQTT and resource groups) and the conformance suite, through the reference images of [openadr-interop](https://github.com/otfabric/openadr-interop) v0.4.0. Passing those tests is not an OpenADR Alliance certification.
 </Callout>

@@ -1,6 +1,6 @@
 ---
 title: SunSpec
-description: How SunSpec Modbus works (the SunS marker, the model chain, point types, scale factors and groups) and which OT Fabric projects read it.
+description: How SunSpec Modbus works (the SunS marker, the model chain, point types, scale factors and groups) and which OT Fabric projects read and serve it.
 sidebar:
   label: Overview
   order: 0
@@ -86,7 +86,7 @@ SunSpec inherits everything from Modbus. Devices are reached over Modbus TCP (po
 There is no security in SunSpec Modbus beyond what the transport offers. Plain Modbus has no authentication and no encryption. Keep inverter, meter and battery Modbus ports off the Internet and on isolated networks, and use Modbus over TLS (`tcp+tls://`) where the device supports it, or a VPN or secured gateway.
 
 <Aside type="caution" title="DER controls act on the grid">
-The settings and immediate-control models in the 120-145 range and the 7xx DER control models describe control points. Writing them changes how physical equipment connected to the grid behaves. The OT Fabric SunSpec tools are read-only.
+The settings and immediate-control models in the 120-145 range and the 7xx DER control models describe control points. Writing them changes how physical equipment connected to the grid behaves. The OT Fabric SunSpec clients only read. A device served with go-sunspec or `sunspecctl serve` accepts writes to writable points from other clients, stores them and does not act on them, which makes it the place to try control code first.
 </Aside>
 
 ## Where SunSpec is used
@@ -100,13 +100,15 @@ The settings and immediate-control models in the 120-145 range and the 7xx DER c
 
 | Project | SunSpec support |
 |---|---|
-| [go-sunspec](/projects/go-sunspec/) | Go library and the `sunspecctl` CLI. Discovers models, decodes every point into typed, scaled values with units, handles groups, enums, bitfields and not-implemented values. Read-only. |
+| [go-sunspec](/projects/go-sunspec/) | Go library. Discovers models, decodes every point into typed, scaled values with units, handles groups, enums, bitfields and not-implemented values, and notices a device whose models changed since discovery. Also serves SunSpec devices: built from point values by name, with live updates and client writes to writable points. |
+| [sunspecctl](/projects/sunspecctl/) | Command-line tool on go-sunspec. Detects, lists, reads and polls SunSpec devices as tables or JSON, over Modbus TCP, RTU, ASCII and TLS. Serves a simulated device from a JSON file, which `capture` writes from a real device. |
 | [go-modbus](/projects/go-modbus/) | The Modbus transport under go-sunspec. Its `sunspec` subpackage detects the marker and enumerates model headers, without point decoding. |
 | [modbusctl](/projects/modbusctl/) | `modbusctl client sunspec detect`, `models`, `map` and `probe` for transport-level discovery, and `client scan --algo sunspec` to capture every model to an MCAP file. |
 
 <CardGrid>
   <LinkCard title="Go library" description="Discover and decode SunSpec devices with go-sunspec." href="/docs/protocols/sunspec/library/" />
-  <LinkCard title="sunspecctl" description="Detect, list, read and poll SunSpec devices from the terminal." href="/docs/protocols/sunspec/cli/" />
-  <LinkCard title="Testing" description="How go-sunspec is tested without hardware." href="/docs/protocols/sunspec/testing/" />
-  <LinkCard title="Source on GitHub" description="github.com/otfabric/go-sunspec" href="https://github.com/otfabric/go-sunspec" />
+  <LinkCard title="sunspecctl" description="Detect, list, read and poll SunSpec devices from the terminal, and serve simulated ones." href="/docs/protocols/sunspec/cli/" />
+  <LinkCard title="Testing" description="How go-sunspec is tested without hardware, and how to test your own code." href="/docs/protocols/sunspec/testing/" />
+  <LinkCard title="go-sunspec on GitHub" description="github.com/otfabric/go-sunspec" href="https://github.com/otfabric/go-sunspec" />
+  <LinkCard title="sunspecctl on GitHub" description="github.com/otfabric/sunspecctl" href="https://github.com/otfabric/sunspecctl" />
 </CardGrid>

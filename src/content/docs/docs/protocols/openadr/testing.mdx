@@ -23,9 +23,9 @@ openadr-interop wraps independent OpenADR 3 implementations in Docker images wit
 | `openleadr` | [OpenLEADR openleadr-rs](https://github.com/OpenLEADR/openleadr-rs) v0.2.7 (commit `f586cc3c`) | Rust | yes | no | `ghcr.io/otfabric/openadr-interop-openleadr` |
 | `elaadnl` | [ElaadNL openadr3-client](https://github.com/ElaadNL/openadr3-client) 2.4.0 | Python | no | yes | `ghcr.io/otfabric/openadr-interop-elaadnl` |
 
-Both speak OpenADR 3.1.0 over plain HTTP on port 8080. Images are built natively for linux/amd64 and linux/arm64, run as a non-root user (uid 10001), and are pinned by digest in each release's `manifest.json`.
+Both speak OpenADR 3.1.0 over plain HTTP on port 8080. Images are built natively for linux/amd64 and linux/arm64, run as a non-root user (uid 10001), and are pinned by digest in each release's `manifest.json`. This page follows openadr-interop **v0.4.0**, container contract 1.3, which is also the release go-openadr v0.4.0 is tested against. Releases are immutable tags: a new operation or feature is a minor version, a contract change that breaks consumers a major one.
 
-Each image says what it supports with `print-capabilities`, so a test can skip what a pairing cannot do instead of failing. Features include `serverTokenEndpoint`, `serverMqtt` (the OpenLEADR image runs a Mosquitto broker), `serverMdns` (the OpenLEADR VTN announces itself as `_openadr3._tcp`), `mdnsDiscover` and `clientTokenDiscovery`.
+Each image says what it supports with `print-capabilities`, so a test can skip what a pairing cannot do instead of failing. Features include `serverTokenEndpoint`, `serverMqtt` (the OpenLEADR image runs a Mosquitto broker), `serverMdns` (the OpenLEADR VTN announces itself as `_openadr3._tcp`), `serverResourceGroups`, `mdnsDiscover`, `clientTokenDiscovery`, and since v0.4.0 the ElaadNL client's `clientAnonymous`, `clientResourceGroups`, `clientMqtt` and `clientSubscriptionOperations310`. Every feature is optional: an image that does not name one is an older image.
 
 ### Fixtures
 
@@ -83,7 +83,18 @@ docker run --rm ghcr.io/otfabric/openadr-interop-elaadnl:dev \
     client list-programs --as ven-1 --targets group-a --url http://my-vtn:8080
 ```
 
-The client prints one JSON result document with `ok`, `error`, `status`, `response` and `problem`. Operations exist for each object type: `list-`, `get-`, `create-`, `update-` and `delete-`. An `error.code` of `invalid-response` means the client could not read the VTN's answer.
+The client prints one JSON result document with `ok`, `error`, `status`, `response` and `problem`. Operations exist for each object type: `list-`, `get-`, `create-`, `update-` and `delete-`. Since v0.4.0 the ElaadNL client also has:
+
+| Operation | What it does |
+|---|---|
+| `list-subscriptions`, `get-subscription` | Both roles |
+| `create-`, `update-`, `delete-subscription` | As a VEN, which is what the library offers |
+| Resource group operations | All five for Business Logic, the two reads for a VEN (the OpenLEADR extension) |
+| `get-notifiers`, `get-topics --scope SCOPE [--id ID]` | What the VTN says about its notifiers, and the MQTT topics it names for each of the twelve scopes |
+| `listen-mqtt` | Connects to the broker the VTN names, subscribes to a topic it names, and reports what arrived |
+| `--anonymous ROLE` | In place of `--as`: the client without a token, for a VTN that asks for none |
+
+An `error.code` of `invalid-response` means the client could not read the VTN's answer.
 
 <Aside type="caution" title="Test fixtures, not products">
 The images run VTNs over plain HTTP with client secrets published in the repository. Keep them on loopback or a private Docker network, and never point a reference client or the conformance suite at a production VTN: the write operations create, change and delete objects.
@@ -138,22 +149,35 @@ go run ./cmd/openadr-interop -url http://127.0.0.1:8080 \
 ## go-openadr against the references
 
 ```sh
-make interop     # needs Docker; images pinned by digest in the Makefile
+make interop     # needs Docker; openadr-interop v0.4.0 images pinned by digest in the Makefile
 ```
 
-`make interop` fails when an image cannot be pulled. With `go test -tags=interop ./interop/...` a test whose image is missing is skipped unless `OPENADR_INTEROP_REQUIRE` is set. `OPENADR_INTEROP_OPENLEADR_IMAGE` and `OPENADR_INTEROP_ELAADNL_IMAGE` select other images.
+`make interop` fails when an image cannot be pulled. A test that needs an operation an older image lacks is skipped, saying which. With `go test -tags=interop ./interop/...` a test whose image is missing is skipped unless `OPENADR_INTEROP_REQUIRE` is set. `OPENADR_INTEROP_OPENLEADR_IMAGE` and `OPENADR_INTEROP_ELAADNL_IMAGE` select other images.
 
 | Client | Server | Result |
 |---|---|---|
 | go-openadr VEN and BL | go-openadr | <Badge text="CI" variant="success" /> every feature (`make e2e`) |
 | go-openadr VEN and BL | OpenLEADR v0.2.7 | Passing, run locally |
 | ElaadNL openadr3-client 2.4.0, VEN and BL | go-openadr | Passing, run locally |
+| ElaadNL client over TLS, with compressed answers | go-openadr | Passing, run locally |
+| ElaadNL client: subscriptions (webhook delivered), MQTT listener, resource groups, no token | go-openadr | Passing, run locally |
 | go-openadr MQTT subscriber | OpenLEADR v0.2.7, its Mosquitto | Passing, run locally |
 | go-openadr WebSocket subscriber | OpenLEADR v0.2.7 | Passing, run locally |
 | go-openadr BL and VEN, resource groups | OpenLEADR v0.2.7 | Passing, run locally |
-| Conformance suite | go-openadr | 24 of 24 scenarios |
+| Conformance suite of openadr-interop v0.4.0 | go-openadr | 24 of 24 scenarios |
+
+Last run 2026-10-13, against the published v0.4.0 images; the `Interop` workflow runs the same tests in CI on linux/amd64.
 
 Against OpenLEADR, the tests cover the program, event and report workflow with every kind of payload value, token discovery and the client credentials grant, error mapping (404, 409, 403), and targeting. Against the ElaadNL client, they cover 34 read operations as Business Logic and three VENs, a write workflow checked in the VTN's own store, and access rules (target hiding, 404 for another VEN's objects, 409 for a duplicate `venName`).
+
+Since go-openadr v0.4.0 the ElaadNL client also tests the VTN's side of what goes beyond objects:
+
+- **TLS.** Token request and API calls over HTTPS with a certificate of an authority made for the test. Without the authority the client sends nothing, which shows that it checked.
+- **Compression.** The client asks for gzip and reads the compressed answer.
+- **No token.** On a VTN with `AllowAnonymous` it reads what is open to everyone and gets 404 for a targeted program and 401 for the rest; on a VTN without it, 401.
+- **Subscriptions.** A VEN creates, reads, searches, updates and deletes a subscription, which another VEN does not see. When Business Logic deletes an event, the notification arrives at the callback URL with its bearer token. The receiver is go-openadr's own `webhook.Handler`, because neither reference has one.
+- **MQTT.** The client reads the broker and the topics of ten scopes, and its MQTT client receives on Mosquitto what the VTN publishes, as Business Logic and as a VEN on its own topic.
+- **Resource groups.** Create, read, search by name and target, update and delete, a group of groups, and what each VEN may see.
 
 ### MQTT brokers
 
@@ -199,22 +223,25 @@ The tests assert consistency, privacy and recovery. Failures are random and foll
 |---|---|
 | REST operations, tokens, targeting, errors | Tested against OpenLEADR (VTN) and ElaadNL (client) |
 | MQTT, client side | Tested against OpenLEADR and four brokers |
+| MQTT, VTN side | Tested with the ElaadNL MQTT client on Mosquitto |
 | WebSocket notifications, client side | Tested against OpenLEADR |
-| Resource groups, client side | Tested against OpenLEADR |
+| Resource groups | Client side against OpenLEADR, VTN side with the ElaadNL client |
+| Subscriptions, VTN side | Tested with the ElaadNL client, for `DELETE` only (see the findings below) |
 | mDNS discovery | Tested against Avahi, OpenLEADR and Apple mDNSResponder |
-| Webhooks | <Badge text="own sides only" variant="caution" /> OpenLEADR does not deliver to webhooks |
-| VTN side of MQTT, WebSockets and resource groups | <Badge text="own sides only" variant="caution" /> |
-| Anonymous clients against another VTN, and another anonymous client against go-openadr | <Badge text="not tested" variant="danger" /> |
-| TLS between implementations | <Badge text="not tested" variant="danger" /> references run over plain HTTP |
-| MQTT with TLS or logins on third-party brokers | <Badge text="partial" variant="caution" /> login on Mosquitto only |
+| Anonymous access | The ElaadNL anonymous client against go-openadr is tested; go-openadr's client without credentials against another VTN <Badge text="not tested" variant="danger" /> |
+| TLS between implementations | The ElaadNL client against go-openadr is tested; OpenLEADR runs over plain HTTP <Badge text="partial" variant="caution" /> |
+| Webhook delivery | <Badge text="own receiver only" variant="caution" /> neither reference has a webhook receiver |
+| WebSocket notifications, VTN side | <Badge text="own sides only" variant="caution" /> neither reference has a WebSocket client |
+| Durable webhooks, rate limiting, notifications of reads | <Badge text="own sides only" variant="caution" /> `make e2e` |
+| MQTT with TLS or logins with another client | <Badge text="partial" variant="caution" /> go-openadr's subscriber with a login on Mosquitto only; the ElaadNL MQTT client cannot log in |
 | OpenADR 3.0.x | <Badge text="not tested" variant="danger" /> |
 | Any VTN other than OpenLEADR, any client other than ElaadNL and the conformance suite | <Badge text="not tested" variant="danger" /> |
 
-openadr-interop itself does not cover subscriptions or webhooks yet: the reference client's contract has no subscription, notification or resource group operations.
+Since v0.4.0 the ElaadNL reference client manages subscriptions and resource groups and listens on MQTT, so a VTN's side of those can be tested against it. Neither reference has a webhook receiver or a WebSocket client, so what a VTN sends that way is still received by the library under test.
 
 ### Findings about the references
 
-Interop runs found differences in OpenLEADR v0.2.7 that a client should expect: a forged token is answered 403 instead of 401; `ven` objects have no `objectType`; the MQTT topics it names for a VEN (`events/vens/{id}/...`) are not the ones it publishes on (`vens/{id}/events/...`); `GET /notifiers` does not follow the schema; it allows one VEN object and one WebSocket per client; and it writes durations in full (`P0Y0M0DT1H0M0S`). The ElaadNL client 2.4.0 cannot read a program that has a report payload descriptor, and needs an absolute token URL. The full list is in openadr-interop's [docs/COMPATIBILITY.md](https://github.com/otfabric/openadr-interop/blob/main/docs/COMPATIBILITY.md).
+Interop runs found differences in OpenLEADR v0.2.7 that a client should expect: a forged token is answered 403 instead of 401; `ven` objects have no `objectType`; the MQTT topics it names for a VEN (`events/vens/{id}/...`) are not the ones it publishes on (`vens/{id}/events/...`); `GET /notifiers` does not follow the schema; it allows one VEN object and one WebSocket per client; and it writes durations in full (`P0Y0M0DT1H0M0S`). The ElaadNL client 2.4.0 cannot read a program that has a report payload descriptor, and needs an absolute token URL. It names the operations of a subscription as OpenADR 3.0.1 did (`GET`, `POST`, `PUT`, `DELETE`), so against a 3.1.0 VTN only a subscription to `DELETE` can be made and read; it requires `MQTT` in `GET /notifiers` and a `CREATE` topic in every topics answer, which the specification does not; it cannot read OpenLEADR's `GET /notifiers`; and it cannot log in to an MQTT broker with a user name and password. The full list is in openadr-interop's [docs/COMPATIBILITY.md](https://github.com/otfabric/openadr-interop/blob/main/docs/COMPATIBILITY.md).
 
 <CardGrid>
   <LinkCard title="openadr-interop" description="Project page for the reference containers and conformance suite." href="/projects/openadr-interop/" />
