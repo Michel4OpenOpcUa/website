@@ -1,6 +1,6 @@
 // Search and AI-engine metadata shared by the website layout and the docs head:
 // the default social image and schema.org JSON-LD builders.
-import { site } from './site';
+import { people, site } from './site';
 
 /** Default Open Graph / Twitter image (public/og-image.png). */
 export const ogImage = {
@@ -31,7 +31,16 @@ export const organization = {
 	logo: { '@type': 'ImageObject', url: absolute('/favicon.svg') },
 	image: absolute(ogImage.src),
 	description: longDescription,
-	sameAs: [site.github],
+	email: site.email,
+	sameAs: [site.github, site.linkedin],
+	contactPoint: { '@type': 'ContactPoint', contactType: 'general inquiries', email: site.email, url: `${site.url}/contact/` },
+	founder: people.map((p) => ({
+		'@type': 'Person',
+		name: p.name,
+		jobTitle: p.role,
+		email: p.email,
+		sameAs: [p.linkedin, p.github],
+	})),
 	knowsAbout: [
 		'Operational technology (OT)',
 		'Industrial automation',

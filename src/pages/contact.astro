@@ -1,0 +1,152 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PageHeader from '../components/site/PageHeader.astro';
+import { people, site } from '../data/site';
+import { breadcrumbs } from '../data/seo';
+
+const description = `Get in touch with OT Fabric: email ${site.email}, or reach the team on LinkedIn and GitHub.`;
+const icons = {
+	mail: 'M20 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2m0 4-8 5-8-5V6l8 5 8-5z',
+	linkedin:
+		'M20.4 20.5h-3.6v-5.6c0-1.3 0-3-1.8-3s-2.1 1.4-2.1 2.9v5.7H9.3V9h3.4v1.6h.1c.5-.9 1.6-1.8 3.4-1.8 3.6 0 4.3 2.4 4.3 5.5zM5.3 7.4a2.1 2.1 0 1 1 0-4.2 2.1 2.1 0 0 1 0 4.2M7.1 20.5H3.5V9h3.6zM22.2 0H1.8C.8 0 0 .8 0 1.7v20.6c0 .9.8 1.7 1.8 1.7h20.4c1 0 1.8-.8 1.8-1.7V1.7C24 .8 23.2 0 22.2 0',
+	github:
+		'M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8 0 3.2.9.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3',
+};
+const handle = (url: string) => url.replace(/^https:\/\/(www\.)?/, '').replace(/\/$/, '');
+const orgLinks = [
+	{ icon: icons.mail, label: 'Email', value: site.email, href: `mailto:${site.email}` },
+	{ icon: icons.linkedin, label: 'LinkedIn', value: handle(site.linkedin), href: site.linkedin },
+	{ icon: icons.github, label: 'GitHub', value: handle(site.github), href: site.github },
+];
+---
+
+<BaseLayout
+	title="Contact"
+	description={description}
+	pageType="ContactPage"
+	schema={[breadcrumbs([{ name: 'Contact', path: '/contact/' }])]}
+>
+	<PageHeader
+		label="Contact"
+		title="Get in touch"
+		lead="Questions about a protocol, a device that won't talk, or an idea for working together? We'd like to hear from you."
+	/>
+	<div class="ot-container ot-contact">
+		<section class="ot-contact-card">
+			<span class="ot-label">OT Fabric</span>
+			<h2>General enquiries</h2>
+			<p>For questions, partnerships and anything else. We read every message.</p>
+			<ul>
+				{orgLinks.map((l) => (
+					<li>
+						<a href={l.href}>
+							<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d={l.icon} /></svg>
+							<span class="ot-contact-kind">{l.label}</span>
+							<span class="ot-contact-value">{l.value}</span>
+						</a>
+					</li>
+				))}
+			</ul>
+		</section>
+		{people.map((p) => (
+			<section class="ot-contact-card">
+				<span class="ot-label">{p.role}</span>
+				<h2>{p.name}</h2>
+				<p>Reach out directly about the project, its roadmap or collaboration.</p>
+				<ul>
+					<li>
+						<a href={`mailto:${p.email}`}>
+							<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d={icons.mail} /></svg>
+							<span class="ot-contact-kind">Email</span>
+							<span class="ot-contact-value">{p.email}</span>
+						</a>
+					</li>
+					<li>
+						<a href={p.linkedin}>
+							<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d={icons.linkedin} /></svg>
+							<span class="ot-contact-kind">LinkedIn</span>
+							<span class="ot-contact-value">{handle(p.linkedin)}</span>
+						</a>
+					</li>
+					<li>
+						<a href={p.github}>
+							<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d={icons.github} /></svg>
+							<span class="ot-contact-kind">GitHub</span>
+							<span class="ot-contact-value">{handle(p.github)}</span>
+						</a>
+					</li>
+				</ul>
+			</section>
+		))}
+		<p class="ot-contact-note">
+			Found a bug or want a feature in one of the libraries? Open an issue on the project's <a href={site.github}>GitHub repository</a>,
+			so the fix is visible to everyone.
+		</p>
+	</div>
+</BaseLayout>
+
+<style>
+	.ot-contact {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+		gap: 1.5rem;
+	}
+	.ot-contact-card {
+		padding: 1.75rem;
+		background: var(--ot-surface);
+		border: 1px solid var(--ot-line);
+		border-radius: 0.5rem;
+	}
+	.ot-contact-card h2 {
+		margin: 0.6rem 0 0;
+		font-size: 1.6rem;
+	}
+	.ot-contact-card p {
+		margin: 0.6rem 0 1.25rem;
+		color: var(--ot-muted);
+	}
+	ul {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		border-top: 1px solid var(--ot-line);
+	}
+	li a {
+		display: grid;
+		grid-template-columns: 1.25rem 5.5rem minmax(0, 1fr);
+		align-items: center;
+		gap: 0.75rem;
+		padding-block: 0.8rem;
+		border-bottom: 1px solid var(--ot-line);
+		color: var(--ot-fg);
+		text-decoration: none;
+	}
+	li a svg {
+		color: var(--ot-accent);
+	}
+	li a:hover .ot-contact-value {
+		color: var(--ot-accent);
+	}
+	.ot-contact-kind {
+		font: 500 0.72rem/1 var(--ot-font-mono);
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		color: var(--ot-muted);
+	}
+	.ot-contact-value {
+		overflow-wrap: anywhere;
+	}
+	@media (max-width: 30rem) {
+		li a {
+			grid-template-columns: 1.25rem minmax(0, 1fr);
+		}
+		.ot-contact-kind {
+			display: none;
+		}
+	}
+	.ot-contact-note {
+		grid-column: 1 / -1;
+		margin: 0.5rem 0 0;
+		color: var(--ot-muted);
+	}
+</style>

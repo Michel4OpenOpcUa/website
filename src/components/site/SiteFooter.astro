@@ -10,11 +10,13 @@ const year = new Date().getFullYear();
 		<div class="ot-footer-brand">
 			<Logo size={28} />
 			<p>Unified data for industrial operations.</p>
+			<p><a class="ot-footer-mail" href={`mailto:${site.email}`}>{site.email}</a></p>
 		</div>
 		<nav aria-label="Footer">
 			<ul>
 				{nav.map((link) => <li><a href={link.href}>{link.label}</a></li>)}
 				<li><a href={site.github}>GitHub</a></li>
+				<li><a href={site.linkedin}>LinkedIn</a></li>
 				<li><a href="/blog/rss.xml">RSS</a></li>
 			</ul>
 		</nav>
@@ -41,6 +43,16 @@ const year = new Date().getFullYear();
 		margin: 0.75rem 0 0;
 		color: var(--ot-muted);
 		font-size: 0.9rem;
+	}
+	.ot-footer-brand p + p {
+		margin-top: 0.4rem;
+	}
+	.ot-footer-mail {
+		color: var(--ot-fg);
+		text-decoration: none;
+	}
+	.ot-footer-mail:hover {
+		color: var(--ot-accent);
 	}
 	ul {
 		display: flex;
