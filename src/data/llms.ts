@@ -78,6 +78,7 @@ export async function llmsIndex() {
 		'## Optional',
 		[
 			line('About OT Fabric', `${site.url}/about/`, 'Why OT Fabric exists, how it is built, and where it is heading.'),
+			line('Contact', `${site.url}/contact/`, `Email ${site.email}, or reach the team on LinkedIn and GitHub.`),
 			line('Full text for LLMs', `${site.url}/llms-full.txt`, 'Every protocol page, documentation page and blog post in one Markdown file.'),
 			...planned.map((p) => line(`${p.data.name} (planned)`, `${site.url}/projects/`, p.data.description)),
 		].join('\n'),

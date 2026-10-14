@@ -30,6 +30,11 @@ export default defineConfig({
           label: 'GitHub',
           href: 'https://github.com/otfabric',
         },
+        {
+          icon: 'linkedin',
+          label: 'LinkedIn',
+          href: 'https://www.linkedin.com/company/otfabric',
+        },
       ],
       editLink: {
         baseUrl: 'https://github.com/otfabric/website/edit/main/',
