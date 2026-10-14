@@ -35,6 +35,8 @@ export const collections = {
 			repo: z.string().optional(),
 			install: z.string().optional(),
 			icon: z.string().optional(),
+			// Short feature list shown on the project page.
+			highlights: z.array(z.string()).optional(),
 		}),
 	}),
 

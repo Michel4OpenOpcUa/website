@@ -102,6 +102,7 @@ The settings and immediate-control models in the 120-145 range and the 7xx DER c
 |---|---|
 | [go-sunspec](/projects/go-sunspec/) | Go library. Discovers models, decodes every point into typed, scaled values with units, handles groups, enums, bitfields and not-implemented values, and notices a device whose models changed since discovery. Also serves SunSpec devices: built from point values by name, with live updates and client writes to writable points. |
 | [sunspecctl](/projects/sunspecctl/) | Command-line tool on go-sunspec. Detects, lists, reads and polls SunSpec devices as tables or JSON, over Modbus TCP, RTU, ASCII and TLS. Serves a simulated device from a JSON file, which `capture` writes from a real device. |
+| [SunSpec Explorer](/projects/sunspec-explorer/) | Graphical application on go-sunspec. Shows every model of a device fully decoded, polls, records and exports, and never writes to the device. Runs as a desktop application on macOS, Windows and Linux, or as a daemon on a gateway with the interface in a browser. |
 | [go-modbus](/projects/go-modbus/) | The Modbus transport under go-sunspec. Its `sunspec` subpackage detects the marker and enumerates model headers, without point decoding. |
 | [modbusctl](/projects/modbusctl/) | `modbusctl client sunspec detect`, `models`, `map` and `probe` for transport-level discovery, and `client scan --algo sunspec` to capture every model to an MCAP file. |
 
@@ -111,4 +112,5 @@ The settings and immediate-control models in the 120-145 range and the 7xx DER c
   <LinkCard title="Testing" description="How go-sunspec is tested without hardware, and how to test your own code." href="/docs/protocols/sunspec/testing/" />
   <LinkCard title="go-sunspec on GitHub" description="github.com/otfabric/go-sunspec" href="https://github.com/otfabric/go-sunspec" />
   <LinkCard title="sunspecctl on GitHub" description="github.com/otfabric/sunspecctl" href="https://github.com/otfabric/sunspecctl" />
+  <LinkCard title="SunSpec Explorer" description="See every model of a SunSpec device decoded, in a window or a browser." href="/projects/sunspec-explorer/" />
 </CardGrid>

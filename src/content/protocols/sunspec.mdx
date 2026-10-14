@@ -8,6 +8,7 @@ facts:
   - { label: 'Base address', value: '0, 40000 or 50000' }
   - { label: 'Library', value: 'go-sunspec' }
   - { label: 'CLI', value: 'sunspecctl' }
+  - { label: 'UI app', value: 'SunSpec Explorer' }
 icon: go-sunspec
 docs: /docs/protocols/sunspec/
 ---
@@ -41,6 +42,10 @@ sunspecctl serve --file device.json --url tcp://127.0.0.1:1502
 ```
 
 `modbusctl client sunspec probe` gives a quick check from the Modbus CLI too.
+
+### In a window
+
+[SunSpec Explorer](/projects/sunspec-explorer/) shows every model a device exposes, fully decoded, and polls, records and exports it without ever writing to the device. Run it as a desktop application on macOS, Windows or Linux, or as a daemon on a gateway with the same interface in your browser. Download it from [GitHub Releases](https://github.com/otfabric/sunspec-explorer/releases/latest).
 
 ### From Go
 

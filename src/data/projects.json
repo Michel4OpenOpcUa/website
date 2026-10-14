@@ -353,12 +353,25 @@
 		"icon": "go-openadr"
 	},
 	{
-		"id": "ui-apps",
-		"name": "UI apps",
+		"id": "sunspec-explorer",
+		"name": "SunSpec Explorer",
+		"repo": "sunspec-explorer",
 		"category": "ui",
-		"protocols": [],
-		"status": "planned",
-		"description": "Graphical tools built on the same libraries. None are public yet."
+		"protocols": [
+			"sunspec",
+			"modbus"
+		],
+		"status": "available",
+		"description": "Connect to a SunSpec inverter, meter or battery and see every model it exposes fully decoded. Read once or poll, record and export, without ever writing to the device.",
+		"icon": "go-sunspec",
+		"highlights": [
+			"Every point of every model decoded: value with units, scale factor, enum and bitfield names, raw value and register address. Not-implemented points are labeled as such, never shown as 65535.",
+			"Repeating and nested groups shown as instances, and raw registers for models without a known schema.",
+			"Poll at whole-second intervals with stale values marked, and record samples as JSON Lines or CSV.",
+			"Export a JSON snapshot, the points as CSV, or a device file that sunspecctl serve turns back into the same device.",
+			"Modbus/TCP, RTU over TCP, Modbus/TCP Security (TLS) and serial RS-485. Read-only: only function codes 3 and 4 reach the wire.",
+			"A desktop application for macOS, Windows and Linux, or a daemon on a gateway with the same interface in any browser over an SSH tunnel."
+		]
 	},
 	{
 		"id": "ot-mcp-servers",

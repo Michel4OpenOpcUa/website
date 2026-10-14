@@ -2,7 +2,10 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import PageHeader from '../../components/site/PageHeader.astro';
 import ProjectGrid from '../../components/ProjectGrid.astro';
+import Video from '../../components/Video.astro';
+import { Image, getImage } from 'astro:assets';
 import { categories, getProjects, getProtocols, repoUrl, type Project } from '../../data/projects';
+import { projectMedia } from '../../data/project-media';
 import { absolute, breadcrumbs, orgRef } from '../../data/seo';
 
 export async function getStaticPaths() {
@@ -20,7 +23,9 @@ const protocols = (await getProtocols()).filter((p) => data.protocols.includes(p
 const related = (await getProjects()).filter(
 	(p) => p.id !== project.id && p.data.status === 'available' && p.data.protocols.some((id) => data.protocols.includes(id)),
 );
-const releases = data.category === 'cli' ? `${repoUrl(data.repo!)}/releases` : undefined;
+const releases = data.category === 'cli' || data.category === 'ui' ? `${repoUrl(data.repo!)}/releases` : undefined;
+const media = projectMedia[project.id];
+const screenshotUrl = media?.screenshot && (await getImage({ src: media.screenshot.src, width: 1200, format: 'png' })).src;
 const url = absolute(`/projects/${project.id}/`);
 const schema = [
 	breadcrumbs([
@@ -34,7 +39,7 @@ const schema = [
 		description: data.description,
 		url,
 		codeRepository: repoUrl(data.repo!),
-		programmingLanguage: 'Go',
+		programmingLanguage: data.category === 'ui' ? ['Go', 'TypeScript'] : 'Go',
 		applicationCategory: category.label,
 		author: orgRef,
 		publisher: orgRef,
@@ -43,6 +48,23 @@ const schema = [
 		about: protocols.map((p) => ({ '@type': 'Thing', name: p.data.name, url: absolute(`/protocols/${p.id}/`) })),
 		mainEntityOfPage: { '@id': `${url}#webpage` },
 	},
+	...(data.category === 'ui'
+		? [
+				{
+					'@type': 'SoftwareApplication',
+					name: data.name,
+					description: data.description,
+					url,
+					applicationCategory: 'DeveloperApplication',
+					operatingSystem: 'macOS, Windows, Linux',
+					downloadUrl: `${repoUrl(data.repo!)}/releases/latest`,
+					offers: { '@type': 'Offer', price: 0, priceCurrency: 'USD' },
+					...(screenshotUrl && { screenshot: absolute(screenshotUrl) }),
+					author: orgRef,
+					publisher: orgRef,
+				},
+			]
+		: []),
 ];
 ---
 
@@ -57,7 +79,30 @@ const schema = [
 		</div>
 	</PageHeader>
 
+	{media?.screenshot && (
+		<div class="ot-container">
+			<figure class="shot">
+				<Image src={media.screenshot.src} alt={media.screenshot.alt} widths={[720, 1200, 1800]} sizes="(min-width: 72rem) 68rem, 100vw" loading="eager" />
+				{media.screenshot.caption && <figcaption>{media.screenshot.caption}</figcaption>}
+			</figure>
+		</div>
+	)}
+
 	<div class="ot-container ot-prose">
+		{data.highlights && (
+			<>
+				<h2>What it does</h2>
+				<ul>
+					{data.highlights.map((item) => <li>{item}</li>)}
+				</ul>
+			</>
+		)}
+		{media?.video && (
+			<>
+				<h2>See it in action</h2>
+				<Video src={media.video.src} poster={media.video.poster} caption={media.video.caption} />
+			</>
+		)}
 		{data.install && (
 			<>
 				<h2>Install</h2>
@@ -96,6 +141,21 @@ const schema = [
 		border-radius: 0.25rem;
 		background: var(--ot-surface);
 		overflow-x: auto;
+	}
+	.shot {
+		margin: 0 0 1rem;
+	}
+	.shot img {
+		display: block;
+		width: 100%;
+		height: auto;
+		border: 1px solid var(--ot-line);
+		border-radius: 0.25rem;
+	}
+	.shot figcaption {
+		margin-top: 0.5rem;
+		font-size: 0.875rem;
+		color: var(--ot-muted);
 	}
 	.related {
 		margin: 4rem 0 1.25rem;

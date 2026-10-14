@@ -9,11 +9,13 @@ interface Tile {
 interface Props {
 	tiles: Tile[];
 	dashed?: boolean;
+	/** Narrowest tile width; lower it to fit more tiles in a row. */
+	min?: string;
 }
-const { tiles, dashed = false } = Astro.props;
+const { tiles, dashed = false, min = '14rem' } = Astro.props;
 ---
 
-<div class:list={['ot-tiles', { dashed }]}>
+<div class:list={['ot-tiles', { dashed }]} style={`--ot-tile-min: ${min}`}>
 	{tiles.map((tile) => {
 		const Tag = tile.href ? 'a' : 'div';
 		return (
@@ -29,7 +31,7 @@ const { tiles, dashed = false } = Astro.props;
 <style>
 	.ot-tiles {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--ot-tile-min)), 1fr));
 		gap: 1rem;
 	}
 	.ot-tile {
