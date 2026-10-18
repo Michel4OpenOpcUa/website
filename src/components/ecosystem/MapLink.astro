@@ -1,0 +1,99 @@
+---
+// Call-to-action banner that opens the ecosystem map, optionally on one protocol.
+import { stats } from '../../data/ecosystem';
+
+interface Props {
+	protocol?: string;
+	title?: string;
+}
+const { protocol, title = 'Explore the interactive ecosystem map' } = Astro.props;
+const href = protocol ? `/ecosystem/?protocol=${protocol}` : '/ecosystem/';
+---
+
+<a class="ot-maplink not-content" href={href}>
+	<svg viewBox="0 0 120 120" aria-hidden="true">
+		<circle cx="60" cy="60" r="16" class="core" />
+		<circle cx="60" cy="60" r="44" class="orbit" />
+		{Array.from({ length: 9 }, (_, i) => {
+			const a = (i / 9) * Math.PI * 2 - 0.4;
+			const x = 60 + Math.cos(a) * 44;
+			const y = 60 + Math.sin(a) * 44;
+			return (
+				<>
+					<line x1="60" y1="60" x2={x} y2={y} class={i % 4 === 3 ? 'w' : ''} />
+					<circle cx={x} cy={y} r="5" class={i % 4 === 3 ? 'w' : ''} />
+				</>
+			);
+		})}
+	</svg>
+	<span>
+		<span class="ot-label">{stats.implementations} implementations · {stats.protocols} protocols</span>
+		<strong>{title}</strong>
+		<span class="sub">Filter by language, licence and activity, then jump straight to the source.</span>
+	</span>
+	<span class="arrow" aria-hidden="true">→</span>
+</a>
+
+<style>
+	.ot-maplink {
+		display: flex;
+		align-items: center;
+		gap: 1.1rem;
+		margin-block: 2rem;
+		padding: 1rem 1.25rem;
+		border: 1px solid var(--ot-accent);
+		border-radius: 0.4rem;
+		background:
+			radial-gradient(28rem 10rem at 0% 50%, color-mix(in srgb, var(--ot-accent) 16%, transparent), transparent 70%),
+			var(--ot-surface);
+		text-decoration: none;
+		color: var(--ot-fg);
+		transition: transform 0.15s;
+	}
+	.ot-maplink:hover {
+		transform: translateY(-1px);
+	}
+	svg {
+		flex: none;
+		width: 4.5rem;
+		height: 4.5rem;
+	}
+	.core {
+		fill: var(--ot-accent-soft);
+		stroke: var(--ot-accent);
+		stroke-width: 2;
+	}
+	.orbit {
+		fill: none;
+		stroke: var(--ot-line);
+		stroke-dasharray: 2 4;
+	}
+	line {
+		stroke: var(--ot-accent);
+		opacity: 0.5;
+	}
+	svg circle:not(.core):not(.orbit) {
+		fill: var(--ot-accent);
+	}
+	svg .w {
+		fill: var(--ot-wire) !important;
+		stroke: var(--ot-wire);
+	}
+	strong {
+		display: block;
+		margin-top: 0.35rem;
+		font: 700 1.35rem/1.15 var(--ot-font-display);
+		color: var(--ot-fg-strong);
+	}
+	.sub {
+		display: block;
+		margin-top: 0.25rem;
+		font-size: 0.9rem;
+		color: var(--ot-muted);
+	}
+	.arrow {
+		margin-inline-start: auto;
+		font-size: 1.6rem;
+		color: var(--ot-accent);
+	}
+</style>

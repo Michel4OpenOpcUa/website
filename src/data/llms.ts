@@ -5,6 +5,15 @@ import { getPosts } from './blog';
 import { categories, getProjects, getProtocols, repoUrl } from './projects';
 import { longDescription } from './seo';
 import { site } from './site';
+import { byProtocol, ecosystem, typeLabels } from './ecosystem';
+
+/** The registry rows for one protocol as a Markdown table, standing in for <LandscapeTable />. */
+function landscapeTable(protocol: string) {
+	const rows = byProtocol(protocol)
+		.filter((i) => i.type !== 'commercial')
+		.map((i) => `| [${i.name}](${i.url}) | ${i.languages.join(', ')} | ${i.license}${i.commercialLicense ? ' or commercial' : ''} | ${i.release ? `${i.release.version} (${i.release.source})` : 'untagged'} | ${typeLabels[i.type]} |`);
+	return ['| Implementation | Language | Licence | Latest release | Type |', '|---|---|---|---|---|', ...rows].join('\n');
+}
 
 const attr = (tag: string, name: string) => tag.match(new RegExp(`${name}="([^"]*)"`))?.[1];
 
@@ -28,6 +37,8 @@ function rewriteProse(text: string) {
 		.replace(/<(Aside|Callout)\b[^>]*>/g, (tag) => `**${attr(tag, 'title') ?? capitalize(attr(tag, 'type') ?? 'note')}:**`)
 		.replace(/<TabItem\b[^>]*>/g, (tag) => `**${attr(tag, 'label')}**`)
 		.replace(/<(YouTube|Video)\b[^>]*\/>/g, '')
+		.replace(/<LandscapeTable\b[^>]*\/>/g, (tag) => landscapeTable(attr(tag, 'protocol')!))
+		.replace(/<MapLink\b[^>]*\/>/g, (tag) => `[${attr(tag, 'title') ?? 'Explore the interactive ecosystem map'}](/ecosystem/${attr(tag, 'protocol') ? `?protocol=${attr(tag, 'protocol')}` : ''})`)
 		.replace(/<\/?(Aside|Callout|Tabs|TabItem|Steps|CardGrid)\b[^>]*>/g, '')
 		.replace(/^[ \t]+(?=\S)/gm, (indent) => indent.replace(/\t/g, '  '))
 		.replace(/\]\((\/[^)]*)\)/g, (_, path) => `](${site.url}${path})`);
@@ -75,6 +86,8 @@ export async function llmsIndex() {
 		...(posts.length
 			? ['## Blog', posts.map((p) => line(p.data.title, `${site.url}/blog/${p.id}/`, p.data.description)).join('\n')]
 			: []),
+		'## Ecosystem map',
+		line(ecosystem.title, `${site.url}/ecosystem/`, `Interactive map of ${ecosystem.implementations.length} open-source and commercial implementations of the protocols above, with language, licence, roles and latest release. Data: https://github.com/otfabric/website/blob/main/src/data/ecosystem.json`),
 		'## Optional',
 		[
 			line('About OT Fabric', `${site.url}/about/`, 'Why OT Fabric exists, how it is built, and where it is heading.'),

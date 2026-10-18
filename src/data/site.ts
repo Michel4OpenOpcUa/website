@@ -14,6 +14,7 @@ export const nav = [
 	{ label: 'Docs', href: '/docs/' },
 	{ label: 'Protocols', href: '/protocols/' },
 	{ label: 'Projects', href: '/projects/' },
+	{ label: 'Ecosystem', href: '/ecosystem/' },
 	{ label: 'Blog', href: '/blog/' },
 	{ label: 'About', href: '/about/' },
 	{ label: 'Contact', href: '/contact/' },

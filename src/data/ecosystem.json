@@ -1,0 +1,2802 @@
+{
+ "title": "Industrial Protocol Stack Landscape",
+ "verified": "2026-10-18",
+ "notes": [
+  "Stars and forks are snapshots taken on the verified date and cover the whole repository.",
+  "repoCreated is the GitHub repository creation date; historySince is the year of the first commit in its history, which can be older.",
+  "release is the newest stable version from the channel the project actually publishes to; source names that channel.",
+  "maintenance: active = a commit in the last 12 months, slowing = 12 to 36 months, quiet = more than 36 months; archived, deprecated and discontinued follow the project's own statement.",
+  "Capabilities list what the project documents. They are not conformance results."
+ ],
+ "protocols": [
+  {
+   "id": "modbus",
+   "name": "Modbus",
+   "standard": "Modbus Application Protocol v1.1b3",
+   "focus": "TCP, RTU and ASCII; client and server",
+   "maturity": "Very mature",
+   "commercial": "Established",
+   "summary": "The broadest open-source ecosystem in OT, spanning C, Python, Java, .NET, JavaScript, Rust, Go and microcontrollers."
+  },
+  {
+   "id": "opc-ua",
+   "name": "OPC UA",
+   "standard": "IEC 62541",
+   "focus": "Client/server SDKs, information models, PubSub",
+   "maturity": "Very mature",
+   "commercial": "Very established",
+   "summary": "Several large independent stacks next to the OPC Foundation reference stack and a strong commercial SDK market."
+  },
+  {
+   "id": "bacnet",
+   "name": "BACnet",
+   "standard": "ASHRAE 135 / ISO 16484-5",
+   "focus": "BACnet/IP, MS/TP, BACnet/SC",
+   "maturity": "Mature but fragmented",
+   "commercial": "Very established",
+   "summary": "Support differs widely by data link and by service, so one \"BACnet supported\" badge says very little."
+  },
+  {
+   "id": "iec-104",
+   "name": "IEC 60870-5-104",
+   "standard": "IEC 60870-5-104",
+   "focus": "SCADA telecontrol over TCP",
+   "maturity": "Specialized",
+   "commercial": "Established",
+   "summary": "A handful of credible engines, with bindings and forks built on top of them."
+  },
+  {
+   "id": "iec-61850",
+   "name": "IEC 61850 / MMS",
+   "standard": "IEC 61850-8-1 / ISO 9506",
+   "focus": "MMS, GOOSE, Sampled Values, SCL",
+   "maturity": "Specialized",
+   "commercial": "Established",
+   "summary": "Few comprehensive implementations. MMS alone is not IEC 61850."
+  },
+  {
+   "id": "s7",
+   "name": "Siemens S7",
+   "standard": "S7comm over ISO-on-TCP (RFC 1006)",
+   "focus": "S7comm, S7commPlus",
+   "maturity": "Mature for classic S7",
+   "commercial": "Established",
+   "summary": "Classic S7comm is well covered; S7commPlus for the S7-1200/1500 is only now getting open implementations."
+  },
+  {
+   "id": "openadr",
+   "name": "OpenADR",
+   "standard": "OpenADR 2.0b and 3.x",
+   "focus": "VEN, VTN and business-logic roles",
+   "maturity": "Smaller, evolving",
+   "commercial": "Less transparent",
+   "summary": "2.0b and 3.x are different technologies, and 3.1 is not backward-compatible with 3.0."
+  }
+ ],
+ "implementations": [
+  {
+   "id": "libmodbus",
+   "name": "libmodbus",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "C"
+   ],
+   "license": "LGPL-2.1-or-later",
+   "url": "https://github.com/stephane/libmodbus",
+   "repo": "stephane/libmodbus",
+   "stars": 4269,
+   "forks": 1953,
+   "repoCreated": "2010-01-21",
+   "historySince": "2005",
+   "lastCommit": "2026-07-02",
+   "release": {
+    "version": "v3.2.0",
+    "date": "2026-07-02",
+    "source": "GitHub release",
+    "url": "https://github.com/stephane/libmodbus/releases/tag/v3.2.0"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "TCP",
+    "RTU"
+   ],
+   "interop": "modbus-interop",
+   "maintenance": "active",
+   "sources": [
+    "https://github.com/stephane/libmodbus"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "pymodbus",
+   "name": "PyModbus",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "Python"
+   ],
+   "license": "BSD-3-Clause",
+   "url": "https://github.com/pymodbus-dev/pymodbus",
+   "repo": "pymodbus-dev/pymodbus",
+   "stars": 2783,
+   "forks": 1077,
+   "repoCreated": "2011-12-05",
+   "historySince": "2008",
+   "lastCommit": "2026-10-16",
+   "release": {
+    "version": "3.16.1",
+    "date": "2026-10-11",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/pymodbus/"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "TCP",
+    "UDP",
+    "TLS",
+    "RTU",
+    "ASCII"
+   ],
+   "interop": "modbus-interop",
+   "maintenance": "active",
+   "package": "https://pypi.org/project/pymodbus/",
+   "sources": [
+    "https://github.com/pymodbus-dev/pymodbus"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "nmodbus",
+   "name": "NModbus",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "C#"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/NModbus/NModbus",
+   "repo": "NModbus/NModbus",
+   "stars": 1096,
+   "forks": 323,
+   "repoCreated": "2017-04-17",
+   "historySince": "2014",
+   "lastCommit": "2026-06-30",
+   "release": {
+    "version": "3.0.83",
+    "date": "2026-04-16",
+    "source": "NuGet",
+    "url": "https://www.nuget.org/packages/NModbus"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "TCP",
+    "UDP",
+    "RTU",
+    "ASCII"
+   ],
+   "interop": "modbus-interop",
+   "maintenance": "active",
+   "package": "https://www.nuget.org/packages/NModbus",
+   "notes": "No GitHub Release objects, but versions are tagged and published to NuGet. History goes back to the original NModbus by Scott Alexander (2006).",
+   "sources": [
+    "https://github.com/NModbus/NModbus"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "goburrow-modbus",
+   "name": "goburrow/modbus",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "BSD-3-Clause",
+   "url": "https://github.com/goburrow/modbus",
+   "repo": "goburrow/modbus",
+   "stars": 1042,
+   "forks": 393,
+   "repoCreated": "2014-10-18",
+   "historySince": "2014",
+   "lastCommit": "2018-09-19",
+   "release": {
+    "version": "v0.1.0",
+    "date": "2018-09-19",
+    "source": "Git tag",
+    "url": "https://pkg.go.dev/github.com/goburrow/modbus"
+   },
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "TCP",
+    "RTU",
+    "ASCII"
+   ],
+   "maintenance": "quiet",
+   "package": "https://pkg.go.dev/github.com/goburrow/modbus",
+   "notes": "Client only. No commits since 2018; still widely imported as a reference Go client.",
+   "sources": [
+    "https://github.com/goburrow/modbus"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "modbus4j",
+   "name": "Modbus4J",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "Java"
+   ],
+   "license": "GPL-3.0",
+   "commercialLicense": true,
+   "url": "https://github.com/MangoAutomation/modbus4j",
+   "repo": "MangoAutomation/modbus4j",
+   "stars": 1003,
+   "forks": 394,
+   "repoCreated": "2014-06-10",
+   "historySince": "2014",
+   "lastCommit": "2024-06-18",
+   "release": {
+    "version": "v3.1.0",
+    "date": "2022-01-28",
+    "source": "Git tag",
+    "url": "https://github.com/MangoAutomation/modbus4j/tree/v3.1.0"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "TCP",
+    "UDP",
+    "RTU",
+    "ASCII"
+   ],
+   "maintenance": "slowing",
+   "notes": "Commercial licences are offered by Radix IoT. The newest tag is v3.1.0 (2022) and the main branch is at 3.1.1-SNAPSHOT, ahead of the old 2.x GitHub Release. Artifacts are published to the Mango Automation Maven repository, not Maven Central.",
+   "sources": [
+    "https://github.com/MangoAutomation/modbus4j"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "node-modbus-serial",
+   "name": "modbus-serial",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "JavaScript"
+   ],
+   "license": "ISC",
+   "url": "https://github.com/yaacov/node-modbus-serial",
+   "repo": "yaacov/node-modbus-serial",
+   "stars": 731,
+   "forks": 265,
+   "repoCreated": "2015-11-07",
+   "historySince": "2015",
+   "lastCommit": "2026-09-16",
+   "release": {
+    "version": "8.0.25",
+    "date": "2026-03-20",
+    "source": "npm",
+    "url": "https://www.npmjs.com/package/modbus-serial"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "TCP",
+    "UDP",
+    "RTU",
+    "ASCII",
+    "RTU over TCP"
+   ],
+   "maintenance": "active",
+   "package": "https://www.npmjs.com/package/modbus-serial",
+   "sources": [
+    "https://github.com/yaacov/node-modbus-serial"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "modbusmaster",
+   "name": "ModbusMaster",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "C++ (Arduino)"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/4-20ma/ModbusMaster",
+   "repo": "4-20ma/ModbusMaster",
+   "stars": 651,
+   "forks": 374,
+   "repoCreated": "2012-12-27",
+   "historySince": "2010",
+   "lastCommit": "2016-09-23",
+   "release": {
+    "version": "v2.0.1",
+    "date": "2016-09-23",
+    "source": "Git tag",
+    "url": "https://github.com/4-20ma/ModbusMaster/releases/tag/v2.0.1"
+   },
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "RTU"
+   ],
+   "maintenance": "quiet",
+   "notes": "Arduino library for an RTU master over serial. Unchanged since 2016, still in the Arduino Library Manager.",
+   "sources": [
+    "https://github.com/4-20ma/ModbusMaster"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "modbus-esp8266",
+   "name": "modbus-esp8266",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "C++ (Arduino)"
+   ],
+   "license": "BSD-3-Clause",
+   "url": "https://github.com/emelianov/modbus-esp8266",
+   "repo": "emelianov/modbus-esp8266",
+   "stars": 628,
+   "forks": 220,
+   "repoCreated": "2017-08-08",
+   "historySince": "2015",
+   "lastCommit": "2024-10-27",
+   "release": {
+    "version": "4.1.1",
+    "date": "2023-01-03",
+    "source": "Git tag",
+    "url": "https://github.com/emelianov/modbus-esp8266/releases/tag/4.1.1"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "TCP",
+    "TLS",
+    "RTU"
+   ],
+   "maintenance": "slowing",
+   "notes": "ESP8266, ESP32 and other Arduino targets.",
+   "sources": [
+    "https://github.com/emelianov/modbus-esp8266"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "jsmodbus",
+   "name": "jsmodbus (node-modbus)",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "JavaScript"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/Cloud-Automation/node-modbus",
+   "repo": "Cloud-Automation/node-modbus",
+   "stars": 512,
+   "forks": 182,
+   "repoCreated": "2014-03-28",
+   "historySince": "2014",
+   "lastCommit": "2026-05-12",
+   "release": {
+    "version": "5.0.0",
+    "date": "2026-09-14",
+    "source": "npm",
+    "url": "https://www.npmjs.com/package/jsmodbus"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "TCP",
+    "RTU"
+   ],
+   "maintenance": "active",
+   "package": "https://www.npmjs.com/package/jsmodbus",
+   "notes": "Published on npm as jsmodbus. The newest git tag is v4.0.9 (2022) and the old GitHub Release is v2.0.1, so npm is the place to check. No LICENSE file in the repository; the licence comes from package.json.",
+   "sources": [
+    "https://github.com/Cloud-Automation/node-modbus"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "simonvetter-modbus",
+   "name": "simonvetter/modbus",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/simonvetter/modbus",
+   "repo": "simonvetter/modbus",
+   "stars": 455,
+   "forks": 145,
+   "repoCreated": "2019-07-10",
+   "historySince": "2019",
+   "lastCommit": "2026-07-28",
+   "release": {
+    "version": "v1.6.4",
+    "date": "2025-11-06",
+    "source": "Git tag",
+    "url": "https://pkg.go.dev/github.com/simonvetter/modbus"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "TCP",
+    "TLS",
+    "UDP",
+    "RTU",
+    "RTU over TCP"
+   ],
+   "maintenance": "active",
+   "package": "https://pkg.go.dev/github.com/simonvetter/modbus",
+   "notes": "Versions are git tags consumed through the Go module proxy, without GitHub Release objects.",
+   "sources": [
+    "https://github.com/simonvetter/modbus"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "j2mod",
+   "name": "j2mod",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "Java"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/steveohara/j2mod",
+   "repo": "steveohara/j2mod",
+   "stars": 337,
+   "forks": 123,
+   "repoCreated": "2016-03-18",
+   "historySince": "2016",
+   "lastCommit": "2026-09-06",
+   "release": {
+    "version": "3.4.0",
+    "date": "2026-09-06",
+    "source": "Maven Central",
+    "url": "https://central.sonatype.com/artifact/com.ghgande/j2mod"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "TCP",
+    "UDP",
+    "RTU",
+    "ASCII",
+    "RTU over TCP"
+   ],
+   "maintenance": "active",
+   "package": "https://central.sonatype.com/artifact/com.ghgande/j2mod",
+   "notes": "Fork and continuation of jamod.",
+   "sources": [
+    "https://github.com/steveohara/j2mod"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "tokio-modbus",
+   "name": "tokio-modbus",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "Rust"
+   ],
+   "license": "MIT OR Apache-2.0",
+   "url": "https://github.com/slowtec/tokio-modbus",
+   "repo": "slowtec/tokio-modbus",
+   "stars": 567,
+   "forks": 158,
+   "repoCreated": "2017-10-21",
+   "historySince": "2017",
+   "lastCommit": "2026-07-03",
+   "release": {
+    "version": "0.17.0",
+    "date": "2025-10-22",
+    "source": "crates.io",
+    "url": "https://crates.io/crates/tokio-modbus"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "TCP",
+    "RTU",
+    "RTU over TCP"
+   ],
+   "interop": "modbus-interop",
+   "maintenance": "active",
+   "package": "https://crates.io/crates/tokio-modbus",
+   "notes": "Releases are tagged and published to crates.io, without GitHub Release objects.",
+   "sources": [
+    "https://github.com/slowtec/tokio-modbus"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "digitalpetri-modbus",
+   "name": "digitalpetri/modbus",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "Java"
+   ],
+   "license": "EPL-2.0",
+   "url": "https://github.com/digitalpetri/modbus",
+   "repo": "digitalpetri/modbus",
+   "stars": 863,
+   "forks": 253,
+   "historySince": "2014",
+   "lastCommit": "2026-10-16",
+   "release": {
+    "version": "2.1.6",
+    "date": "2026-08-08",
+    "source": "Maven Central",
+    "url": "https://central.sonatype.com/artifact/com.digitalpetri.modbus/modbus-tcp"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "TCP",
+    "TLS",
+    "RTU",
+    "RTU over TCP"
+   ],
+   "interop": "modbus-interop",
+   "maintenance": "active",
+   "package": "https://central.sonatype.com/artifact/com.digitalpetri.modbus/modbus-tcp",
+   "notes": "Added in this pass: Java 17+, by the author of Eclipse Milo. Supports Modbus/TCP Security. Stars and forks read from the repository page on 2026-10-18.",
+   "sources": [
+    "https://github.com/digitalpetri/modbus"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "otfabric-go-modbus",
+   "name": "go-modbus",
+   "protocol": "modbus",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/otfabric/go-modbus",
+   "repo": "otfabric/go-modbus",
+   "stars": 2,
+   "repoCreated": "2026-03-12",
+   "historySince": "2026",
+   "lastCommit": "2026-10-15",
+   "release": {
+    "version": "v1.7.1",
+    "date": "2026-10-15",
+    "source": "GitHub release",
+    "url": "https://github.com/otfabric/go-modbus/releases/tag/v1.7.1"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "TCP",
+    "TLS",
+    "UDP",
+    "RTU",
+    "ASCII",
+    "RTU over TCP"
+   ],
+   "interop": "modbus-interop",
+   "maintenance": "active",
+   "otfabric": true,
+   "sources": [
+    "https://github.com/otfabric/go-modbus"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "tmw-modbus",
+   "name": "Triangle MicroWorks Modbus libraries",
+   "protocol": "modbus",
+   "type": "commercial",
+   "languages": [
+    "C / C++ / .NET"
+   ],
+   "license": "Commercial",
+   "url": "https://www.trianglemicroworks.com/products/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "client",
+    "server"
+   ],
+   "maintenance": "n/a",
+   "notes": "Source code libraries sold as part of the Triangle MicroWorks protocol portfolio.",
+   "sources": [
+    "https://www.trianglemicroworks.com/products/"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "open62541",
+   "name": "open62541",
+   "protocol": "opc-ua",
+   "type": "independent",
+   "languages": [
+    "C"
+   ],
+   "license": "MPL-2.0",
+   "url": "https://github.com/open62541/open62541",
+   "repo": "open62541/open62541",
+   "stars": 3252,
+   "forks": 1470,
+   "repoCreated": "2013-12-20",
+   "historySince": "2013",
+   "lastCommit": "2026-10-17",
+   "release": {
+    "version": "v1.5.9",
+    "date": "2026-10-04",
+    "source": "GitHub release",
+    "url": "https://github.com/open62541/open62541/releases/tag/v1.5.9"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "Binary TCP",
+    "PubSub",
+    "Security"
+   ],
+   "interop": "opcua-interop",
+   "maintenance": "active",
+   "notes": "Maintenance branches 1.4.x and 1.3.x get parallel patch releases.",
+   "sources": [
+    "https://github.com/open62541/open62541"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "ua-netstandard",
+   "name": "OPC Foundation UA-.NETStandard",
+   "protocol": "opc-ua",
+   "type": "independent",
+   "languages": [
+    "C#"
+   ],
+   "license": "OPC Foundation MIT",
+   "url": "https://github.com/OPCFoundation/UA-.NETStandard",
+   "repo": "OPCFoundation/UA-.NETStandard",
+   "stars": 2414,
+   "forks": 1059,
+   "repoCreated": "2016-02-12",
+   "historySince": "2016",
+   "lastCommit": "2026-10-17",
+   "release": {
+    "version": "2.0.1",
+    "date": "2026-10-12",
+    "source": "NuGet",
+    "url": "https://www.nuget.org/packages/OPCFoundation.NetStandard.Opc.Ua"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "Binary TCP",
+    "PubSub",
+    "Security"
+   ],
+   "maintenance": "active",
+   "package": "https://www.nuget.org/packages/OPCFoundation.NetStandard.Opc.Ua",
+   "notes": "The OPC Foundation reference stack. Licensed under the OPC Foundation MIT License 1.00; contributions need the Foundation CLA.",
+   "sources": [
+    "https://github.com/OPCFoundation/UA-.NETStandard"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "node-opcua",
+   "name": "node-opcua",
+   "protocol": "opc-ua",
+   "type": "independent",
+   "languages": [
+    "TypeScript"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/node-opcua/node-opcua",
+   "repo": "node-opcua/node-opcua",
+   "stars": 1664,
+   "forks": 517,
+   "repoCreated": "2014-01-22",
+   "historySince": "2014",
+   "lastCommit": "2026-10-15",
+   "release": {
+    "version": "2.187.9",
+    "date": "2026-10-15",
+    "source": "npm",
+    "url": "https://www.npmjs.com/package/node-opcua"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "Binary TCP",
+    "Security"
+   ],
+   "maintenance": "active",
+   "package": "https://www.npmjs.com/package/node-opcua",
+   "notes": "Maintained by Sterfive, which also sells support and extensions.",
+   "sources": [
+    "https://github.com/node-opcua/node-opcua"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "opcua-asyncio",
+   "name": "opcua-asyncio (asyncua)",
+   "protocol": "opc-ua",
+   "type": "independent",
+   "languages": [
+    "Python"
+   ],
+   "license": "LGPL-3.0",
+   "url": "https://github.com/FreeOpcUa/opcua-asyncio",
+   "repo": "FreeOpcUa/opcua-asyncio",
+   "stars": 1499,
+   "forks": 458,
+   "repoCreated": "2018-08-02",
+   "historySince": "2015",
+   "lastCommit": "2026-10-10",
+   "release": {
+    "version": "2.1.0",
+    "date": "2026-10-06",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/asyncua/"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "Binary TCP",
+    "Security"
+   ],
+   "maintenance": "active",
+   "package": "https://pypi.org/project/asyncua/",
+   "notes": "The maintained Python successor of python-opcua; git history starts in the python-opcua code base (2015).",
+   "sources": [
+    "https://github.com/FreeOpcUa/opcua-asyncio"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "python-opcua",
+   "name": "python-opcua",
+   "protocol": "opc-ua",
+   "type": "legacy",
+   "languages": [
+    "Python"
+   ],
+   "license": "LGPL-3.0",
+   "url": "https://github.com/FreeOpcUa/python-opcua",
+   "repo": "FreeOpcUa/python-opcua",
+   "stars": 1492,
+   "forks": 667,
+   "repoCreated": "2015-02-20",
+   "historySince": "2015",
+   "lastCommit": "2022-12-08",
+   "release": {
+    "version": "0.98.13",
+    "date": "2021-03-03",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/opcua/"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "relation": "Succeeded by opcua-asyncio",
+   "maintenance": "deprecated",
+   "package": "https://pypi.org/project/opcua/",
+   "notes": "The README marks the library deprecated and points users to opcua-asyncio.",
+   "sources": [
+    "https://github.com/FreeOpcUa/python-opcua"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "milo",
+   "name": "Eclipse Milo",
+   "protocol": "opc-ua",
+   "type": "independent",
+   "languages": [
+    "Java"
+   ],
+   "license": "EPL-2.0",
+   "url": "https://github.com/eclipse-milo/milo",
+   "repo": "eclipse-milo/milo",
+   "stars": 1392,
+   "forks": 477,
+   "repoCreated": "2016-05-06",
+   "historySince": "2016",
+   "lastCommit": "2026-10-16",
+   "release": {
+    "version": "v1.1.8",
+    "date": "2026-10-06",
+    "source": "GitHub release",
+    "url": "https://github.com/eclipse-milo/milo/releases/tag/v1.1.8"
+   },
+   "prerelease": {
+    "version": "1.2.0-RC1",
+    "date": "2026-10-12",
+    "source": "Maven Central"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "Binary TCP",
+    "Security"
+   ],
+   "interop": "opcua-interop",
+   "maintenance": "active",
+   "package": "https://central.sonatype.com/artifact/org.eclipse.milo/milo-sdk-client",
+   "sources": [
+    "https://github.com/eclipse-milo/milo"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "async-opcua",
+   "name": "async-opcua",
+   "protocol": "opc-ua",
+   "type": "independent",
+   "languages": [
+    "Rust"
+   ],
+   "license": "MPL-2.0",
+   "url": "https://github.com/FreeOpcUa/async-opcua",
+   "repo": "FreeOpcUa/async-opcua",
+   "stars": 163,
+   "forks": 52,
+   "repoCreated": "2024-12-18",
+   "historySince": "2017",
+   "lastCommit": "2026-10-14",
+   "release": {
+    "version": "0.19.0",
+    "date": "2026-07-18",
+    "source": "crates.io",
+    "url": "https://crates.io/crates/async-opcua"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "upstream": [
+    "locka99-opcua"
+   ],
+   "relation": "Continues the locka99/opcua code base",
+   "maintenance": "active",
+   "package": "https://crates.io/crates/async-opcua",
+   "notes": "Git history starts with locka99/opcua in January 2017; the repository itself was created in December 2024.",
+   "sources": [
+    "https://github.com/FreeOpcUa/async-opcua"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "locka99-opcua",
+   "name": "locka99/opcua",
+   "protocol": "opc-ua",
+   "type": "legacy",
+   "languages": [
+    "Rust"
+   ],
+   "license": "MPL-2.0",
+   "url": "https://github.com/locka99/opcua",
+   "repo": "locka99/opcua",
+   "stars": 576,
+   "forks": 154,
+   "repoCreated": "2017-01-07",
+   "historySince": "2017",
+   "lastCommit": "2024-10-08",
+   "release": {
+    "version": "0.12.0",
+    "date": "2024-01-01",
+    "source": "crates.io",
+    "url": "https://crates.io/crates/opcua"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "relation": "Development continues in async-opcua",
+   "maintenance": "slowing",
+   "package": "https://crates.io/crates/opcua",
+   "notes": "No commits since October 2024. The FreeOpcUa async-opcua project carries the same history forward.",
+   "sources": [
+    "https://github.com/locka99/opcua"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "gopcua",
+   "name": "gopcua/opcua",
+   "protocol": "opc-ua",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/gopcua/opcua",
+   "repo": "gopcua/opcua",
+   "stars": 1069,
+   "forks": 332,
+   "repoCreated": "2018-07-23",
+   "historySince": "2018",
+   "lastCommit": "2026-09-17",
+   "release": {
+    "version": "v0.9.1",
+    "date": "2026-08-09",
+    "source": "GitHub release",
+    "url": "https://github.com/gopcua/opcua/releases/tag/v0.9.1"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "Binary TCP",
+    "Security"
+   ],
+   "maintenance": "active",
+   "package": "https://pkg.go.dev/github.com/gopcua/opcua",
+   "notes": "Client first; the server package is newer and narrower than the client.",
+   "sources": [
+    "https://github.com/gopcua/opcua"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "otfabric-go-opcua",
+   "name": "go-opcua",
+   "protocol": "opc-ua",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/otfabric/go-opcua",
+   "repo": "otfabric/go-opcua",
+   "stars": 0,
+   "repoCreated": "2026-03-10",
+   "historySince": "2026",
+   "lastCommit": "2026-10-12",
+   "release": {
+    "version": "v1.6.0",
+    "date": "2026-10-12",
+    "source": "GitHub release",
+    "url": "https://github.com/otfabric/go-opcua/releases/tag/v1.6.0"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "Binary TCP",
+    "PubSub",
+    "Security"
+   ],
+   "upstream": [
+    "gopcua"
+   ],
+   "relation": "Credits the gopcua authors in its MIT licence",
+   "interop": "opcua-interop",
+   "maintenance": "active",
+   "otfabric": true,
+   "sources": [
+    "https://github.com/otfabric/go-opcua"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "unified-automation",
+   "name": "Unified Automation SDKs",
+   "protocol": "opc-ua",
+   "type": "commercial",
+   "languages": [
+    "C / C++ / .NET"
+   ],
+   "license": "Commercial",
+   "url": "https://www.unified-automation.com/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "client",
+    "server"
+   ],
+   "maintenance": "n/a",
+   "notes": "Client and server SDKs for C, C++ and .NET.",
+   "sources": [
+    "https://www.unified-automation.com/",
+    "https://www.unified-automation.com/products/client-sdk.html"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "prosys",
+   "name": "Prosys OPC UA SDK for Java",
+   "protocol": "opc-ua",
+   "type": "commercial",
+   "languages": [
+    "Java"
+   ],
+   "license": "Commercial",
+   "url": "https://prosysopc.com/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "client",
+    "server"
+   ],
+   "maintenance": "n/a",
+   "notes": "Commercial Java SDK built on the OPC Foundation Java stack.",
+   "sources": [
+    "https://prosysopc.com/"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "softing-opcua",
+   "name": "Softing OPC UA SDKs",
+   "protocol": "opc-ua",
+   "type": "commercial",
+   "languages": [
+    "C++ / .NET"
+   ],
+   "license": "Commercial",
+   "url": "https://industrial.softing.com/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "client",
+    "server"
+   ],
+   "maintenance": "n/a",
+   "sources": [
+    "https://industrial.softing.com/"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "bacnet-stack",
+   "name": "BACnet Stack",
+   "protocol": "bacnet",
+   "type": "independent",
+   "languages": [
+    "C"
+   ],
+   "license": "GPL-2.0-or-later WITH GCC-exception-2.0",
+   "url": "https://github.com/bacnet-stack/bacnet-stack",
+   "repo": "bacnet-stack/bacnet-stack",
+   "stars": 602,
+   "forks": 311,
+   "repoCreated": "2019-10-06",
+   "historySince": "2004",
+   "lastCommit": "2026-10-17",
+   "release": {
+    "version": "1.6.1",
+    "date": "2026-08-28",
+    "source": "SourceForge and git tag",
+    "url": "https://sourceforge.net/projects/bacnet/files/bacnet-stack/bacnet-stack-1.6.1/"
+   },
+   "roles": [
+    "client",
+    "server",
+    "router"
+   ],
+   "capabilities": [
+    "BACnet/IP",
+    "BACnet/IPv6",
+    "MS/TP",
+    "BACnet/SC",
+    "BBMD"
+   ],
+   "interop": "bacnet-interop",
+   "maintenance": "active",
+   "notes": "Started on SourceForge in 2004 by Steve Karg; the GitHub repository dates from 2019. Releases are published on SourceForge and tagged in git, not as GitHub Releases. The linking exception lets proprietary code link the library without becoming GPL; example applications are MIT.",
+   "sources": [
+    "https://github.com/bacnet-stack/bacnet-stack"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "bacpypes3",
+   "name": "BACpypes3",
+   "protocol": "bacnet",
+   "type": "independent",
+   "languages": [
+    "Python"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/JoelBender/BACpypes3",
+   "repo": "JoelBender/BACpypes3",
+   "stars": 99,
+   "forks": 41,
+   "repoCreated": "2023-03-09",
+   "historySince": "2023",
+   "lastCommit": "2026-09-29",
+   "release": {
+    "version": "0.0.110",
+    "date": "2026-09-24",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/bacpypes3/"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "BACnet/IP",
+    "BACnet/IPv6",
+    "BBMD"
+   ],
+   "interop": "bacnet-interop",
+   "maintenance": "active",
+   "package": "https://pypi.org/project/bacpypes3/",
+   "notes": "Ships an optional MCP server that exposes BACnet services to AI agents. No LICENSE file; the licence is declared in pyproject.toml.",
+   "sources": [
+    "https://github.com/JoelBender/BACpypes3"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "bacpypes",
+   "name": "BACpypes",
+   "protocol": "bacnet",
+   "type": "legacy",
+   "languages": [
+    "Python"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/JoelBender/bacpypes",
+   "repo": "JoelBender/bacpypes",
+   "stars": 328,
+   "forks": 139,
+   "repoCreated": "2015-07-15",
+   "historySince": "2015",
+   "lastCommit": "2026-01-22",
+   "release": {
+    "version": "0.19.0",
+    "date": "2025-01-22",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/bacpypes/"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "BACnet/IP"
+   ],
+   "relation": "Succeeded by BACpypes3",
+   "maintenance": "active",
+   "package": "https://pypi.org/project/bacpypes/",
+   "notes": "PyPI has 0.19.0, newer than the last GitHub Release (v0.18.6). New work happens in BACpypes3.",
+   "sources": [
+    "https://github.com/JoelBender/bacpypes"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "system-io-bacnet",
+   "name": "System.IO.BACnet",
+   "protocol": "bacnet",
+   "type": "independent",
+   "languages": [
+    "C#"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/ela-compil/BACnet",
+   "repo": "ela-compil/BACnet",
+   "stars": 251,
+   "forks": 107,
+   "repoCreated": "2016-05-12",
+   "historySince": "2014",
+   "lastCommit": "2026-10-09",
+   "release": {
+    "version": "4.0.0",
+    "date": "2026-07-30",
+    "source": "NuGet",
+    "url": "https://www.nuget.org/packages/BACnet"
+   },
+   "prerelease": {
+    "version": "4.1.0-beta.3",
+    "date": "2026-10-09",
+    "source": "Git tag"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "BACnet/IP",
+    "MS/TP",
+    "BBMD"
+   ],
+   "interop": "bacnet-interop",
+   "maintenance": "active",
+   "package": "https://www.nuget.org/packages/BACnet",
+   "notes": "The stack behind the YABE explorer, originally by Morten Kvistgaard. Licence verified: MIT.",
+   "sources": [
+    "https://github.com/ela-compil/BACnet"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "bacnet4j",
+   "name": "BACnet4J",
+   "protocol": "bacnet",
+   "type": "independent",
+   "languages": [
+    "Java"
+   ],
+   "license": "GPL-3.0",
+   "commercialLicense": true,
+   "url": "https://github.com/RadixIoT/BACnet4J",
+   "repo": "RadixIoT/BACnet4J",
+   "stars": 221,
+   "forks": 122,
+   "repoCreated": "2014-06-10",
+   "historySince": "2008",
+   "lastCommit": "2026-10-01",
+   "release": {
+    "version": "v6.1.0",
+    "date": "2026-03-23",
+    "source": "Git tag",
+    "url": "https://github.com/RadixIoT/BACnet4J/tree/v6.1.0"
+   },
+   "prerelease": {
+    "version": "7.0.0-alpha.6",
+    "date": "2026-10-02",
+    "source": "Git tag"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "BACnet/IP",
+    "MS/TP",
+    "BBMD"
+   ],
+   "interop": "bacnet-interop",
+   "maintenance": "active",
+   "notes": "Commercial licences from Radix IoT. History reaches back to 2008 (Serotonin Software). Builds are published to the Mango Automation Maven repository.",
+   "sources": [
+    "https://github.com/RadixIoT/BACnet4J"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "ulbios-bacnet",
+   "name": "ulbios/bacnet",
+   "protocol": "bacnet",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/ulbios/bacnet",
+   "repo": "ulbios/bacnet",
+   "stars": 22,
+   "forks": 11,
+   "repoCreated": "2023-07-14",
+   "historySince": "2020",
+   "lastCommit": "2023-09-11",
+   "release": null,
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "BACnet/IP"
+   ],
+   "maintenance": "quiet",
+   "package": "https://pkg.go.dev/github.com/ulbios/bacnet",
+   "notes": "No tags or releases; consumed as a Go pseudo-version. BACnet/IP only. Builds on kazukiigeta/bacnet.",
+   "sources": [
+    "https://github.com/ulbios/bacnet"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "bacnet-js-client",
+   "name": "@bacnet-js/client",
+   "protocol": "bacnet",
+   "type": "independent",
+   "languages": [
+    "TypeScript"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/bacnet-js/client",
+   "repo": "bacnet-js/client",
+   "stars": 20,
+   "forks": 5,
+   "repoCreated": "2025-04-10",
+   "historySince": "2017",
+   "lastCommit": "2026-10-01",
+   "release": {
+    "version": "3.3.2",
+    "date": "2026-05-07",
+    "source": "npm",
+    "url": "https://www.npmjs.com/package/@bacnet-js/client"
+   },
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "BACnet/IP"
+   ],
+   "maintenance": "active",
+   "package": "https://www.npmjs.com/package/@bacnet-js/client",
+   "notes": "Carries the Node.js BACnet lineage forward (git history from 2017, PLUS for Node-RED); maintained by Innovation-System.",
+   "sources": [
+    "https://github.com/bacnet-js/client"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "bacnet-js-device",
+   "name": "@bacnet-js/device",
+   "protocol": "bacnet",
+   "type": "derived",
+   "languages": [
+    "TypeScript"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/bacnet-js/device",
+   "repo": "bacnet-js/device",
+   "stars": 4,
+   "forks": 2,
+   "repoCreated": "2025-05-31",
+   "historySince": "2025",
+   "lastCommit": "2026-06-08",
+   "release": {
+    "version": "0.8.0",
+    "date": "2026-06-08",
+    "source": "npm",
+    "url": "https://www.npmjs.com/package/@bacnet-js/device"
+   },
+   "roles": [
+    "server"
+   ],
+   "capabilities": [
+    "BACnet/IP"
+   ],
+   "upstream": [
+    "bacnet-js-client"
+   ],
+   "relation": "Device object model on top of @bacnet-js/client",
+   "maintenance": "active",
+   "package": "https://www.npmjs.com/package/@bacnet-js/device",
+   "sources": [
+    "https://github.com/bacnet-js/device"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "worldiety-bacnet",
+   "name": "worldiety/bacnet",
+   "protocol": "bacnet",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "BSD-2-Clause",
+   "url": "https://github.com/worldiety/bacnet",
+   "repo": "worldiety/bacnet",
+   "stars": 0,
+   "forks": 1,
+   "historySince": "2026",
+   "lastCommit": "2026-07-07",
+   "release": null,
+   "roles": [
+    "client",
+    "router"
+   ],
+   "capabilities": [
+    "BACnet/IP",
+    "BBMD"
+   ],
+   "interop": "bacnet-interop",
+   "maintenance": "active",
+   "emerging": true,
+   "package": "https://pkg.go.dev/github.com/worldiety/bacnet",
+   "notes": "Added in this pass. The README calls it a prototype; no tags yet. OT Fabric runs it in bacnet-interop as a native transport and APDU layer.",
+   "sources": [
+    "https://github.com/worldiety/bacnet"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "otfabric-go-bacnet",
+   "name": "go-bacnet",
+   "protocol": "bacnet",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/otfabric/go-bacnet",
+   "repo": "otfabric/go-bacnet",
+   "stars": 0,
+   "repoCreated": "2026-07-31",
+   "historySince": "2026",
+   "lastCommit": "2026-10-10",
+   "release": {
+    "version": "v0.4.0",
+    "date": "2026-10-10",
+    "source": "GitHub release",
+    "url": "https://github.com/otfabric/go-bacnet/releases/tag/v0.4.0"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "BACnet/IP",
+    "BBMD"
+   ],
+   "interop": "bacnet-interop",
+   "maintenance": "active",
+   "otfabric": true,
+   "sources": [
+    "https://github.com/otfabric/go-bacnet"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "cimetrics",
+   "name": "Cimetrics BACstac",
+   "protocol": "bacnet",
+   "type": "commercial",
+   "languages": [
+    "C / .NET"
+   ],
+   "license": "Commercial",
+   "url": "https://cimetrics.com/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "client",
+    "server"
+   ],
+   "maintenance": "n/a",
+   "notes": "Source-code and binary SDKs for Windows, Linux, .NET and embedded targets.",
+   "sources": [
+    "https://cimetrics.com/",
+    "https://cimetrics.com/choose-the-right-bacnet-sdk/"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "polarsoft",
+   "name": "PolarSoft FreeRange",
+   "protocol": "bacnet",
+   "type": "commercial",
+   "languages": [
+    "C"
+   ],
+   "license": "Commercial",
+   "url": "https://bacnet.org/developer-aids/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "client",
+    "server"
+   ],
+   "maintenance": "n/a",
+   "notes": "Listed among the developer aids on bacnet.org.",
+   "sources": [
+    "https://bacnet.org/developer-aids/"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "softdel",
+   "name": "SoftDEL BACnet stack",
+   "protocol": "bacnet",
+   "type": "commercial",
+   "languages": [
+    "C"
+   ],
+   "license": "Commercial",
+   "url": "https://www.designworldonline.com/softdel-launches-bacnet-stack-protocol-revision-18/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "client",
+    "server"
+   ],
+   "maintenance": "n/a",
+   "notes": "Embedded BACnet stack; the linked announcement covers protocol revision 18 support.",
+   "sources": [
+    "https://www.designworldonline.com/softdel-launches-bacnet-stack-protocol-revision-18/"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "lib60870",
+   "name": "lib60870",
+   "protocol": "iec-104",
+   "type": "independent",
+   "languages": [
+    "C"
+   ],
+   "license": "GPL-3.0",
+   "commercialLicense": true,
+   "url": "https://github.com/mz-automation/lib60870",
+   "repo": "mz-automation/lib60870",
+   "stars": 602,
+   "forks": 302,
+   "repoCreated": "2017-03-16",
+   "historySince": "2016",
+   "lastCommit": "2026-07-15",
+   "release": {
+    "version": "v2.4.1",
+    "date": "2026-07-15",
+    "source": "GitHub release",
+    "url": "https://github.com/mz-automation/lib60870/releases/tag/v2.4.1"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "IEC 104",
+    "IEC 101",
+    "TLS"
+   ],
+   "interop": "iec104-interop",
+   "maintenance": "active",
+   "notes": "Commercial licences and support from MZ Automation. Also implements IEC 60870-5-101.",
+   "sources": [
+    "https://github.com/mz-automation/lib60870"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "j60870",
+   "name": "OpenMUC j60870",
+   "protocol": "iec-104",
+   "type": "independent",
+   "languages": [
+    "Java"
+   ],
+   "license": "GPL-3.0",
+   "commercialLicense": true,
+   "url": "https://www.openmuc.org/iec-60870-5-104/",
+   "stars": null,
+   "release": {
+    "version": "1.8.0",
+    "date": "2026-07-17",
+    "source": "Maven Central",
+    "url": "https://central.sonatype.com/artifact/org.openmuc/j60870"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "IEC 104"
+   ],
+   "interop": "iec104-interop",
+   "maintenance": "active",
+   "package": "https://central.sonatype.com/artifact/org.openmuc/j60870",
+   "notes": "Distributed through OpenMUC and Maven Central rather than a public GitHub repository, so stars, forks and creation date do not apply. Proprietary licences are offered too.",
+   "sources": [
+    "https://www.openmuc.org/iec-60870-5-104/"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "thinkgos-go-iecp5",
+   "name": "go-iecp5 (thinkgos)",
+   "protocol": "iec-104",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "LGPL-3.0",
+   "url": "https://github.com/thinkgos/go-iecp5",
+   "repo": "thinkgos/go-iecp5",
+   "stars": 101,
+   "forks": 91,
+   "repoCreated": "2019-05-22",
+   "historySince": "2019",
+   "lastCommit": "2023-03-04",
+   "release": {
+    "version": "v1.2.1",
+    "date": "2022-05-25",
+    "source": "Git tag",
+    "url": "https://pkg.go.dev/github.com/thinkgos/go-iecp5"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "IEC 104"
+   ],
+   "maintenance": "archived",
+   "notes": "Archived by its owner on 2023-03-04. Maintained forks carry it on.",
+   "sources": [
+    "https://github.com/thinkgos/go-iecp5"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "riclolsen-go-iecp5",
+   "name": "go-iecp5 (riclolsen)",
+   "protocol": "iec-104",
+   "type": "derived",
+   "languages": [
+    "Go"
+   ],
+   "license": "LGPL-3.0",
+   "url": "https://github.com/riclolsen/go-iecp5",
+   "repo": "riclolsen/go-iecp5",
+   "stars": 3,
+   "repoCreated": "2023-03-24",
+   "historySince": "2019",
+   "lastCommit": "2026-09-29",
+   "release": {
+    "version": "v0.4.6",
+    "date": "2026-09-29",
+    "source": "Git tag",
+    "url": "https://pkg.go.dev/github.com/riclolsen/go-iecp5"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "IEC 104",
+    "TLS"
+   ],
+   "upstream": [
+    "thinkgos-go-iecp5"
+   ],
+   "relation": "Maintained continuation of thinkgos/go-iecp5",
+   "maintenance": "active",
+   "sources": [
+    "https://github.com/riclolsen/go-iecp5"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "wendy512-go-iecp5",
+   "name": "go-iecp5 (wendy512)",
+   "protocol": "iec-104",
+   "type": "derived",
+   "languages": [
+    "Go"
+   ],
+   "license": "LGPL-3.0",
+   "url": "https://github.com/wendy512/go-iecp5",
+   "repo": "wendy512/go-iecp5",
+   "stars": 7,
+   "forks": 7,
+   "historySince": "2019",
+   "lastCommit": "2026-05-23",
+   "release": {
+    "version": "v1.2.6",
+    "date": "2026-02-03",
+    "source": "Git tag",
+    "url": "https://pkg.go.dev/github.com/wendy512/go-iecp5"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "IEC 104"
+   ],
+   "upstream": [
+    "thinkgos-go-iecp5"
+   ],
+   "relation": "Fork of thinkgos/go-iecp5",
+   "maintenance": "active",
+   "notes": "Added in this pass. GitHub fork of thinkgos/go-iecp5 that keeps tagging releases; its README still carries the upstream archive note.",
+   "sources": [
+    "https://github.com/wendy512/go-iecp5"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "wendy512-iec104",
+   "name": "wendy512/iec104",
+   "protocol": "iec-104",
+   "type": "derived",
+   "languages": [
+    "Go"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/wendy512/iec104",
+   "repo": "wendy512/iec104",
+   "stars": 110,
+   "forks": 24,
+   "repoCreated": "2024-02-22",
+   "historySince": "2024",
+   "lastCommit": "2026-02-03",
+   "release": {
+    "version": "v1.0.4",
+    "date": "2026-02-03",
+    "source": "GitHub release",
+    "url": "https://github.com/wendy512/iec104/releases/tag/v1.0.4"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "IEC 104"
+   ],
+   "upstream": [
+    "wendy512-go-iecp5"
+   ],
+   "relation": "Higher-level API on wendy512/go-iecp5",
+   "interop": "iec104-interop",
+   "maintenance": "active",
+   "notes": "Apache-2.0 itself, but it depends on LGPL-3.0 go-iecp5.",
+   "sources": [
+    "https://github.com/wendy512/iec104"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "c104",
+   "name": "iec104-python (c104)",
+   "protocol": "iec-104",
+   "type": "derived",
+   "languages": [
+    "Python / C++"
+   ],
+   "license": "GPL-3.0",
+   "url": "https://github.com/Fraunhofer-FIT-DIEN/iec104-python",
+   "repo": "Fraunhofer-FIT-DIEN/iec104-python",
+   "stars": 103,
+   "forks": 30,
+   "repoCreated": "2023-04-12",
+   "historySince": "2023",
+   "lastCommit": "2026-08-06",
+   "release": {
+    "version": "2.2.1",
+    "date": "2025-04-23",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/c104/"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "IEC 104",
+    "TLS"
+   ],
+   "upstream": [
+    "lib60870"
+   ],
+   "relation": "Python bindings on lib60870",
+   "maintenance": "active",
+   "package": "https://pypi.org/project/c104/",
+   "notes": "Published on PyPI as c104. Fraunhofer FIT.",
+   "sources": [
+    "https://github.com/Fraunhofer-FIT-DIEN/iec104-python"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "otfabric-go-iec104",
+   "name": "go-iec104",
+   "protocol": "iec-104",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/otfabric/go-iec104",
+   "repo": "otfabric/go-iec104",
+   "stars": 1,
+   "repoCreated": "2026-10-09",
+   "historySince": "2026",
+   "lastCommit": "2026-10-10",
+   "release": {
+    "version": "v0.0.3",
+    "date": "2026-10-10",
+    "source": "GitHub release",
+    "url": "https://github.com/otfabric/go-iec104/releases/tag/v0.0.3"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "IEC 104",
+    "TLS"
+   ],
+   "interop": "iec104-interop",
+   "maintenance": "active",
+   "emerging": true,
+   "otfabric": true,
+   "sources": [
+    "https://github.com/otfabric/go-iec104"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "tmw-iec60870",
+   "name": "Triangle MicroWorks IEC 60870-5 libraries",
+   "protocol": "iec-104",
+   "type": "commercial",
+   "languages": [
+    "C / C++ / .NET"
+   ],
+   "license": "Commercial",
+   "url": "https://www.trianglemicroworks.com/products/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "client",
+    "server"
+   ],
+   "maintenance": "n/a",
+   "sources": [
+    "https://www.trianglemicroworks.com/products/"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "libiec61850",
+   "name": "libiec61850",
+   "protocol": "iec-61850",
+   "type": "independent",
+   "languages": [
+    "C"
+   ],
+   "license": "GPL-3.0",
+   "commercialLicense": true,
+   "url": "https://github.com/mz-automation/libiec61850",
+   "repo": "mz-automation/libiec61850",
+   "stars": 1235,
+   "forks": 613,
+   "repoCreated": "2017-02-10",
+   "historySince": "2014",
+   "lastCommit": "2026-10-06",
+   "release": {
+    "version": "v1.6.2.1",
+    "date": "2026-09-24",
+    "source": "GitHub release",
+    "url": "https://github.com/mz-automation/libiec61850/releases/tag/v1.6.2.1"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "MMS",
+    "GOOSE",
+    "Sampled Values",
+    "Reports",
+    "TLS"
+   ],
+   "interop": "mms-interop",
+   "maintenance": "active",
+   "notes": "Commercial licences and support from MZ Automation. Git history starts in 2014.",
+   "sources": [
+    "https://github.com/mz-automation/libiec61850"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "iec61850bean",
+   "name": "IEC61850bean",
+   "protocol": "iec-61850",
+   "type": "independent",
+   "languages": [
+    "Java"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/beanit/iec61850bean",
+   "repo": "beanit/iec61850bean",
+   "stars": 186,
+   "forks": 96,
+   "repoCreated": "2017-07-28",
+   "historySince": "2017",
+   "lastCommit": "2023-06-23",
+   "release": {
+    "version": "1.9.0",
+    "date": "2020-06-30",
+    "source": "Maven Central",
+    "url": "https://central.sonatype.com/artifact/com.beanit/iec61850bean"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "MMS",
+    "Reports"
+   ],
+   "interop": "mms-interop",
+   "maintenance": "quiet",
+   "package": "https://central.sonatype.com/artifact/com.beanit/iec61850bean",
+   "notes": "Formerly OpenIEC61850. MMS client and server; no commits since June 2023.",
+   "sources": [
+    "https://github.com/beanit/iec61850bean"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "dscsystems-go-iec61850",
+   "name": "dscsystems/go-iec61850",
+   "protocol": "iec-61850",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "GPL-3.0",
+   "url": "https://github.com/dscsystems/go-iec61850",
+   "repo": "dscsystems/go-iec61850",
+   "stars": 3,
+   "forks": 1,
+   "repoCreated": "2026-07-18",
+   "historySince": "2026",
+   "lastCommit": "2026-10-17",
+   "release": {
+    "version": "v0.6.4",
+    "date": "2026-10-17",
+    "source": "Git tag",
+    "url": "https://pkg.go.dev/github.com/dscsystems/go-iec61850"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "MMS",
+    "GOOSE",
+    "Sampled Values",
+    "SCL",
+    "TLS"
+   ],
+   "maintenance": "active",
+   "emerging": true,
+   "package": "https://pkg.go.dev/github.com/dscsystems/go-iec61850",
+   "notes": "Three months old; capabilities as claimed by its README.",
+   "sources": [
+    "https://github.com/dscsystems/go-iec61850"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "otfabric-go-iec61850",
+   "name": "go-iec61850",
+   "protocol": "iec-61850",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/otfabric/go-iec61850",
+   "repo": "otfabric/go-iec61850",
+   "stars": 0,
+   "forks": 1,
+   "repoCreated": "2026-03-20",
+   "historySince": "2026",
+   "lastCommit": "2026-07-30",
+   "release": {
+    "version": "v1.0.8",
+    "date": "2026-07-30",
+    "source": "GitHub release",
+    "url": "https://github.com/otfabric/go-iec61850/releases/tag/v1.0.8"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "MMS",
+    "Reports",
+    "SCL"
+   ],
+   "upstream": [
+    "otfabric-go-mms"
+   ],
+   "relation": "Uses go-mms underneath",
+   "interop": "mms-interop",
+   "maintenance": "active",
+   "otfabric": true,
+   "sources": [
+    "https://github.com/otfabric/go-iec61850"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "otfabric-go-mms",
+   "name": "go-mms",
+   "protocol": "iec-61850",
+   "type": "derived",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/otfabric/go-mms",
+   "repo": "otfabric/go-mms",
+   "stars": 0,
+   "forks": 1,
+   "repoCreated": "2026-03-19",
+   "historySince": "2026",
+   "lastCommit": "2026-07-30",
+   "release": {
+    "version": "v1.0.7",
+    "date": "2026-07-30",
+    "source": "GitHub release",
+    "url": "https://github.com/otfabric/go-mms/releases/tag/v1.0.7"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "MMS"
+   ],
+   "relation": "MMS building block beneath go-iec61850",
+   "interop": "mms-interop",
+   "maintenance": "active",
+   "otfabric": true,
+   "sources": [
+    "https://github.com/otfabric/go-mms"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "tmw-iec61850",
+   "name": "Triangle MicroWorks IEC 61850 libraries",
+   "protocol": "iec-61850",
+   "type": "commercial",
+   "languages": [
+    "C++ / .NET"
+   ],
+   "license": "Commercial",
+   "url": "https://www.trianglemicroworks.com/products/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "MMS",
+    "GOOSE"
+   ],
+   "maintenance": "n/a",
+   "sources": [
+    "https://www.trianglemicroworks.com/products/"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "plc4x",
+   "name": "Apache PLC4X",
+   "protocol": "s7",
+   "type": "independent",
+   "languages": [
+    "Java",
+    "Go",
+    "C"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/apache/plc4x",
+   "repo": "apache/plc4x",
+   "stars": 1756,
+   "forks": 510,
+   "repoCreated": "2017-12-20",
+   "historySince": "2017",
+   "lastCommit": "2026-10-15",
+   "release": {
+    "version": "1.0.0",
+    "date": "2026-09-07",
+    "source": "Maven Central",
+    "url": "https://central.sonatype.com/artifact/org.apache.plc4x/plc4j-driver-s7"
+   },
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "S7comm",
+    "ISO-on-TCP"
+   ],
+   "maintenance": "active",
+   "package": "https://central.sonatype.com/artifact/org.apache.plc4x/plc4j-driver-s7",
+   "notes": "Multi-protocol framework: stars and forks cover all of PLC4X, not only the S7 driver.",
+   "sources": [
+    "https://github.com/apache/plc4x"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "s7netplus",
+   "name": "S7NetPlus",
+   "protocol": "s7",
+   "type": "independent",
+   "languages": [
+    "C#"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/S7NetPlus/s7netplus",
+   "repo": "S7NetPlus/s7netplus",
+   "stars": 1637,
+   "forks": 657,
+   "repoCreated": "2013-02-08",
+   "historySince": "2013",
+   "lastCommit": "2023-09-07",
+   "release": {
+    "version": "0.20.0",
+    "date": "2023-08-03",
+    "source": "NuGet",
+    "url": "https://www.nuget.org/packages/S7netplus"
+   },
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "S7comm",
+    "ISO-on-TCP"
+   ],
+   "maintenance": "quiet",
+   "package": "https://www.nuget.org/packages/S7netplus",
+   "notes": "No commits since September 2023.",
+   "sources": [
+    "https://github.com/S7NetPlus/s7netplus"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "python-snap7",
+   "name": "python-snap7",
+   "protocol": "s7",
+   "type": "independent",
+   "languages": [
+    "Python"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/gijzelaerr/python-snap7",
+   "repo": "gijzelaerr/python-snap7",
+   "stars": 858,
+   "forks": 282,
+   "repoCreated": "2013-10-09",
+   "historySince": "2013",
+   "lastCommit": "2026-10-13",
+   "release": {
+    "version": "3.2.1",
+    "date": "2026-10-04",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/python-snap7/"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "S7comm",
+    "ISO-on-TCP"
+   ],
+   "upstream": [
+    "snap7"
+   ],
+   "relation": "Wrapped Snap7 until 2.x; native Python since 3.0",
+   "interop": "snap7-interop",
+   "maintenance": "active",
+   "package": "https://pypi.org/project/python-snap7/",
+   "notes": "Rewritten in 3.0 (March 2026) as a pure Python TPKT, COTP and S7 implementation. Earlier versions wrapped the native Snap7 library.",
+   "sources": [
+    "https://github.com/gijzelaerr/python-snap7"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "gos7",
+   "name": "gos7",
+   "protocol": "s7",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "BSD-3-Clause",
+   "url": "https://github.com/robinson/gos7",
+   "repo": "robinson/gos7",
+   "stars": 405,
+   "forks": 154,
+   "repoCreated": "2018-02-01",
+   "historySince": "2018",
+   "lastCommit": "2026-09-24",
+   "release": null,
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "S7comm",
+    "ISO-on-TCP"
+   ],
+   "maintenance": "active",
+   "package": "https://pkg.go.dev/github.com/robinson/gos7",
+   "notes": "No tags; consumed as a Go pseudo-version. Still receiving merges in 2026.",
+   "sources": [
+    "https://github.com/robinson/gos7"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "nodes7",
+   "name": "nodeS7",
+   "protocol": "s7",
+   "type": "independent",
+   "languages": [
+    "JavaScript"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/plcpeople/nodeS7",
+   "repo": "plcpeople/nodeS7",
+   "stars": 399,
+   "forks": 125,
+   "repoCreated": "2014-06-29",
+   "historySince": "2014",
+   "lastCommit": "2022-07-31",
+   "release": {
+    "version": "0.3.18",
+    "date": "2022-07-31",
+    "source": "npm",
+    "url": "https://www.npmjs.com/package/nodes7"
+   },
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "S7comm",
+    "ISO-on-TCP"
+   ],
+   "maintenance": "quiet",
+   "package": "https://www.npmjs.com/package/nodes7",
+   "sources": [
+    "https://github.com/plcpeople/nodeS7"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "snap7",
+   "name": "Snap7",
+   "protocol": "s7",
+   "type": "independent",
+   "languages": [
+    "C++"
+   ],
+   "license": "LGPL-3.0",
+   "url": "https://snap7.sourceforge.net/",
+   "stars": null,
+   "historySince": "2013",
+   "release": {
+    "version": "1.4.3",
+    "source": "SourceForge",
+    "url": "https://sourceforge.net/projects/snap7/files/1.4.3/"
+   },
+   "roles": [
+    "client",
+    "server"
+   ],
+   "capabilities": [
+    "S7comm",
+    "ISO-on-TCP"
+   ],
+   "interop": "snap7-interop",
+   "notes": "By Davide Nardella, distributed on SourceForge. The GitHub repository SCADACS/snap7 (284 stars, 99 forks) is a fork with server extensions, not the canonical source.",
+   "sources": [
+    "https://snap7.sourceforge.net/",
+    "https://sourceforge.net/projects/snap7/",
+    "https://github.com/SCADACS/snap7"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "sharp7",
+   "name": "Sharp7",
+   "protocol": "s7",
+   "type": "derived",
+   "languages": [
+    "C#"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/fbarresi/Sharp7",
+   "repo": "fbarresi/Sharp7",
+   "stars": 258,
+   "forks": 80,
+   "repoCreated": "2018-01-21",
+   "historySince": "2018",
+   "lastCommit": "2023-05-11",
+   "release": {
+    "version": "1.1.84",
+    "date": "2023-05-11",
+    "source": "NuGet",
+    "url": "https://www.nuget.org/packages/Sharp7"
+   },
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "S7comm"
+   ],
+   "upstream": [
+    "snap7"
+   ],
+   "relation": "C# port of Snap7",
+   "maintenance": "quiet",
+   "package": "https://www.nuget.org/packages/Sharp7",
+   "sources": [
+    "https://github.com/fbarresi/Sharp7"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "s7commplus",
+   "name": "s7commplus",
+   "protocol": "s7",
+   "type": "independent",
+   "languages": [
+    "Python"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/gijzelaerr/s7commplus",
+   "repo": "gijzelaerr/s7commplus",
+   "stars": 10,
+   "forks": 6,
+   "repoCreated": "2026-09-17",
+   "historySince": "2026",
+   "lastCommit": "2026-10-13",
+   "release": {
+    "version": "0.2.0",
+    "date": "2026-10-08",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/s7commplus/"
+   },
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "S7commPlus",
+    "TLS"
+   ],
+   "maintenance": "active",
+   "emerging": true,
+   "package": "https://pypi.org/project/s7commplus/",
+   "notes": "Targets S7-1200 and S7-1500; the README lists the firmware versions validated so far.",
+   "sources": [
+    "https://github.com/gijzelaerr/s7commplus"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "otfabric-go-s7comm",
+   "name": "go-s7comm",
+   "protocol": "s7",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/otfabric/go-s7comm",
+   "repo": "otfabric/go-s7comm",
+   "stars": 0,
+   "repoCreated": "2026-03-13",
+   "historySince": "2026",
+   "lastCommit": "2026-07-30",
+   "release": {
+    "version": "v0.7.5",
+    "date": "2026-07-30",
+    "source": "GitHub release",
+    "url": "https://github.com/otfabric/go-s7comm/releases/tag/v0.7.5"
+   },
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "S7comm",
+    "ISO-on-TCP"
+   ],
+   "interop": "snap7-interop",
+   "maintenance": "active",
+   "otfabric": true,
+   "sources": [
+    "https://github.com/otfabric/go-s7comm"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "siaccess",
+   "name": "Softing siAccess",
+   "protocol": "s7",
+   "type": "commercial",
+   "languages": [
+    "C / .NET"
+   ],
+   "license": "Commercial",
+   "url": "https://industrial.softing.com/products/opc-ua-siemens-sdks/siaccess.html",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "S7comm"
+   ],
+   "maintenance": "n/a",
+   "notes": "Successor to DELTA LOGIC ACCON-AGLink after Softing acquired DELTA LOGIC; covers Siemens PLCs and SINUMERIK.",
+   "sources": [
+    "https://industrial.softing.com/products/opc-ua-siemens-sdks/siaccess.html",
+    "https://industrial.softing.com/news/news-details/softing-industrial-launches-siaccess-for-pc-plc-communication-as-modern-successor-to-delta-logics-accon-aglink.html"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "plccom",
+   "name": "PLCcom for S7",
+   "protocol": "s7",
+   "type": "commercial",
+   "languages": [
+    ".NET / Java"
+   ],
+   "license": "Commercial",
+   "url": "https://www.indi-an.com/en/plccom/for-s7/fors7-overview/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "client"
+   ],
+   "capabilities": [
+    "S7comm"
+   ],
+   "maintenance": "n/a",
+   "notes": "Editions with symbolic access for newer controllers.",
+   "sources": [
+    "https://www.indi-an.com/en/plccom/for-s7/fors7-overview/"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "openleadr-python",
+   "name": "OpenLEADR (Python)",
+   "protocol": "openadr",
+   "type": "independent",
+   "languages": [
+    "Python"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/OpenLEADR/openleadr-python",
+   "repo": "OpenLEADR/openleadr-python",
+   "stars": 159,
+   "forks": 66,
+   "repoCreated": "2020-09-21",
+   "historySince": "2019",
+   "lastCommit": "2026-08-27",
+   "release": {
+    "version": "0.5.36",
+    "date": "2026-09-03",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/openleadr/"
+   },
+   "roles": [
+    "VEN",
+    "VTN"
+   ],
+   "capabilities": [
+    "2.0b"
+   ],
+   "maintenance": "active",
+   "package": "https://pypi.org/project/openleadr/",
+   "notes": "An LF Energy project.",
+   "sources": [
+    "https://github.com/OpenLEADR/openleadr-python"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "openleadr-rs",
+   "name": "OpenLEADR (Rust)",
+   "protocol": "openadr",
+   "type": "independent",
+   "languages": [
+    "Rust"
+   ],
+   "license": "MIT OR Apache-2.0",
+   "url": "https://github.com/OpenLEADR/openleadr-rs",
+   "repo": "OpenLEADR/openleadr-rs",
+   "stars": 104,
+   "forks": 30,
+   "repoCreated": "2024-10-01",
+   "historySince": "2024",
+   "lastCommit": "2026-10-13",
+   "release": {
+    "version": "0.2.7",
+    "date": "2026-10-06",
+    "source": "crates.io",
+    "url": "https://crates.io/crates/openleadr-vtn"
+   },
+   "roles": [
+    "VEN",
+    "VTN",
+    "Business logic"
+   ],
+   "capabilities": [
+    "3.1"
+   ],
+   "interop": "openadr-interop",
+   "maintenance": "active",
+   "package": "https://crates.io/crates/openleadr-client",
+   "notes": "VEN client library and VTN server. The README states that subscriptions (webhooks) are not supported yet.",
+   "sources": [
+    "https://github.com/OpenLEADR/openleadr-rs"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "elaadnl-openadr3",
+   "name": "ElaadNL openadr3-client",
+   "protocol": "openadr",
+   "type": "independent",
+   "languages": [
+    "Python"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/ElaadNL/openadr3-client",
+   "repo": "ElaadNL/openadr3-client",
+   "stars": 5,
+   "forks": 3,
+   "repoCreated": "2025-04-08",
+   "historySince": "2025",
+   "lastCommit": "2026-08-07",
+   "release": {
+    "version": "2.4.0",
+    "date": "2026-08-07",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/openadr3-client/"
+   },
+   "roles": [
+    "VEN",
+    "Business logic"
+   ],
+   "capabilities": [
+    "3.0",
+    "3.1"
+   ],
+   "interop": "openadr-interop",
+   "maintenance": "active",
+   "package": "https://pypi.org/project/openadr3-client/",
+   "notes": "From ElaadNL, the Dutch EV charging knowledge centre.",
+   "sources": [
+    "https://github.com/ElaadNL/openadr3-client"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "avob-openadr",
+   "name": "avob/OpenADR",
+   "protocol": "openadr",
+   "type": "independent",
+   "languages": [
+    "Java"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/avob/OpenADR",
+   "repo": "avob/OpenADR",
+   "stars": 58,
+   "forks": 30,
+   "repoCreated": "2019-02-08",
+   "historySince": "2019",
+   "lastCommit": "2021-09-06",
+   "release": null,
+   "roles": [
+    "VEN",
+    "VTN"
+   ],
+   "capabilities": [
+    "2.0a",
+    "2.0b"
+   ],
+   "maintenance": "quiet",
+   "notes": "No tags or releases. No commits since 2021.",
+   "sources": [
+    "https://github.com/avob/OpenADR"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "epri-vtn",
+   "name": "EPRI OpenADR Virtual Top Node",
+   "protocol": "openadr",
+   "type": "legacy",
+   "languages": [
+    "Ruby"
+   ],
+   "license": "BSD-3-Clause",
+   "url": "https://github.com/epri-dev/OpenADR-Virtual-Top-Node",
+   "repo": "epri-dev/OpenADR-Virtual-Top-Node",
+   "stars": 51,
+   "forks": 34,
+   "repoCreated": "2016-08-22",
+   "historySince": "2017",
+   "lastCommit": "2019-12-09",
+   "release": {
+    "version": "v0.9.7",
+    "date": "2017-01-24",
+    "source": "Git tag"
+   },
+   "roles": [
+    "VTN"
+   ],
+   "capabilities": [
+    "2.0a",
+    "2.0b"
+   ],
+   "maintenance": "discontinued",
+   "notes": "Licence verified: BSD-3-Clause (COPYING.txt). EPRI has discontinued support; the code stays up as an example.",
+   "sources": [
+    "https://github.com/epri-dev/OpenADR-Virtual-Top-Node"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "epri-ven",
+   "name": "EPRI OpenADR Virtual End Node",
+   "protocol": "openadr",
+   "type": "legacy",
+   "languages": [
+    "C#"
+   ],
+   "license": "BSD-3-Clause",
+   "url": "https://github.com/epri-dev/OpenADR-Virtual-End-Node",
+   "repo": "epri-dev/OpenADR-Virtual-End-Node",
+   "stars": 43,
+   "forks": 20,
+   "repoCreated": "2016-08-22",
+   "historySince": "2016",
+   "lastCommit": "2016-08-22",
+   "release": {
+    "version": "v0.7",
+    "date": "2016-08-22",
+    "source": "Git tag"
+   },
+   "roles": [
+    "VEN"
+   ],
+   "capabilities": [
+    "2.0a",
+    "2.0b"
+   ],
+   "upstream": [
+    "epri-ven-lib"
+   ],
+   "relation": "Built on the EPRI VEN library",
+   "maintenance": "quiet",
+   "sources": [
+    "https://github.com/epri-dev/OpenADR-Virtual-End-Node"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "epri-ven-lib",
+   "name": "EPRI OpenADR VEN Library",
+   "protocol": "openadr",
+   "type": "legacy",
+   "languages": [
+    "C++"
+   ],
+   "license": "BSD-3-Clause",
+   "url": "https://github.com/epri-dev/OpenADR-VEN-Library",
+   "repo": "epri-dev/OpenADR-VEN-Library",
+   "stars": 21,
+   "forks": 12,
+   "repoCreated": "2016-08-22",
+   "historySince": "2016",
+   "lastCommit": "2016-08-30",
+   "release": {
+    "version": "v0.7.0",
+    "date": "2016-08-30",
+    "source": "Git tag"
+   },
+   "roles": [
+    "VEN"
+   ],
+   "capabilities": [
+    "2.0a",
+    "2.0b"
+   ],
+   "maintenance": "quiet",
+   "notes": "Licence verified: BSD-3-Clause (LICENSE.txt, liboadr).",
+   "sources": [
+    "https://github.com/epri-dev/OpenADR-VEN-Library"
+   ],
+   "verified": "2026-10-18"
+  },
+  {
+   "id": "otfabric-go-openadr",
+   "name": "go-openadr",
+   "protocol": "openadr",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/otfabric/go-openadr",
+   "repo": "otfabric/go-openadr",
+   "stars": 0,
+   "repoCreated": "2026-10-12",
+   "historySince": "2026",
+   "lastCommit": "2026-10-13",
+   "release": {
+    "version": "v0.4.0",
+    "date": "2026-10-13",
+    "source": "GitHub release",
+    "url": "https://github.com/otfabric/go-openadr/releases/tag/v0.4.0"
+   },
+   "roles": [
+    "VEN",
+    "VTN",
+    "Business logic"
+   ],
+   "capabilities": [
+    "3.1"
+   ],
+   "interop": "openadr-interop",
+   "maintenance": "active",
+   "emerging": true,
+   "otfabric": true,
+   "sources": [
+    "https://github.com/otfabric/go-openadr"
+   ],
+   "verified": "2026-10-18"
+  }
+ ]
+}

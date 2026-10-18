@@ -1,0 +1,111 @@
+---
+// One protocol's implementations from the ecosystem registry, as a compact table for blog posts.
+import { byProtocol, formatCount, formatMonth, typeLabels, typeOrder, type ImplType } from '../../data/ecosystem';
+
+interface Props {
+	protocol: string;
+	/** Which types to list; commercial SDKs are usually named in the text instead. */
+	types?: ImplType[];
+}
+const { protocol, types = ['independent', 'derived', 'legacy'] } = Astro.props;
+const rows = byProtocol(protocol)
+	.filter((i) => types.includes(i.type))
+	.sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type));
+---
+
+<div class="ot-landscape not-content">
+	<table>
+		<thead>
+			<tr>
+				<th scope="col">Implementation</th>
+				<th scope="col">Language</th>
+				<th scope="col">Licence</th>
+				<th scope="col">Latest release</th>
+				<th scope="col" class="num">Stars</th>
+				<th scope="col">Type</th>
+			</tr>
+		</thead>
+		<tbody>
+			{rows.map((i) => (
+				<tr class:list={{ otf: i.otfabric }}>
+					<th scope="row">
+						<a href={`/ecosystem/?stack=${i.id}`}>{i.name}</a>
+					</th>
+					<td>{i.languages.join(', ')}</td>
+					<td><code>{i.license}</code>{i.commercialLicense && <span class="muted"> or commercial</span>}</td>
+					<td>
+						{i.release ? <><code>{i.release.version}</code> <span class="muted">{formatMonth(i.release.date) ?? i.release.source}</span></> : <span class="muted">untagged</span>}
+					</td>
+					<td class="num">{formatCount(i.stars)}</td>
+					<td><span class={`kind k-${i.type}`}>{typeLabels[i.type].split(' ')[0]}</span>{i.maintenance && !['active', 'n/a'].includes(i.maintenance) && <span class="muted"> · {i.maintenance}</span>}</td>
+				</tr>
+			))}
+		</tbody>
+	</table>
+</div>
+
+<style>
+	.ot-landscape {
+		margin-block: 1.5rem;
+		overflow-x: auto;
+	}
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.86rem;
+	}
+	th,
+	td {
+		text-align: left;
+		padding: 0.5rem 0.8rem 0.5rem 0;
+		border-bottom: 1px solid var(--ot-line);
+		vertical-align: top;
+		white-space: nowrap;
+	}
+	thead th {
+		font: 500 0.7rem/1 var(--ot-font-mono);
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		color: var(--ot-muted);
+	}
+	tbody th {
+		font-weight: 600;
+	}
+	tbody th a {
+		color: var(--ot-fg-strong);
+		text-decoration: none;
+	}
+	tbody th a:hover,
+	tr.otf th a {
+		color: var(--ot-accent);
+	}
+	code {
+		font-size: 0.8rem;
+		background: none;
+		border: 0;
+		padding: 0;
+	}
+	.num {
+		text-align: right;
+		font-family: var(--ot-font-mono);
+	}
+	.muted {
+		color: var(--ot-muted);
+		font-size: 0.8rem;
+	}
+	.kind::before {
+		content: '';
+		display: inline-block;
+		width: 0.5rem;
+		height: 0.5rem;
+		margin-inline-end: 0.4rem;
+		border-radius: 50%;
+		background: var(--ot-accent);
+	}
+	.k-derived::before {
+		background: #6f9be0;
+	}
+	.k-legacy::before {
+		background: #7d8b97;
+	}
+</style>

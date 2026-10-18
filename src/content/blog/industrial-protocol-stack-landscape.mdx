@@ -1,0 +1,130 @@
+---
+title: The industrial protocol stack landscape
+description: Who implements Modbus, OPC UA, BACnet, IEC 104, IEC 61850, Siemens S7 and OpenADR? 75 open-source and commercial stacks, verified against their own release channels, and an interactive map to explore them.
+date: 2026-10-18
+authors: [OT Fabric]
+tags: [ecosystem, research, open-source]
+featured: true
+cover:
+  alt: The OT protocol ecosystem map, with a protocol in the middle and its implementations branching out by type
+  image: ../../assets/blog/protocol-landscape.png
+---
+
+import LandscapeTable from '../../components/ecosystem/LandscapeTable.astro';
+import MapLink from '../../components/ecosystem/MapLink.astro';
+import Callout from '../../components/Callout.astro';
+
+Nobody connects a plant, a substation or a building with one library. Every integration leans on stacks written by other people: a C library in a gateway, a Python tool on a laptop, a Java server in a SCADA system, a vendor SDK inside a controller. OT Fabric only makes sense as part of that ecosystem, which is why each of our protocols ships with an interop suite that tests against the established implementations.
+
+So we mapped the ecosystem. This post is the research: seven protocol families, 75 implementations, and what we learned checking every one of them against its own release channel. The interactive version lets you pick a protocol, filter by language, licence and activity, and jump straight to the source.
+
+<MapLink />
+
+## How we counted
+
+We sort every implementation into one of four groups, because a flat list of repositories hides how the ecosystem actually fits together:
+
+- **Independent stacks** handle the protocol themselves.
+- **Derived libraries and bindings** wrap, port or extend another stack. They link to their upstream instead of counting as a new engine.
+- **Commercial SDKs** are proprietary or dual-licensed developer libraries, including those without public source.
+- **Legacy and reference** code is historically important but superseded or no longer maintained.
+
+Each entry records its language, licence (as an SPDX expression, read from the licence file), protocol roles, documented capabilities, latest release, last commit, stars and forks, and the OT Fabric interop suite that exercises it, if any. Every entry also lists its sources and the date we last verified it.
+
+<Callout title="Popularity is a property, not a ranking">
+  Stars measure attention from software developers, not field deployments. A mature C stack with 200 stars may run in more devices than a library with several thousand. The map draws every implementation at the same size on purpose.
+</Callout>
+
+## GitHub Releases are the wrong place to look
+
+The first draft of this inventory took versions from GitHub Releases. Checking each project against the channel it actually publishes to changed a third of the version column:
+
+- **NModbus** has no GitHub Release objects, but publishes 3.0.83 on NuGet (April 2026).
+- **jsmodbus** shows v2.0.1 as its GitHub Release; npm has 5.0.0, published in September 2026.
+- **Modbus4J** is at tag v3.1.0, ahead of its old 2.x GitHub Release.
+- **BACnet Stack** releases on SourceForge (1.6.1, August 2026), not as GitHub Releases. The project dates back to 2004; the GitHub repository only to 2019.
+- **BACpypes3** is at 0.0.110 on PyPI and **System.IO.BACnet** at 4.0.0 on NuGet. Its MIT licence, unclear in the first pass, is confirmed.
+- **tokio-modbus** (0.17.0), **simonvetter/modbus** (v1.6.4) and **NModbus** tag and publish without creating GitHub Releases.
+- The **EPRI OpenADR** reference code is BSD-3-Clause throughout; two licences had been left open.
+
+The registry now names the source of every version: GitHub, PyPI, npm, crates.io, NuGet, Maven Central, SourceForge or the Go module proxy.
+
+## Modbus
+
+**Very mature.** The broadest open-source ecosystem in OT, from microcontrollers to cloud services. Modbus TCP versus serial is a capability, not a separate implementation, and so is client-only versus client and server.
+
+<LandscapeTable protocol="modbus" />
+
+libmodbus, PyModbus, NModbus, digitalpetri/modbus and tokio-modbus are the reference implementations in our [modbus-interop](https://github.com/otfabric/modbus-interop) suite. goburrow/modbus and ModbusMaster are still widely used but have not changed since 2016 to 2018. On the commercial side, Triangle MicroWorks sells Modbus source libraries, and Modbus4J is dual-licensed by Radix IoT.
+
+## OPC UA
+
+**Very mature, with a strong commercial market.** OPC UA lets you compare independent open source, foundation-backed code and proprietary SDKs side by side. Client/server and PubSub are separate capabilities, and no stack covers every security profile, transport and information model.
+
+<LandscapeTable protocol="opc-ua" />
+
+open62541, Eclipse Milo, the OPC Foundation .NET stack, node-opcua and the FreeOpcUa family are the essential open-source references. Two lineages are worth knowing: python-opcua is deprecated in favour of opcua-asyncio, and the Rust code base started by locka99/opcua continues as async-opcua. Unified Automation, Prosys and Softing are the established commercial SDK vendors.
+
+<MapLink protocol="opc-ua" title="See the OPC UA lineages on the map" />
+
+## BACnet
+
+**Mature, but fragmented.** BACnet/IP, MS/TP, BACnet/SC and the device profiles make very different demands, so "BACnet supported" on its own says very little. The map records which data links each stack documents.
+
+<LandscapeTable protocol="bacnet" />
+
+BACnet Stack stands out: extensive service coverage, embedded targets, and a GPL linking exception that lets proprietary products link it. BACpypes3, BACnet4J and System.IO.BACnet (the stack behind YABE) complete the reference set, and all four run in [bacnet-interop](https://github.com/otfabric/bacnet-interop). BACpypes3 now also ships an MCP server, so AI agents can talk BACnet. Cimetrics, PolarSoft and SoftDEL lead the commercial SDK market.
+
+## IEC 60870-5-104
+
+**Specialized.** A handful of credible engines, with bindings and forks built on top of them, which is exactly where the relationships matter.
+
+<LandscapeTable protocol="iec-104" />
+
+The independent engines are lib60870, OpenMUC j60870 and go-iecp5. The Python package c104 binds lib60870; wendy512/iec104 builds on a go-iecp5 fork. The original go-iecp5 was archived in March 2023 and lives on in two maintained forks. j60870 is distributed through OpenMUC and Maven Central (1.8.0) rather than a GitHub repository. MZ Automation, OpenMUC and Triangle MicroWorks offer commercial licences.
+
+## IEC 61850 and MMS
+
+**Specialized, with few comprehensive implementations.** IEC 61850 is not just MMS: it adds information models, GOOSE, Sampled Values and SCL. A stack that only speaks MMS is not an IEC 61850 stack.
+
+<LandscapeTable protocol="iec-61850" />
+
+libiec61850 is the dominant open-source reference: MMS client and server, GOOSE, Sampled Values, reports, datasets, logging, file services and TLS, with commercial licences from MZ Automation. IEC61850bean (formerly OpenIEC61850) is an established Java MMS implementation, quiet since 2023. dscsystems/go-iec61850 is three months old and worth watching.
+
+## Siemens S7
+
+**Mature for classic S7comm, constrained beyond it.** Talking to an S7-300 over ISO-on-TCP is not the same as talking to an S7-1500 with optimized data blocks and access protection. S7comm and S7commPlus are separate branches on the map.
+
+<LandscapeTable protocol="s7" />
+
+Snap7 is distributed on SourceForge; the popular GitHub repository under SCADACS is a fork with server extensions, not the canonical source. python-snap7 is no longer a wrapper: since 3.0 (March 2026) it implements TPKT, COTP and S7 natively in Python. Apache PLC4X counts stars for its whole multi-protocol framework. The new s7commplus project opens the S7-1200/1500 branch. Softing siAccess, successor to ACCON-AGLink, and PLCcom for S7 are the commercial options.
+
+## OpenADR
+
+**Smaller and still evolving.** OpenADR 2.0b and 3.x are different technologies, and 3.1 is not backward-compatible with 3.0, so the map separates versions and roles: VEN, VTN and business logic.
+
+<LandscapeTable protocol="openadr" />
+
+OpenLEADR covers both generations: Python for 2.0b, Rust for 3.1, where its README is upfront that subscriptions (webhooks) are not supported yet. ElaadNL's openadr3-client comes from an organization that builds EV charging infrastructure. The EPRI projects are legacy references; EPRI has discontinued support. The OpenADR Alliance's reference implementation is not publicly available, so it is not on the map, and we found no standalone commercial OpenADR SDKs comparable to other protocols. That branch stays open for verified submissions.
+
+## The picture across protocols
+
+| Protocol | Open source | Commercial SDKs | Primary references |
+|---|---|---|---|
+| Modbus | Very mature | Established | libmodbus, PyModbus, NModbus, Modbus4J, tokio-modbus |
+| OPC UA | Very mature | Very established | open62541, OPC Foundation .NET, Eclipse Milo, node-opcua, FreeOpcUa |
+| BACnet | Mature, fragmented | Very established | BACnet Stack, BACpypes3, BACnet4J, System.IO.BACnet |
+| IEC 60870-5-104 | Specialized | Established | lib60870, OpenMUC j60870, go-iecp5 |
+| IEC 61850 / MMS | Specialized | Established | libiec61850, IEC61850bean |
+| Siemens S7 | Mature for classic S7 | Established | Snap7, S7NetPlus, python-snap7, Apache PLC4X |
+| OpenADR | Smaller, evolving | Not transparent | OpenLEADR (Python and Rust), ElaadNL |
+
+These are judgements about maturity and visibility, not measured conformance, security or quality. Our interop suites are where we test behaviour; this map is where we record who is out there.
+
+## Help us complete it
+
+This is a strong baseline, not an audited directory. We know it misses implementations outside GitHub, commercial SDK details (versions, platforms, evaluation editions) and capability evidence beyond what each README claims.
+
+The whole map is one JSON file, [`src/data/ecosystem.json`](https://github.com/otfabric/website/blob/main/src/data/ecosystem.json), with sources and a verification date on every entry. Open a pull request to add a stack, a commercial SDK, a correction or interop results, and the map updates when it merges. Maintainers are especially welcome to check their own entries.
+
+<MapLink title="Open the ecosystem map" />

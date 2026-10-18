@@ -1,0 +1,1121 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getProtocols } from '../../data/projects';
+import { absolute, breadcrumbs } from '../../data/seo';
+import {
+	ecosystem,
+	ecosystemProtocols,
+	byProtocol,
+	formatCount,
+	formatDay,
+	licenseFamily,
+	maintenanceLabels,
+	stats,
+	typeLabels,
+	typeOrder,
+} from '../../data/ecosystem';
+import { ELBOW, H, HUB, RX, RY, W, layout } from '../../data/ecosystem-layout';
+
+const icons = Object.fromEntries((await getProtocols()).map((p) => [p.id, p.data.icon]));
+const maps = ecosystemProtocols.map((p) => ({ protocol: p, ...layout(p.id) }));
+const all = ecosystem.implementations;
+const languages = [...new Set(all.flatMap((i) => i.languages))].sort((a, b) => a.localeCompare(b));
+const families = ['Permissive', 'Weak copyleft', 'Copyleft', 'Commercial'];
+const statuses = ['active', 'slowing', 'quiet', 'archived', 'deprecated', 'discontinued'];
+const short = (s: string, n = 24) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+const hubText = (h: { type: keyof typeof typeLabels; count: number }) => `${typeLabels[h.type].split(' ')[0]} · ${h.count}`;
+const pill = (h: Parameters<typeof hubText>[0]) => hubText(h).length * 8 + 24;
+const verified = formatDay(ecosystem.verified);
+
+// The client script reads everything it shows from this payload.
+const payload = {
+	protocols: Object.fromEntries(ecosystemProtocols.map((p) => [p.id, p.name])),
+	types: typeLabels,
+	maintenance: maintenanceLabels,
+	items: all.map((i) => ({ ...i, family: licenseFamily(i.license) })),
+};
+
+const schema = [
+	breadcrumbs([{ name: 'Ecosystem map', path: '/ecosystem/' }]),
+	{
+		'@type': 'Dataset',
+		name: ecosystem.title,
+		description: 'An open, source-backed registry of open-source and commercial implementations of industrial protocol stacks.',
+		url: absolute('/ecosystem/'),
+		dateModified: ecosystem.verified,
+		license: 'https://opensource.org/licenses/MIT',
+		isAccessibleForFree: true,
+		distribution: {
+			'@type': 'DataDownload',
+			encodingFormat: 'application/json',
+			contentUrl: 'https://github.com/otfabric/website/blob/main/src/data/ecosystem.json',
+		},
+	},
+];
+---
+
+<BaseLayout
+	title="OT protocol ecosystem map"
+	description={`Who implements Modbus, OPC UA, BACnet, IEC 104, IEC 61850, Siemens S7 and OpenADR: ${stats.implementations} open-source and commercial stacks with language, licence, roles and latest release.`}
+	image="/ecosystem-card.png"
+	imageAlt="The OT protocol ecosystem map: protocols in the middle, implementations around them"
+	pageType="CollectionPage"
+	schema={schema}
+>
+	<section class="eco-head">
+		<div class="ot-container wide">
+			<span class="ot-label accent">Ecosystem map · verified {verified}</span>
+			<h1>The industrial protocol stack landscape</h1>
+			<p class="lead">
+				An open, community-maintained map of the implementations connecting operational technology. Pick a protocol, then pick a
+				stack to see its language, licence, roles and latest release, and jump straight to its source.
+			</p>
+			<dl class="stats">
+				<div><dt>Implementations</dt><dd>{stats.implementations}</dd></div>
+				<div><dt>Protocols</dt><dd>{stats.protocols}</dd></div>
+				<div><dt>Languages</dt><dd>{stats.languages}</dd></div>
+				<div><dt>Commercial SDKs</dt><dd>{stats.commercial}</dd></div>
+				<div><dt>Tested in our interop suites</dt><dd>{stats.interop}</dd></div>
+			</dl>
+		</div>
+	</section>
+
+	<div class="ot-container wide eco" id="eco">
+		<div class="tabs" role="tablist" aria-label="Protocol">
+			{maps.map(({ protocol }, i) => (
+				<button type="button" role="tab" id={`tab-${protocol.id}`} data-protocol={protocol.id} aria-selected={i === 0 ? 'true' : 'false'} aria-controls={`panel-${protocol.id}`}>
+					{icons[protocol.id] && <img src={`/icons/${icons[protocol.id]}.svg`} alt="" width="22" height="22" />}
+					<span>{protocol.name}</span>
+					<span class="count">{byProtocol(protocol.id).length}</span>
+				</button>
+			))}
+		</div>
+
+		<form class="filters" aria-label="Filter implementations" onsubmit="return false">
+			<label class="search">
+				<span class="sr-only">Search</span>
+				<input type="search" name="q" placeholder="Search name, language, licence…" autocomplete="off" />
+			</label>
+			<label>
+				<span class="ot-label">Language</span>
+				<select name="language">
+					<option value="">Any</option>
+					{languages.map((l) => <option>{l}</option>)}
+				</select>
+			</label>
+			<label>
+				<span class="ot-label">Licence</span>
+				<select name="family">
+					<option value="">Any</option>
+					{families.map((f) => <option>{f}</option>)}
+				</select>
+			</label>
+			<label>
+				<span class="ot-label">Activity</span>
+				<select name="maintenance">
+					<option value="">Any</option>
+					{statuses.map((s) => <option value={s}>{maintenanceLabels[s]}</option>)}
+				</select>
+			</label>
+			<label class="check">
+				<input type="checkbox" name="interop" />
+				<span>In an OT Fabric interop suite</span>
+			</label>
+		</form>
+
+		<div class="stage">
+			<div class="maps">
+				{maps.map(({ protocol, cx, cy, hubs, leaves, links }, i) => (
+					<section class:list={['map', { 'is-active': i === 0 }]} id={`panel-${protocol.id}`} role="tabpanel" aria-labelledby={`tab-${protocol.id}`} data-protocol={protocol.id}>
+						<div class="svg-pan"><svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${protocol.name}: ${leaves.length} implementations grouped by type`}>
+							<g class="grid" aria-hidden="true">
+								{[HUB, ELBOW, 1].map((f) => <ellipse cx={cx} cy={cy} rx={RX * f} ry={RY * f} />)}
+							</g>
+							<g class="branches" aria-hidden="true">
+								{hubs.map((h) => <line class={`b-${h.type}`} x1={cx} y1={cy} x2={h.x} y2={h.y} />)}
+								{leaves.map((l) => <path class={`b-${l.impl.type}`} d={l.path} data-edge={l.impl.id} />)}
+							</g>
+							<g class="links" aria-hidden="true">
+								{links.map((k) => <path d={k.path} data-from={k.from} data-to={k.to} />)}
+							</g>
+							<g class="hubs" aria-hidden="true">
+								{hubs.map((h) => (
+									<g class={`hub b-${h.type}`} transform={`translate(${h.x} ${h.y})`}>
+										<rect x={-pill(h) / 2} y="-14" width={pill(h)} height="28" rx="14" />
+										<text y="4.5">{hubText(h)}</text>
+									</g>
+								))}
+							</g>
+							<g class="core" aria-hidden="true">
+								<circle cx={cx} cy={cy} r="64" />
+								<circle class="ring" cx={cx} cy={cy} r="72" />
+								<text class="core-name" x={cx} y={cy + 2}>{protocol.name.replace(' / MMS', '')}</text>
+								<text class="core-sub" x={cx} y={cy + 24}>{leaves.length} stacks</text>
+							</g>
+							<g class="leaves">
+								{leaves.map((l) => (
+									<a
+										href={`#impl-${l.impl.id}`}
+										class:list={['leaf', `t-${l.impl.type}`, `m-${(l.impl.maintenance ?? 'unknown').replace('/', '')}`, { otf: l.impl.otfabric }]}
+										data-impl={l.impl.id}
+										aria-label={`${l.impl.name}, ${l.impl.languages.join(', ')}, ${l.impl.license}`}
+									>
+										<circle class="halo" cx={l.x} cy={l.y} r="18" />
+										<circle class="dot" cx={l.x} cy={l.y} r={l.impl.otfabric ? 10 : 8} />
+										{l.impl.interop && !l.impl.otfabric && <circle class="tested" cx={l.x} cy={l.y} r="13" />}
+										<text x={l.side === 'right' ? l.x + 18 : l.x - 18} y={l.y - 1} text-anchor={l.side === 'right' ? 'start' : 'end'}>
+											<tspan class="name">{short(l.impl.name)}</tspan>
+											<tspan class="meta" x={l.side === 'right' ? l.x + 18 : l.x - 18} dy="18">{short(`${l.impl.languages.join(', ')} · ${l.impl.license.replace(' WITH GCC-exception-2.0', '+exc.')}`, 30)}</tspan>
+										</text>
+									</a>
+								))}
+							</g>
+						</svg></div>
+						<p class="summary">{protocol.summary} <span class="ot-label">Focus: {protocol.focus}</span></p>
+					</section>
+				))}
+				<ul class="legend" aria-label="Legend">
+					{typeOrder.map((t) => <li><i class={`sw b-${t}`} />{typeLabels[t]}</li>)}
+					<li><i class="sw ring" />Tested in an OT Fabric interop suite</li>
+					<li><i class="sw otf" />OT Fabric</li>
+					<li><i class="sw link" />Builds on or continues</li>
+					<li><i class="sw hollow" />Quiet, archived or deprecated</li>
+				</ul>
+			</div>
+
+			<aside class="detail" aria-live="polite">
+				<div class="detail-empty">
+					<span class="ot-label">How to read the map</span>
+					<p>Each dot is one implementation. Branches group them as independent stacks, derived libraries and bindings, commercial SDKs, and legacy or reference code.</p>
+					<p>Dots are the same size on purpose: popularity is a property here, not a ranking. A mature C stack with 200 stars may run in more field devices than a library with thousands.</p>
+					<p class="hint">Select a dot or a row to see the details.</p>
+				</div>
+				<div class="detail-body" hidden></div>
+			</aside>
+		</div>
+
+		<div class="table-wrap">
+			<table class="eco-table">
+				<thead>
+					<tr>
+						<th scope="col">Implementation</th>
+						<th scope="col">Type</th>
+						<th scope="col">Language</th>
+						<th scope="col">Licence</th>
+						<th scope="col">Latest release</th>
+						<th scope="col">Roles</th>
+						<th scope="col">Activity</th>
+						<th scope="col" class="num">Stars</th>
+					</tr>
+				</thead>
+				<tbody>
+					{all.map((i) => (
+						<tr id={`impl-${i.id}`} data-impl={i.id} data-protocol={i.protocol} class:list={{ otf: i.otfabric, 'is-hidden': i.protocol !== maps[0].protocol.id }}>
+							<th scope="row">
+								<a href={i.url} rel="noopener">{i.name}</a>
+								{i.otfabric && <span class="tag">OT Fabric</span>}
+								{i.emerging && <span class="tag soft">Emerging</span>}
+							</th>
+							<td>{typeLabels[i.type].split(' ')[0]}</td>
+							<td>{i.languages.join(', ')}</td>
+							<td><code>{i.license}</code>{i.commercialLicense && <span class="plus" title="Commercial licence also available"> +commercial</span>}</td>
+							<td>{i.release ? <><code>{i.release.version}</code> <span class="muted">{formatDay(i.release.date) ?? i.release.source}</span></> : <span class="muted">No release</span>}</td>
+							<td>{(i.roles ?? []).join(', ') || '–'}</td>
+							<td><span class={`st m-${(i.maintenance ?? 'unknown').replace('/', '')}`}>{maintenanceLabels[i.maintenance ?? ''] ?? 'Unknown'}</span></td>
+							<td class="num">{formatCount(i.stars)}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+			<p class="empty" hidden>No implementation matches these filters.</p>
+		</div>
+
+		<section class="contribute">
+			<div>
+				<span class="ot-label accent">Open data</span>
+				<h2>Missing a stack? Found a mistake?</h2>
+				<p>
+					The map is one JSON file in our website repository. Every entry carries its sources and the date we last checked it. Send a
+					pull request with a new library, a commercial SDK, a correction or interop results, and the map updates on merge.
+				</p>
+				<ul class="notes">{ecosystem.notes.map((n) => <li>{n}</li>)}</ul>
+			</div>
+			<div class="actions">
+				<a class="ot-btn primary" href="https://github.com/otfabric/website/blob/main/src/data/ecosystem.json">Edit the registry on GitHub</a>
+				<a class="ot-btn" href="/blog/industrial-protocol-stack-landscape/">Read the research</a>
+			</div>
+		</section>
+	</div>
+
+	<script type="application/json" id="eco-data" set:html={JSON.stringify(payload)} />
+</BaseLayout>
+
+<script>
+	type Item = Record<string, any>;
+	const data = JSON.parse(document.getElementById('eco-data')!.textContent!) as {
+		protocols: Record<string, string>;
+		types: Record<string, string>;
+		maintenance: Record<string, string>;
+		items: Item[];
+	};
+	const items = new Map(data.items.map((i) => [i.id, i]));
+	const root = document.getElementById('eco')!;
+	const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role=tab]')];
+	const maps = [...root.querySelectorAll<HTMLElement>('.map')];
+	const rows = [...root.querySelectorAll<HTMLTableRowElement>('tbody tr')];
+	const form = root.querySelector<HTMLFormElement>('.filters')!;
+	const empty = root.querySelector<HTMLElement>('.detail-empty')!;
+	const body = root.querySelector<HTMLElement>('.detail-body')!;
+	const noMatch = root.querySelector<HTMLElement>('.empty')!;
+
+	let protocol = tabs[0].dataset.protocol!;
+	let selected: string | null = null;
+
+	const esc = (s: unknown) =>
+		String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+	const day = (d?: string) =>
+		d ? new Date(`${d.slice(0, 10)}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '';
+	const num = (n?: number | null) => (n == null ? '–' : n.toLocaleString('en-US'));
+	const host = (u: string) => {
+		try {
+			return new URL(u).hostname.replace(/^www\./, '');
+		} catch {
+			return u;
+		}
+	};
+
+	function matches(i: Item) {
+		const f = new FormData(form);
+		const q = String(f.get('q') ?? '').trim().toLowerCase();
+		const language = f.get('language');
+		const family = f.get('family');
+		const maintenance = f.get('maintenance');
+		if (q && ![i.name, i.repo, i.license, ...(i.languages ?? []), ...(i.capabilities ?? []), ...(i.roles ?? [])].join(' ').toLowerCase().includes(q)) return false;
+		if (language && !i.languages.includes(language)) return false;
+		if (family && i.family !== family) return false;
+		if (maintenance && i.maintenance !== maintenance) return false;
+		if (f.get('interop') && !i.interop) return false;
+		return true;
+	}
+
+	function apply() {
+		let shown = 0;
+		for (const row of rows) {
+			const i = items.get(row.dataset.impl!)!;
+			const visible = row.dataset.protocol === protocol && matches(i);
+			row.classList.toggle('is-hidden', !visible);
+			row.classList.toggle('is-selected', row.dataset.impl === selected);
+			if (visible) shown++;
+		}
+		noMatch.hidden = shown > 0;
+		for (const leaf of root.querySelectorAll<SVGAElement>('.leaf')) {
+			const id = leaf.dataset.impl!;
+			leaf.classList.toggle('is-dim', !matches(items.get(id)!));
+			leaf.classList.toggle('is-selected', id === selected);
+		}
+		for (const edge of root.querySelectorAll<SVGPathElement>('[data-edge]')) {
+			edge.classList.toggle('is-on', edge.dataset.edge === selected);
+		}
+		for (const link of root.querySelectorAll<SVGPathElement>('.links path')) {
+			link.classList.toggle('is-on', link.dataset.from === selected || link.dataset.to === selected);
+		}
+	}
+
+	function show(next: string, push = true) {
+		if (!data.protocols[next]) return;
+		protocol = next;
+		for (const t of tabs) t.setAttribute('aria-selected', String(t.dataset.protocol === next));
+		for (const m of maps) m.classList.toggle('is-active', m.dataset.protocol === next);
+		if (selected && items.get(selected)?.protocol !== next) select(null, false);
+		apply();
+		if (push) syncUrl();
+	}
+
+	function syncUrl() {
+		const url = new URL(location.href);
+		url.searchParams.set('protocol', protocol);
+		if (selected) url.searchParams.set('stack', selected);
+		else url.searchParams.delete('stack');
+		url.hash = '';
+		history.replaceState(null, '', url);
+	}
+
+	function row(label: string, value: string) {
+		return value ? `<div><dt>${label}</dt><dd>${value}</dd></div>` : '';
+	}
+
+	function select(id: string | null, push = true) {
+		selected = id;
+		const i = id ? items.get(id) : null;
+		empty.hidden = !!i;
+		body.hidden = !i;
+		if (i) {
+			const rel = i.release
+				? `<code>${esc(i.release.version)}</code> ${esc(day(i.release.date))} · ${i.release.url ? `<a href="${esc(i.release.url)}" rel="noopener">${esc(i.release.source)}</a>` : esc(i.release.source)}`
+				: 'No tagged release';
+			const pre = i.prerelease ? `<code>${esc(i.prerelease.version)}</code> ${esc(day(i.prerelease.date))}` : '';
+			const ups = (i.upstream ?? [])
+				.map((u: string) => items.get(u))
+				.filter(Boolean)
+				.map((u: Item) => `<button type="button" class="link" data-go="${esc(u.id)}">${esc(u.name)}</button>`)
+				.join(', ');
+			const downs = data.items
+				.filter((d) => (d.upstream ?? []).includes(i.id))
+				.map((d) => `<button type="button" class="link" data-go="${esc(d.id)}">${esc(d.name)}</button>`)
+				.join(', ');
+			const chips = (list: string[] = []) => list.map((c) => `<span class="chip">${esc(c)}</span>`).join('');
+			body.innerHTML = `
+				<span class="ot-label">${esc(data.protocols[i.protocol])} · ${esc(data.types[i.type])}</span>
+				<h2>${esc(i.name)}</h2>
+				<p class="badges">
+					${i.otfabric ? '<span class="tag">OT Fabric</span>' : ''}
+					${i.emerging ? '<span class="tag soft">Emerging</span>' : ''}
+					<span class="st m-${esc((i.maintenance ?? 'unknown').replace('/', ''))}">${esc(data.maintenance[i.maintenance] ?? 'Activity unknown')}</span>
+				</p>
+				<dl>
+					${row('Language', esc(i.languages.join(', ')))}
+					${row('Licence', `<code>${esc(i.license)}</code>${i.commercialLicense ? ' · commercial licence available' : ''}`)}
+					${row('Roles', chips(i.roles))}
+					${row('Documented', chips(i.capabilities))}
+					${row('Latest release', rel)}
+					${row('Pre-release', pre)}
+					${row('Last commit', esc(day(i.lastCommit)))}
+					${row('Stars · forks', i.stars != null ? `${num(i.stars)} · ${num(i.forks)}` : '')}
+					${row('Repository created', esc(day(i.repoCreated)))}
+					${row('History since', esc(i.historySince))}
+					${row('Builds on', ups)}
+					${row('Built on by', downs)}
+					${row('Relation', esc(i.relation))}
+					${row('Interop', i.interop ? `<a href="https://github.com/otfabric/${esc(i.interop)}" rel="noopener">${esc(i.interop)}</a>` : '')}
+				</dl>
+				${i.notes ? `<p class="note">${esc(i.notes)}</p>` : ''}
+				<div class="go">
+					${i.url ? `<a class="ot-btn primary" href="${esc(i.url)}" rel="noopener">Open ${esc(i.repo ? 'repository' : host(i.url))} ↗</a>` : ''}
+					${i.package && i.package !== i.url ? `<a class="ot-btn" href="${esc(i.package)}" rel="noopener">Package ↗</a>` : ''}
+				</div>
+				<p class="src ot-label">Verified ${esc(day(i.verified))} · ${i.sources.map((s: string) => `<a href="${esc(s)}" rel="noopener">${esc(host(s))}</a>`).join(' · ')}</p>`;
+		}
+		apply();
+		if (push) {
+			syncUrl();
+			// Below the side-by-side breakpoint the panel sits under the map.
+			if (i && !matchMedia('(min-width: 64rem)').matches) body.closest('.detail')!.scrollIntoView({ behavior: 'smooth', block: 'start' });
+		}
+	}
+
+	tabs.forEach((t, n) => {
+		t.addEventListener('click', () => show(t.dataset.protocol!));
+		t.addEventListener('keydown', (e) => {
+			const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+			if (!d) return;
+			const next = tabs[(n + d + tabs.length) % tabs.length];
+			next.focus();
+			show(next.dataset.protocol!);
+		});
+	});
+	root.addEventListener('click', (e) => {
+		const target = e.target as Element;
+		const go = target.closest<HTMLElement>('[data-go]');
+		if (go) {
+			const i = items.get(go.dataset.go!)!;
+			if (i.protocol !== protocol) show(i.protocol);
+			return select(i.id);
+		}
+		const leaf = target.closest<SVGAElement>('.leaf');
+		if (leaf) {
+			e.preventDefault();
+			return select(leaf.dataset.impl === selected ? null : leaf.dataset.impl!);
+		}
+		const tr = target.closest<HTMLTableRowElement>('tbody tr');
+		if (tr && !target.closest('a')) select(tr.dataset.impl!);
+	});
+	form.addEventListener('input', apply);
+
+	const params = new URLSearchParams(location.search);
+	const start = params.get('stack') ?? location.hash.replace(/^#impl-/, '');
+	const startItem = items.get(start);
+	show(startItem?.protocol ?? params.get('protocol') ?? protocol, false);
+	if (startItem) select(startItem.id, false);
+</script>
+
+<style>
+	.eco-head {
+		padding-block: 3.5rem 2rem;
+		border-bottom: 1px solid var(--ot-line);
+		background:
+			radial-gradient(60rem 26rem at 85% 10%, color-mix(in srgb, var(--ot-accent) 14%, transparent), transparent 70%),
+			linear-gradient(to bottom, transparent, var(--ot-bg)),
+			repeating-linear-gradient(90deg, var(--ot-line) 0 1px, transparent 1px 48px),
+			repeating-linear-gradient(0deg, var(--ot-line) 0 1px, transparent 1px 48px);
+	}
+	.accent {
+		color: var(--ot-accent);
+	}
+	h1 {
+		margin: 0.6rem 0 0;
+		max-width: 48rem;
+		font-size: clamp(2.3rem, 5.5vw, 3.6rem);
+		font-weight: 700;
+	}
+	.lead {
+		max-width: 44rem;
+		margin: 1rem 0 0;
+		font-size: 1.15rem;
+		color: var(--ot-muted);
+	}
+	.stats {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem 2.5rem;
+		margin: 2rem 0 0;
+	}
+	.stats div {
+		display: flex;
+		flex-direction: column-reverse;
+	}
+	.stats dt {
+		font: 500 0.72rem/1.3 var(--ot-font-mono);
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		color: var(--ot-muted);
+	}
+	.stats dd {
+		margin: 0;
+		font: 700 2.2rem/1.1 var(--ot-font-display);
+		color: var(--ot-fg-strong);
+	}
+
+	.wide {
+		max-width: 92rem;
+	}
+	.eco {
+		padding-top: 1.75rem;
+		padding-bottom: 4rem;
+	}
+
+	/* Protocol tabs */
+	.tabs {
+		display: flex;
+		gap: 0.5rem;
+		overflow-x: auto;
+		padding-bottom: 0.25rem;
+		scrollbar-width: thin;
+	}
+	.tabs button {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex: none;
+		padding: 0.45rem 0.8rem 0.45rem 0.5rem;
+		border: 1px solid var(--ot-line);
+		border-radius: 999px;
+		background: var(--ot-surface);
+		color: var(--ot-fg);
+		font: 500 0.92rem/1 var(--ot-font-body);
+		cursor: pointer;
+	}
+	.tabs button:hover {
+		border-color: var(--ot-accent);
+	}
+	.tabs button[aria-selected='true'] {
+		border-color: var(--ot-accent);
+		background: var(--ot-accent-soft);
+		color: var(--ot-fg-strong);
+	}
+	.tabs img {
+		border-radius: 0.3rem;
+	}
+	.tabs .count {
+		font: 500 0.75rem/1 var(--ot-font-mono);
+		color: var(--ot-muted);
+	}
+
+	/* Filters */
+	.filters {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: end;
+		gap: 0.75rem 1rem;
+		margin-top: 1rem;
+		padding: 0.9rem 1rem;
+		border: 1px solid var(--ot-line);
+		border-radius: 0.4rem;
+		background: var(--ot-surface);
+	}
+	.filters label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+	.filters .search {
+		flex: 1 1 14rem;
+	}
+	.filters .check {
+		flex-direction: row;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.9rem;
+		padding-bottom: 0.45rem;
+	}
+	.filters input[type='search'],
+	.filters select {
+		min-height: 2.3rem;
+		padding: 0.35rem 0.6rem;
+		border: 1px solid var(--ot-line);
+		border-radius: 0.3rem;
+		background: var(--ot-bg);
+		color: var(--ot-fg);
+		font: 0.92rem var(--ot-font-body);
+	}
+	.filters input:focus,
+	.filters select:focus {
+		outline: 2px solid var(--ot-accent);
+		outline-offset: 1px;
+	}
+	.filters input[type='checkbox'] {
+		accent-color: var(--ot-accent);
+		width: 1rem;
+		height: 1rem;
+	}
+
+	/* Map and detail panel */
+	.stage {
+		display: grid;
+		gap: 1.25rem;
+		margin-top: 1.25rem;
+	}
+	@media (min-width: 64rem) {
+		.stage {
+			grid-template-columns: minmax(0, 1fr) 21rem;
+			align-items: start;
+		}
+	}
+	.maps {
+		border: 1px solid var(--ot-line);
+		border-radius: 0.4rem;
+		background:
+			radial-gradient(circle at 50% 48%, color-mix(in srgb, var(--ot-accent) 9%, transparent), transparent 55%),
+			var(--ot-bg);
+		padding: 0.5rem 0.75rem 0.9rem;
+	}
+	.map {
+		display: none;
+	}
+	.map.is-active {
+		display: block;
+		animation: fade 0.35s ease;
+	}
+	@keyframes fade {
+		from {
+			opacity: 0;
+			transform: scale(0.985);
+		}
+	}
+	.map svg {
+		display: block;
+		width: 100%;
+		height: auto;
+		overflow: visible;
+	}
+	/* On phones the map keeps a readable size and pans sideways. */
+	@media (max-width: 48rem) {
+		.svg-pan {
+			overflow-x: auto;
+			margin-inline: -0.75rem;
+			padding-inline: 0.75rem;
+		}
+		.map svg {
+			width: 46rem;
+			max-width: none;
+		}
+	}
+	.summary {
+		margin: 0.25rem 0.25rem 0;
+		color: var(--ot-muted);
+		font-size: 0.95rem;
+	}
+	.summary .ot-label {
+		display: block;
+		margin-top: 0.4rem;
+	}
+
+	/* Branch colours: teal for independent stacks, link blue for derived, copper for commercial, steel for legacy. */
+	.maps {
+		--c-independent: var(--ot-accent);
+		--c-derived: #6f9be0;
+		--c-commercial: var(--ot-wire);
+		--c-legacy: #7d8b97;
+	}
+	:global([data-theme='light']) .maps {
+		--c-derived: #2f5d9e;
+		--c-legacy: #8794a0;
+	}
+	.b-independent {
+		--c: var(--c-independent);
+	}
+	.b-derived {
+		--c: var(--c-derived);
+	}
+	.b-commercial {
+		--c: var(--c-commercial);
+	}
+	.b-legacy {
+		--c: var(--c-legacy);
+	}
+	.grid ellipse {
+		fill: none;
+		stroke: var(--ot-line);
+		stroke-dasharray: 2 6;
+	}
+	.branches line {
+		stroke: var(--c);
+		stroke-width: 2.5;
+		opacity: 0.7;
+	}
+	.branches path {
+		fill: none;
+		stroke: var(--c);
+		stroke-width: 1.25;
+		opacity: 0.4;
+		transition: opacity 0.2s, stroke-width 0.2s;
+	}
+	.branches path.is-on {
+		opacity: 1;
+		stroke-width: 2.5;
+	}
+	.links path {
+		fill: none;
+		stroke: var(--ot-wire);
+		stroke-width: 1.5;
+		stroke-dasharray: 5 5;
+		opacity: 0.75;
+	}
+	.links path.is-on {
+		stroke-width: 2.5;
+		opacity: 1;
+		animation: flow 1.2s linear infinite;
+	}
+	@keyframes flow {
+		to {
+			stroke-dashoffset: -20;
+		}
+	}
+	.hub rect {
+		fill: var(--ot-surface);
+		stroke: var(--c);
+		stroke-width: 1.5;
+	}
+	.hub text {
+		fill: var(--ot-fg-strong);
+		font: 500 13px var(--ot-font-mono);
+		text-anchor: middle;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
+	.core circle {
+		fill: var(--ot-surface);
+		stroke: var(--ot-accent);
+		stroke-width: 2;
+	}
+	.core .ring {
+		fill: none;
+		stroke-width: 1;
+		stroke-dasharray: 3 5;
+		opacity: 0.7;
+		transform-origin: center;
+		transform-box: fill-box;
+		animation: spin 60s linear infinite;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.core-name {
+		fill: var(--ot-fg-strong);
+		font: 700 24px var(--ot-font-display);
+		text-anchor: middle;
+	}
+	.core-sub {
+		fill: var(--ot-muted);
+		font: 500 11px var(--ot-font-mono);
+		text-anchor: middle;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+	}
+	.leaf {
+		cursor: pointer;
+		outline: none;
+	}
+	.leaf .halo {
+		fill: var(--c, var(--ot-accent));
+		opacity: 0;
+		transition: opacity 0.2s;
+	}
+	.leaf.t-independent {
+		--c: var(--c-independent);
+	}
+	.leaf.t-derived {
+		--c: var(--c-derived);
+	}
+	.leaf.t-commercial {
+		--c: var(--c-commercial);
+	}
+	.leaf.t-legacy {
+		--c: var(--c-legacy);
+	}
+	.leaf .dot {
+		fill: var(--c);
+		stroke: var(--ot-bg);
+		stroke-width: 2;
+		transition: r 0.2s;
+	}
+	.leaf.m-quiet .dot,
+	.leaf.m-archived .dot,
+	.leaf.m-deprecated .dot,
+	.leaf.m-discontinued .dot {
+		fill: var(--ot-bg);
+		stroke: var(--c);
+		stroke-width: 2.5;
+	}
+	.leaf .tested {
+		fill: none;
+		stroke: var(--c);
+		stroke-width: 1.25;
+	}
+	.leaf.otf .dot {
+		stroke: var(--ot-fg-strong);
+		stroke-width: 2.5;
+	}
+	.leaf text {
+		pointer-events: none;
+	}
+	.leaf .name {
+		fill: var(--ot-fg-strong);
+		font: 600 18px var(--ot-font-body);
+	}
+	.leaf.otf .name {
+		fill: var(--ot-accent);
+	}
+	.leaf .meta {
+		fill: var(--ot-muted);
+		font: 400 13px var(--ot-font-mono);
+	}
+	.leaf:hover .halo,
+	.leaf:focus-visible .halo {
+		opacity: 0.18;
+	}
+	.leaf.is-selected .halo {
+		opacity: 0.32;
+	}
+	.leaf.is-selected .dot {
+		r: 12;
+	}
+	.leaf.is-dim {
+		opacity: 0.18;
+	}
+	.leaf:focus-visible .dot {
+		stroke: var(--ot-fg-strong);
+	}
+
+	.legend {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem 1.1rem;
+		margin: 1rem 0.25rem 0;
+		padding: 0.75rem 0 0;
+		border-top: 1px solid var(--ot-line);
+		list-style: none;
+		font-size: 0.8rem;
+		color: var(--ot-muted);
+	}
+	.legend li {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+	}
+	.sw {
+		display: inline-block;
+		width: 0.75rem;
+		height: 0.75rem;
+		border-radius: 50%;
+		background: var(--c);
+	}
+	.sw.ring {
+		background: none;
+		box-shadow: 0 0 0 1.5px var(--ot-accent) inset;
+		width: 1rem;
+		height: 1rem;
+	}
+	.sw.otf {
+		background: var(--ot-accent);
+		box-shadow: 0 0 0 2px var(--ot-fg-strong);
+	}
+	.sw.link {
+		width: 1.2rem;
+		height: 0;
+		border-radius: 0;
+		border-top: 2px dashed var(--ot-wire);
+		background: none;
+	}
+	.sw.hollow {
+		background: none;
+		box-shadow: 0 0 0 2px var(--ot-muted) inset;
+	}
+
+	.detail {
+		position: relative;
+		padding: 1.25rem;
+		border: 1px solid var(--ot-line);
+		border-radius: 0.4rem;
+		background: var(--ot-surface);
+	}
+	@media (min-width: 64rem) {
+		.detail {
+			position: sticky;
+			top: 5rem;
+			max-height: calc(100vh - 6rem);
+			overflow-y: auto;
+		}
+	}
+	.detail p {
+		margin: 0.75rem 0 0;
+		font-size: 0.92rem;
+	}
+	.detail .hint {
+		color: var(--ot-accent);
+	}
+	.detail :global(h2) {
+		margin: 0.5rem 0 0;
+		font-size: 1.7rem;
+	}
+	.detail :global(.badges) {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.4rem;
+	}
+	.detail :global(dl) {
+		margin: 1rem 0 0;
+		font-size: 0.88rem;
+	}
+	.detail :global(dl div) {
+		display: grid;
+		grid-template-columns: 7.5rem 1fr;
+		gap: 0.75rem;
+		padding: 0.45rem 0;
+		border-top: 1px solid var(--ot-line);
+	}
+	.detail :global(dt) {
+		color: var(--ot-muted);
+	}
+	.detail :global(dd) {
+		margin: 0;
+		color: var(--ot-fg-strong);
+		overflow-wrap: anywhere;
+	}
+	.detail :global(.chip) {
+		display: inline-block;
+		margin: 0 0.3rem 0.3rem 0;
+		padding: 0.1rem 0.45rem;
+		border: 1px solid var(--ot-line);
+		border-radius: 0.25rem;
+		font: 0.78rem var(--ot-font-mono);
+	}
+	.detail :global(.note) {
+		color: var(--ot-fg);
+		line-height: 1.55;
+	}
+	.detail :global(.go) {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin-top: 1.1rem;
+	}
+	.detail :global(.src) {
+		margin-top: 1rem;
+		line-height: 1.7;
+		overflow-wrap: anywhere;
+	}
+	.detail :global(.src a) {
+		color: var(--ot-muted);
+	}
+	.detail :global(button.link) {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: var(--ot-accent);
+		font: inherit;
+		text-decoration: underline;
+		cursor: pointer;
+	}
+
+	.tag,
+	.detail :global(.tag) {
+		display: inline-block;
+		margin-inline-start: 0.4rem;
+		padding: 0.15rem 0.45rem;
+		border-radius: 0.25rem;
+		background: var(--ot-accent);
+		color: var(--ot-bg);
+		font: 600 0.68rem/1.2 var(--ot-font-mono);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		vertical-align: 0.15em;
+	}
+	.detail :global(.tag) {
+		margin: 0;
+	}
+	.tag.soft,
+	.detail :global(.tag.soft) {
+		background: var(--ot-accent-soft);
+		color: var(--ot-accent);
+	}
+	.st,
+	.detail :global(.st) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		font: 500 0.78rem/1.2 var(--ot-font-mono);
+		white-space: nowrap;
+	}
+	.st::before,
+	.detail :global(.st::before) {
+		content: '';
+		width: 0.5rem;
+		height: 0.5rem;
+		border-radius: 50%;
+		background: var(--ot-muted);
+	}
+	.st.m-active::before,
+	.detail :global(.st.m-active::before) {
+		background: #2fa36b;
+	}
+	.st.m-slowing::before,
+	.detail :global(.st.m-slowing::before) {
+		background: #d9a400;
+	}
+	.st.m-na::before,
+	.detail :global(.st.m-na::before) {
+		background: var(--ot-wire);
+	}
+
+	/* Table */
+	.table-wrap {
+		margin-top: 2rem;
+		overflow-x: auto;
+	}
+	.eco-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.88rem;
+	}
+	.eco-table th,
+	.eco-table td {
+		text-align: left;
+		padding: 0.6rem 0.9rem 0.6rem 0;
+		border-bottom: 1px solid var(--ot-line);
+		vertical-align: top;
+	}
+	.eco-table thead th {
+		font: 500 0.7rem/1 var(--ot-font-mono);
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		color: var(--ot-muted);
+		white-space: nowrap;
+	}
+	.eco-table tbody th {
+		font-weight: 600;
+		min-width: 12rem;
+	}
+	.eco-table tbody th a {
+		color: var(--ot-fg-strong);
+		text-decoration: none;
+	}
+	.eco-table tbody th a:hover {
+		color: var(--ot-accent);
+	}
+	.eco-table tbody tr {
+		cursor: pointer;
+		scroll-margin-top: 6rem;
+	}
+	.eco-table tbody tr:hover,
+	.eco-table tbody tr.is-selected {
+		background: var(--ot-surface);
+	}
+	.eco-table tbody tr.is-selected th {
+		box-shadow: inset 3px 0 var(--ot-accent);
+		padding-inline-start: 0.6rem;
+	}
+	.eco-table tr.otf th a {
+		color: var(--ot-accent);
+	}
+	.eco-table .is-hidden {
+		display: none;
+	}
+	.eco-table code {
+		font-size: 0.8rem;
+		background: none;
+		border: 0;
+		padding: 0;
+	}
+	.eco-table .num {
+		text-align: right;
+		font-family: var(--ot-font-mono);
+	}
+	.muted,
+	.plus {
+		color: var(--ot-muted);
+		font-size: 0.8rem;
+	}
+	.empty {
+		color: var(--ot-muted);
+		margin-top: 1rem;
+	}
+
+	/* Contribute */
+	.contribute {
+		display: grid;
+		gap: 1.5rem;
+		margin-top: 3rem;
+		padding: 2rem;
+		border: 1px solid var(--ot-line);
+		border-radius: 0.4rem;
+		background:
+			radial-gradient(40rem 18rem at 100% 0%, color-mix(in srgb, var(--ot-wire) 12%, transparent), transparent 70%),
+			var(--ot-surface);
+	}
+	@media (min-width: 56rem) {
+		.contribute {
+			grid-template-columns: 1fr auto;
+			align-items: end;
+		}
+	}
+	.contribute h2 {
+		margin: 0.5rem 0 0;
+		font-size: 2rem;
+	}
+	.contribute p {
+		max-width: 44rem;
+		color: var(--ot-fg);
+	}
+	.contribute .notes {
+		margin: 1rem 0 0;
+		padding-inline-start: 1.1rem;
+		color: var(--ot-muted);
+		font-size: 0.85rem;
+		max-width: 46rem;
+	}
+	.contribute .actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.map.is-active,
+		.core .ring,
+		.links path.is-on {
+			animation: none;
+		}
+	}
+</style>
