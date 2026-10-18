@@ -50,7 +50,7 @@ Pre-built binaries for Linux (x86-64, ARM64, ARMv7), macOS (Apple Silicon, Intel
 The README also has a PowerShell script for Windows that verifies the checksum and adds the binary to your `PATH`. Check the install with `sunspecctl version`. To update, run the same commands again: they always fetch the latest release.
 
 <Aside type="note" title="Coming from go-sunspec">
-Up to go-sunspec v0.4.2, sunspecctl was released from the [go-sunspec](https://github.com/otfabric/go-sunspec) repository. It now has its own repository, and **its version numbering starts again at v0.1.0**: sunspecctl v0.1.0 is the successor of the one in go-sunspec v0.4.2, although its number is lower. `go install github.com/otfabric/go-sunspec/cmd/sunspecctl@latest` stays at v0.4.2 for good, and a script that only upgrades to a higher version number will not move from 0.4.2 to 0.1.0 by itself: point it at the new repository once. The commands, flags and output of v0.4.2 are unchanged.
+Up to go-sunspec v0.4.2, sunspecctl was released from the [go-sunspec](https://github.com/otfabric/go-sunspec) repository. It now has its own repository, and **its version numbering starts again at v0.1.0**: sunspecctl v0.1.0 is the successor of the one in go-sunspec v0.4.2, although its number is lower. `go install github.com/otfabric/go-sunspec/cmd/sunspecctl@latest` stays at v0.4.2 for good, and a script that only upgrades to a higher version number will not move from 0.4.2 to 0.1.0 by itself: point it at the new repository once. The commands, flags and output of v0.4.2 are unchanged. This page follows sunspecctl v0.2.0, built on go-sunspec v0.6.0.
 </Aside>
 
 ## Connecting
@@ -256,6 +256,8 @@ Values are written the way you read them:
 
 Unknown members, a point given twice and point names the model does not have are errors, so a typo does not silently serve an empty value.
 
+The format is go-sunspec's [`devicefile`](/docs/protocols/sunspec/library/#device-files) package, shared with SunSpec Explorer, and has a JSON Schema for editors and other tools: `devicefile/devicefile.schema.json` in go-sunspec, published at [otfabric.io/schemas/sunspec/devicefile-1.schema.json](/schemas/sunspec/devicefile-1.schema.json), its `$id`. To get completion and validation while you write a device file, map the schema to your device files in the editor settings (`json.schemas` in VS Code). Do not add a `$schema` member to the file itself: device files refuse unknown members.
+
 ### Getting a device file
 
 ```sh
@@ -302,7 +304,7 @@ A command that fails exits with status 1 (from `main.go`; the README only says n
 
 ## Safety
 
-As a client, sunspecctl only reads, so it cannot change a setpoint. It still sends real Modbus requests: use it only on devices and networks you are authorized to access, and keep inverter, meter and battery Modbus ports off the Internet. Output and captures can contain serial numbers, network addresses and production figures, so treat them as operational data.
+As a client, sunspecctl only reads, so it cannot change a setpoint: since v0.2.0 its reading commands use a Modbus client that allows function codes 03 and 04 only and refuses anything else before it is sent. It still sends real Modbus requests: use it only on devices and networks you are authorized to access, and keep inverter, meter and battery Modbus ports off the Internet. Output and captures can contain serial numbers, network addresses and production figures, so treat them as operational data.
 
 `serve` has no authentication on plain TCP: whoever can reach the port can read the device and write its writable points. Keep it on loopback or a test network, or serve over `tcp+tls://` with client certificates.
 
@@ -326,11 +328,11 @@ modbusctl client sunspec probe --url tcp://192.168.1.10:502 --unit 1
 
 `--regtype` accepts `holding` or `input`, which is how you reach a device that keeps its SunSpec map in input registers from the command line; the sunspecctl flags do not expose that option. All four commands take `--format text|json|table`.
 
-To record every model body to an MCAP file at the Modbus level, use the SunSpec scan algorithm. It detects the base, walks the chain and reads each model in chunks of up to 125 registers:
+To record every model body to an MBCAP capture at the Modbus level, use the SunSpec scan algorithm. It detects the base, walks the chain and reads each model in chunks of up to 125 registers:
 
 ```sh
-modbusctl client scan --ip 192.168.1.10 --algo sunspec --output sunspec.mcap
-modbusctl client scan --ip 192.168.1.10 --algo sunspec --sunspec-base 40000 --output sunspec.mcap
+modbusctl client scan --ip 192.168.1.10 --algo sunspec --output sunspec.mbcap
+modbusctl client scan --ip 192.168.1.10 --algo sunspec --sunspec-base 40000 --output sunspec.mbcap
 ```
 
 For a SunSpec copy you can read, edit and serve, `sunspecctl capture` and `sunspecctl serve` are the more direct route.

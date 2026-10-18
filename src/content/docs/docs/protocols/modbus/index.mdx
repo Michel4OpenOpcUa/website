@@ -99,7 +99,10 @@ A write to a coil or holding register can start a motor, open a breaker or chang
 | Project | What it is |
 |---|---|
 | [go-modbus](/projects/go-modbus/) | Pure Go client and server library: TCP, RTU, ASCII, TLS, UDP and tunnelled serial framing, typed codecs, pooling, retries, logging and metrics. |
-| [modbusctl](/projects/modbusctl/) | Command-line tool to identify, fingerprint, scan, decode, poll and write devices, record to MCAP and replay recordings as a simulated device. |
+| [modbusctl](/projects/modbusctl/) | Command-line tool to identify, fingerprint, scan, decode, poll and write devices, record them to MBCAP capture files and replay those as a simulated device, over plain Modbus TCP or Modbus/TCP Security. |
+| [Modbus Trace Explorer](/projects/modbus-trace-explorer/) | Desktop application that reads a packet trace of Modbus/TCP traffic in Modbus terms: latency per device, poll plans, exceptions, registers and connections. Exports real traffic as MBCAP to replay as a simulated device. |
+| [go-modbus-trace](/projects/go-modbus-trace/) | Library and CLI (`mbtracectl`) under the Explorer: reads pcap and pcapng offline, pairs requests with responses, analyses devices and poll patterns, and exports timelines, sub-traces and MBCAP captures. |
+| [go-modbus-capture](/projects/go-modbus-capture/) | The MBCAP capture format: Go library and `mbcapctl` to inspect, verify, convert, filter, merge, split and repair capture files. |
 | [modbus-simulator](/projects/modbus-simulator/) | Deterministic, stateful Modbus TCP and TLS device simulator driven by JSON fixtures, with fault injection, broadcast, a reset and reload API, request traces and trace assertions for CI. |
 | [modbus-interop](/projects/modbus-interop/) | Docker images of five reference Modbus TCP stacks (libmodbus, PyModbus, digitalpetri/modbus, NModbus, tokio-modbus) for interoperability testing. |
 | [go-serial](/projects/go-serial/) | Cross-platform serial port library with RS-485 support. The serial layer under go-modbus RTU and ASCII. |
@@ -107,6 +110,7 @@ A write to a coil or holding register can start a motor, open a breaker or chang
 <CardGrid>
   <LinkCard title="Go library" description="Connect, read, write, serve and handle errors with go-modbus." href="/docs/protocols/modbus/library/" />
   <LinkCard title="modbusctl" description="Install the CLI and work with devices from the terminal." href="/docs/protocols/modbus/cli/" />
+  <LinkCard title="Captures and traces" description="MBCAP capture files, packet traces, and turning either into a simulated device." href="/docs/protocols/modbus/captures/" />
   <LinkCard title="Testing and interop" description="Simulators, the interop suite and what has been validated." href="/docs/protocols/modbus/testing/" />
   <LinkCard title="Source on GitHub" description="github.com/otfabric/go-modbus" href="https://github.com/otfabric/go-modbus" />
 </CardGrid>

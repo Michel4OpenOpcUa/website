@@ -3,7 +3,7 @@ title: Testing and interop
 description: Simulate Modbus devices with modbus-simulator and modbusctl, run go-modbus against five reference stacks with modbus-interop, and see what has and has not been validated.
 sidebar:
   label: Testing and interop
-  order: 3
+  order: 4
 ---
 
 import { Aside, Steps, Badge, LinkCard, CardGrid } from '@astrojs/starlight/components';
@@ -13,7 +13,7 @@ Test against something that is not live equipment first. OT Fabric gives you thr
 | Tool | What it simulates | Best for |
 |---|---|---|
 | [modbus-simulator](/projects/modbus-simulator/) | One or more devices described in a JSON fixture, with deterministic exceptions, injected faults and a request trace, over TCP or TLS | Integration tests and CI assertions for a gateway or client |
-| `modbusctl server static` / `replay` | A real device, from an MCAP recording | Developing against realistic data without hardware |
+| `modbusctl server static` / `replay` | A real device, from an MBCAP recording or a packet trace of its traffic | Developing against realistic data without hardware |
 | [modbus-interop](/projects/modbus-interop/) | Five independent Modbus TCP stacks in Docker | Proving a library interoperates |
 
 ## modbus-simulator
@@ -191,11 +191,13 @@ Besides a TCP integration test for each of its 21 example fixtures, modbus-simul
 When you have access to a device once, record it and keep the recording:
 
 ```sh
-modbusctl client scan --ip 192.168.1.10 --algo smart --start 0 --end 5000 --output scan.mcap
-modbusctl server static --input scan.mcap --port 1502
+modbusctl client scan --ip 192.168.1.10 --algo smart --start 0 --end 5000 --output scan.mbcap
+modbusctl server static --input scan.mbcap --listen 127.0.0.1 --port 1502
 ```
 
-`server static` serves the captured values unchanged. `server replay` steps through a `client record` capture over time (`--loops 0`, `--interval`). Both are Modbus TCP only, listen on all interfaces and accept any client: keep them on a trusted network. Captures can contain device identification and process values, so handle them as operational data.
+`server static` serves the captured values unchanged. `server replay` plays a `client record` capture over time, at its original pace or faster or slower (`--speed`, `--loops`, `--from`). Both serve every read function the capture holds, refuse writes, and serve plain Modbus TCP or Modbus/TCP Security with client certificates. Without `--listen` they listen on all interfaces, so keep them on a trusted network. Captures can contain device identification and process values: handle them as operational data.
+
+No access to the device, but a packet trace of its traffic? `mbtracectl export mbcap` or [Modbus Trace Explorer](/projects/modbus-trace-explorer/) turn the trace into a capture of what the device really answered. [Captures and traces](/docs/protocols/modbus/captures/) covers both paths and what a replay can and cannot reproduce.
 
 ## modbus-interop
 
@@ -204,7 +206,7 @@ modbusctl server static --input scan.mcap --port 1502
 | Adapter | Implementation | Version | Language |
 |---|---|---|---|
 | `libmodbus` | libmodbus | v3.2.0 | C |
-| `pymodbus` | PyModbus | 3.15.0 | Python |
+| `pymodbus` | PyModbus | 3.16.1 | Python |
 | `digitalpetri` | digitalpetri/modbus | 2.1.6 | Java |
 | `nmodbus` | NModbus | 3.0.83 | C# |
 | `tokiomodbus` | tokio-modbus | 0.17.0 | Rust |
@@ -232,24 +234,24 @@ The reference servers are unauthenticated and accept writes from anyone. They pu
 
 ## What go-modbus has been validated against
 
-go-modbus runs its interop suite on every push (`make interop` in the go-modbus repository, about five minutes, Docker required). It is qualified against modbus-interop v0.1.0.
+go-modbus runs its interop suite on every push (`make interop` in the go-modbus repository, about five minutes, Docker required). It is qualified against modbus-interop v0.2.0.
 
 | Reference | go-modbus client to reference server | Reference client to go-modbus server |
 |---|---|---|
 | libmodbus v3.2.0 | <Badge text="pass" variant="success" /> without FC43 | <Badge text="pass" variant="success" /> without FC43 |
-| PyModbus 3.15.0 | <Badge text="pass" variant="success" /> | <Badge text="pass" variant="success" /> |
+| PyModbus 3.16.1 | <Badge text="pass" variant="success" /> | <Badge text="pass" variant="success" /> |
 | digitalpetri/modbus 2.1.6 | <Badge text="pass" variant="success" /> without FC43 | <Badge text="pass" variant="success" /> FC43 via raw PDU only |
 | NModbus 3.0.83 | <Badge text="pass" variant="success" /> without FC43 and FC22 | <Badge text="pass" variant="success" /> without FC22 |
 | tokio-modbus 0.17.0 | <Badge text="pass" variant="success" /> | <Badge text="pass" variant="success" /> |
 
-The suite covers FC01 to FC06, FC15, FC16, FC22, FC23 and FC43/14. As a client, go-modbus reads every table at block boundaries and with the largest request of each function, reads writes back on a second connection, checks exceptions 1, 2 and 11, sends two thousand requests on one connection, and runs sixteen connections at once plus a pooled client. As a server, it answers 92 operations per reference client, including raw PDUs and exceptions 1, 2, 3 and 11, and each result must match what the client gets from a reference server.
+The suite covers FC01 to FC06, FC08, FC15, FC16, FC17, FC20 to FC24 and FC43/14. FC08, FC17, FC20, FC21 and FC24 are tested against the references that have them (PyModbus has all five) and through raw PDUs from every reference client that can receive the answer. As a client, go-modbus reads every table at block boundaries and with the largest request of each function, reads writes back on a second connection, checks exceptions 1, 2 and 11, sends two thousand requests on one connection, and runs sixteen connections at once plus a pooled client. As a server, it answers up to 120 operations per reference client, including raw PDUs and exceptions 1, 2, 3 and 11, and each result must match what the client gets from a reference server.
 
 To pin other builds, set `MODBUS_INTEROP_<ADAPTER>_IMAGE`; to run a subset, set `MODBUS_INTEROP_ADAPTERS=libmodbus,pymodbus`.
 
 <Aside type="note" title="What is not validated">
 - The interop suite covers **Modbus TCP only**. RTU, ASCII, TLS, UDP and the tunnelled transports are covered by the go-modbus repository's own tests, not by independent stacks.
 - go-modbus has **not** been run against certified test equipment.
-- modbus-simulator and the modbusctl servers listen on TCP only (modbus-simulator also with TLS). There is no OT Fabric RTU server simulator.
+- modbus-simulator and the modbusctl servers listen on TCP only, plain or with TLS. There is no OT Fabric RTU server simulator.
 </Aside>
 
 The suite also found a bug in go-modbus, fixed in v1.3.0: the server closed the connection on an FC15, FC16 or FC23 request whose byte count did not match its quantity, where the specification asks for exception 3. The findings about the reference stacks themselves are in [COMPATIBILITY.md](https://github.com/otfabric/modbus-interop/blob/main/docs/COMPATIBILITY.md).

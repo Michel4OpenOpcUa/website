@@ -92,7 +92,7 @@ The same model definitions work the other way round: `sunspec.NewServer` builds 
 | Serving | A SunSpec device in memory, built from point values by name, served through go-modbus over TCP or TLS; accepts client writes to writable points and live updates |
 | Encoding | `EncodeModel` builds a model's registers from point values, the inverse of `DecodeModel` |
 | Transports | Every go-modbus transport: TCP, RTU, ASCII, TLS, UDP and serial bridges |
-| Go version | 1.23 or later, with go-modbus v1.4.2 or later |
+| Go version | 1.23 or later, with go-modbus v1.5.0 or later |
 
 <Callout type="caution">
 SunSpec control models (settings, DER curves) change how an inverter or battery behaves on the grid. Read first, develop against a served device, and only write to equipment you are authorized to operate.

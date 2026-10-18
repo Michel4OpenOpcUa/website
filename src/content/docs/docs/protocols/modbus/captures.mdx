@@ -1,0 +1,194 @@
+---
+title: Captures and traces
+description: Record Modbus devices to MBCAP capture files, read packet traces of Modbus/TCP traffic in Modbus terms, and turn either into a simulated device with go-modbus-capture, go-modbus-trace and Modbus Trace Explorer.
+sidebar:
+  label: Captures and traces
+  order: 3
+---
+
+import { Aside, Steps, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Two kinds of files describe what happened on a Modbus link, and OT Fabric has tools for both:
+
+| | A capture (MBCAP) | A packet trace (pcap, pcapng) |
+|---|---|---|
+| Holds | What a device answered, and when: request and response PDUs per read | Every packet a capture point saw, of every protocol |
+| Made by | `modbusctl client record` and `client scan`, or exported from a trace | tcpdump, dumpcap, tshark or Wireshark, without touching the devices |
+| Read with | `mbcapctl`, `modbusctl server`, Modbus Trace Explorer | `mbtracectl`, Modbus Trace Explorer |
+| Good for | Serving a device again, as a simulator or a digital twin | Finding what goes wrong between a client and its devices |
+
+The usual path goes from a trace, or a recording, to a capture, to a simulated device:
+
+```text
+pcap / pcapng ──mbtracectl export mbcap──▶ site.mbcap ──modbusctl server replay──▶ simulated device
+                 (or Modbus Trace Explorer)     ▲
+modbusctl client record ───────────────────────┘
+```
+
+## MBCAP, the capture format
+
+MBCAP is defined by [go-modbus-capture](/projects/go-modbus-capture/), which is its Go library and the home of the `mbcapctl` tool. A capture is built from four kinds of records:
+
+| Record | Is | Example |
+|---|---|---|
+| Header | The capture: tick size, wall-clock start, producer, flags, tags, end | Recorded on 2026-10-14 at 13:14:24 UTC, 1 µs ticks |
+| Target | A device: an endpoint plus a unit ID | Inverter A at 192.168.2.201:502, unit 21 |
+| Stream | One way a target's data was acquired | "poll every second", "identity probe" |
+| Sample | One answered request: stream, time, request PDU, response PDU | At 1.00045 s, `03 1000 0002` → `03 04 0001 01a7` |
+
+Here is a whole capture in its JSON Lines encoding: two holding registers polled every second, and one device identification answer.
+
+```json
+{"t":"header","version":"0.1","tick_ns":1000,"wall_start":"2026-10-14T13:14:24.701149Z","producer":"modbusctl 3.0.0"}
+{"t":"target","id":1,"label":"Inverter A","transport":"tcp","host":"192.168.2.201","port":502,"unit":21}
+{"t":"stream","id":1,"target":1,"role":"poll","label":"holding 4096 x2"}
+{"t":"stream","id":2,"target":1,"role":"identity"}
+{"t":"s","s":1,"at":0,"req":"0310000002","resp":"0304000101a7"}
+{"t":"s","s":1,"at":1000450,"req":"0310000002","resp":"0304000101a7"}
+{"t":"s","s":1,"at":2001100,"req":"0310000002","resp":"0304000101a8"}
+{"t":"s","s":2,"at":3500000,"req":"2b0e0100","resp":"2b0e0101000003000441434d45010258310203312e30"}
+{"t":"end","at":4000800}
+```
+
+Three rules give the data its meaning:
+
+1. **Sample and hold.** A value holds from its sample until the next sample of the same address or request. Nothing is interpolated.
+2. **Only what was recorded exists.** An address or function without a sample is absent; the replayer decides how to answer it.
+3. **Metadata is advisory, values are not.** A replayer may serve a target on another address or unit ID, but never changes a recorded value or time. Edits produce a new file.
+
+Times are integer ticks since the start, from a monotonic clock, so a capture replays at exactly its original pace or any multiple of it. Captures hold the read functions of the Modbus specification only: FC01 to FC04, FC07, FC08 (sub-functions that return data), FC11, FC12, FC17, FC20, FC24 and FC43. Vendor and unknown function codes are rejected by every reader and writer.
+
+| Encoding | Extension | Lossless | For |
+|---|---|---|---|
+| MBCAP binary | `.mbcap` | yes | Recording and archiving: compact, append-only, checksummed, readable after a crash |
+| JSON Lines | `.mbcap.jsonl` | yes | Reading, diffing, scripting, test fixtures |
+| Long CSV | `.mbcap.csv` | yes | Spreadsheets and dataframes |
+| Wide CSV | `.wide.csv` | view only | Charting raw values per address over time |
+
+The binary encoding stores each distinct request once, codes times as small deltas and responses as "same as before" or only the words that changed, in deflate-compressed, checksummed blocks with an index at the end. A typical meter takes about 28 bytes per sample. The three lossless encodings convert into each other and back to the identical file.
+
+<Aside type="caution" title="The format is a draft">
+MBCAP is at draft 0.1: implemented, tested and pinned by golden files, but not frozen. It becomes 1.0 once its coding is calibrated on real captures, and a 1.0 reader will not read files written today. Keep the trace or the device you recorded from if you will need the data later.
+</Aside>
+
+### mbcapctl
+
+```sh
+go install github.com/otfabric/go-modbus-capture/cmd/mbcapctl@latest
+```
+
+Binaries are also on the [releases page](https://github.com/otfabric/go-modbus-capture/releases). `mbcapctl` never opens a Modbus connection; it works on files:
+
+```sh
+mbcapctl info capture.mbcap                              # targets, streams, samples, functions, span
+mbcapctl verify capture.mbcap                            # checksums, structure and the rules of the format
+mbcapctl convert capture.mbcap capture.mbcap.jsonl       # lossless, encoding from the file name
+mbcapctl filter capture.mbcap first-ten.mbcap --fc 3 --to 10m
+```
+
+It also dumps, merges, splits, trims and repairs captures; a file cut short by a crash reads up to its last complete block. Every command is in the [CLI reference](https://github.com/otfabric/go-modbus-capture/blob/main/docs/cli.md).
+
+### From Go
+
+```sh
+go get github.com/otfabric/go-modbus-capture
+```
+
+```go
+r, err := mbcap.NewReader(f) // or jsonl.NewReader, mbcsv.NewReader
+if err != nil {
+	return err
+}
+for {
+	rec, err := r.Next()
+	if err == io.EOF {
+		break
+	}
+	if err != nil {
+		return err
+	}
+	if s, ok := rec.(capture.Sample); ok {
+		fmt.Printf("%v: % x -> % x\n", r.Header().Duration(s.At), s.Request, s.Response)
+	}
+}
+```
+
+The packages are `capture` (the model, the `Reader` and `Writer` interfaces and the rules), `mbcap`, `jsonl` and `mbcsv` (one per encoding) and `edit` (filter, trim, split and merge, each writing a new capture with provenance). The library uses the standard library only, needs Go 1.23 or later, and every reader is fuzzed against hostile input. A recorder built on go-modbus gets the exact PDUs from the client's `PDUTap` (see the [Go library](/docs/protocols/modbus/library/#record-what-a-device-answered)).
+
+## Packet traces
+
+[go-modbus-trace](/projects/go-modbus-trace/) reads pcap and pcapng files, finds the Modbus/TCP traffic in them and gives a typed, time-ordered view of what happened: connections, requests paired with their responses, exceptions and unanswered requests. It analyses devices, units and poll patterns, exports a timeline, extracts a sub-trace for Wireshark, and exports an MBCAP capture. It is offline only: it never captures live and never sends anything, needs no libpcap and is bounded in memory for any trace size.
+
+### Capturing a useful trace
+
+<Steps>
+
+1. **Capture where both directions pass**: on the client (SCADA host, gateway), on a mirrored switch port (SPAN) or with a network tap. An ordinary switch port sees only its own traffic.
+2. **Keep whole packets** (`-s 0`, the default in current tools), and filter by port when capturing, not by protocol afterwards: saving only what Wireshark decodes as `modbus` drops the handshakes and retransmissions the reassembly needs.
+3. **Start before the connections open**, then start or restart the poller. The handshake shows which side is the server; without it the role is inferred from the traffic and reported as guessed.
+
+</Steps>
+
+```sh
+sudo tcpdump -i eth0 -s 0 -n -w site.pcap 'tcp port 502'
+dumpcap -i eth0 -f "tcp port 502" -b filesize:100000 -b files:50 -w site.pcapng   # ring buffer
+```
+
+Modbus/TCP Security (TLS, usually port 802) is encrypted and cannot be decoded; the tools name such flows instead of guessing.
+
+### mbtracectl
+
+Download a static binary for Linux (amd64, arm64, armv7), macOS or Windows from the [releases page](https://github.com/otfabric/go-modbus-trace/releases), or:
+
+```sh
+go install github.com/otfabric/go-modbus-trace/cmd/mbtracectl@latest
+```
+
+| Command | What it tells you |
+|---|---|
+| `info` | Format, interfaces, capture drops, snap length, connections and quality counters |
+| `flows` | The TCP flows that carry Modbus/TCP: client, server, score and how the roles were decided |
+| `summary` | Per server and unit: transactions by status and function, clients, latency, poll patterns, addresses read and written |
+| `timeline` | Every transaction in time order, filtered, as text, CSV or JSON Lines |
+| `extract` | The packets of chosen connections, as a pcapng for Wireshark |
+| `export mbcap` | A capture that modbusctl replays as a virtual device, with a report |
+
+```sh
+# Every exception and unanswered request of unit 3, with the request that caused it
+mbtracectl timeline site.pcapng --unit 3 --status exception,unanswered
+
+# Responses slower than 200 ms, as CSV for a spreadsheet
+mbtracectl export timeline site.pcapng --slow 200ms --flag slow -o slow.csv
+
+# Straight from a gateway, without storing the trace there
+ssh gw 'tcpdump -i eth0 -U -w - port 502' | mbtracectl export mbcap - -o site.mbcap
+```
+
+Several files are read as one trace (`mbtracectl summary ring_*.pcapng`), `--json` gives machine output with a JSON Schema per document, and the exit codes are 0, 1 and 2.
+
+### From a trace to a simulated device
+
+```sh
+mbtracectl export mbcap site.pcapng -o site.mbcap --name 10.0.0.2:502/1=Inverter --report site.report.json
+mbcapctl verify site.mbcap
+modbusctl server replay --input site.mbcap --listen 127.0.0.1 --port 1502 --before-first absent --missing exception
+```
+
+Only answered reads that were paired with certainty become samples. Writes, vendor functions and anything uncertain are counted in the report by reason and never replayed. Read the warnings the export prints, because they name what a replay cannot reproduce:
+
+- **Writes are not replayed.** A value written after its last read keeps its old value in the replay (`stale_after_write`).
+- **Only what was read exists.** A passive trace holds exactly what the observed clients asked for; `--missing exception` makes the rest visible.
+- **Unit collisions.** Two servers that both use unit 1 are two targets that one listener cannot serve: run one replay per target (`--target N --port P`) or remap one with `--unit`.
+- **Times** are when the capture point saw each response, not device timestamps; latency is not replayed.
+- **Memory.** modbusctl loads the whole capture, about 12 MiB plus 750 bytes per sample, which the report estimates. For a long trace, export a window with `--from` and `--to`.
+
+### In a window
+
+[Modbus Trace Explorer](/projects/modbus-trace-explorer/) is the desktop application on go-modbus-trace: open a trace and see it per device, per poll and per register, filter the timeline, decode any transaction down to the bytes, and export one device as MBCAP with a preview of what goes in and why the rest stays out. It opens MBCAP captures too, to see what a replay will serve.
+
+<CardGrid>
+  <LinkCard title="go-modbus-capture on GitHub" description="The MBCAP format specification, mbcapctl and the Go library." href="https://github.com/otfabric/go-modbus-capture" />
+  <LinkCard title="go-modbus-trace on GitHub" description="mbtracectl, the trace library and the replay workflow." href="https://github.com/otfabric/go-modbus-trace" />
+  <LinkCard title="Modbus Trace Explorer" description="Packet traces in Modbus terms, on macOS, Windows and Linux." href="/projects/modbus-trace-explorer/" />
+  <LinkCard title="modbusctl" description="Record devices to MBCAP and serve captures as a simulated device." href="/docs/protocols/modbus/cli/#record-replay-and-simulate" />
+</CardGrid>

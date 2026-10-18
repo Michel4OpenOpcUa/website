@@ -8,6 +8,7 @@ facts:
   - { label: 'Default port', value: '502 (TCP), 802 (TLS)' }
   - { label: 'Library', value: 'go-modbus' }
   - { label: 'CLI', value: 'modbusctl' }
+  - { label: 'UI app', value: 'Modbus Trace Explorer' }
 icon: go-modbus
 docs: /docs/protocols/modbus/
 ---
@@ -34,17 +35,21 @@ Download `modbusctl` from [GitHub Releases](https://github.com/otfabric/modbusct
 # What is this device? (FC43 Device Identification + FC17 Report Server ID)
 modbusctl client identify --ip 192.168.1.10 --server-id
 
-# Which register blocks are readable? (adaptive scan, saved to MCAP)
-modbusctl client scan --ip 192.168.1.10 --algo smart --start 0 --end 5000 --output scan.mcap
+# Which register blocks are readable? (adaptive scan, saved to an MBCAP capture)
+modbusctl client scan --ip 192.168.1.10 --algo smart --start 0 --end 5000 --output scan.mbcap
 
 # Poll four holding registers every second until Ctrl-C
 modbusctl client poll --ip 192.168.1.10 --start 100 --count 4
 
 # Serve the scan results as a simulated device on port 1502
-modbusctl server static --input scan.mcap --port 1502
+modbusctl server static --input scan.mbcap --port 1502
 ```
 
 Addresses are raw Modbus PDU addresses (0–65535), not "4xxxx" register labels.
+
+### From a packet trace
+
+Something is slow, missing or wrong between a client and its devices, and you have a tcpdump or Wireshark capture of the traffic? [Modbus Trace Explorer](/projects/modbus-trace-explorer/) opens it and shows it in Modbus terms: latency per device and unit, what each client polls and how regularly, exceptions explained in words, the values of a register over time, and every connection with its resets and gaps. It then exports what the devices really answered as an MBCAP capture, which `modbusctl server replay` serves as a simulated device. It never talks to a device. Download it from [GitHub Releases](https://github.com/otfabric/modbus-trace-explorer/releases/latest) for macOS, Windows or Linux; [Captures and traces](/docs/protocols/modbus/captures/) has the command-line route with `mbtracectl`.
 
 ### From Go
 
@@ -98,7 +103,7 @@ func main() {
 |---|---|
 | Transports | Modbus TCP, RTU and ASCII (RS-232/RS-485), TLS (MBAPS), UDP, RTU-over-TCP, RTU-over-UDP, ASCII-over-TCP |
 | Roles | Client and server |
-| Function codes | Coils, discrete inputs, input and holding registers, mask write, read/write multiple, FIFO, file records, diagnostics, device identification (FC43/14) |
+| Function codes | The function codes of the specification as client and server, except CANopen (FC43/13): coils, discrete inputs, input and holding registers, mask write, read/write multiple, FIFO, file records, diagnostics, report server ID, device identification (FC43/14) |
 | Typed values | `uint16`–`uint64`, `float32/64`, strings, BCD, IP addresses, timestamps, with explicit byte and word order |
 | SunSpec | Marker detection and model-chain discovery; full point decoding in [go-sunspec](https://github.com/otfabric/go-sunspec) |
 | Go version | 1.23 or later |

@@ -1,6 +1,6 @@
 ---
 title: Command-line tool
-description: Install modbusctl and use it to identify, fingerprint, scan, decode, poll and write Modbus devices, record sessions and replay them as a simulated device.
+description: Install modbusctl and use it to identify, fingerprint, scan, decode, poll and write Modbus devices, record them to MBCAP capture files and replay those as a simulated device.
 sidebar:
   label: modbusctl
   order: 2
@@ -8,7 +8,7 @@ sidebar:
 
 import { Aside, Tabs, TabItem, Steps, LinkCard } from '@astrojs/starlight/components';
 
-[modbusctl](/projects/modbusctl/) is a command-line tool for Modbus over TCP, UDP and serial lines (RTU and ASCII). It is built on [go-modbus](/docs/protocols/modbus/library/) and covers the whole path from "what is this device?" to a hardware-free replay of it. Output is text, a table or JSON, with stable exit codes for scripts and CI.
+[modbusctl](/projects/modbusctl/) is a command-line tool for Modbus over TCP, UDP and serial lines (RTU and ASCII). It is built on [go-modbus](/docs/protocols/modbus/library/) and covers the whole path from "what is this device?" to a hardware-free replay of it. Output is text, a table or JSON, with stable exit codes for scripts and CI. This page follows modbusctl v3.2.0.
 
 ## Install
 
@@ -54,6 +54,7 @@ Every `client` command takes either `--url` or `--ip` with an optional `--port` 
 | URL | Transport |
 |---|---|
 | `tcp://host:port` | Modbus TCP (same as `--ip host --port port`) |
+| `tcp+tls://host:port` | Modbus/TCP Security: Modbus TCP over TLS with a client certificate (port 802 by convention) |
 | `udp://host:port` | Modbus TCP framing over UDP |
 | `rtu://<device>` | Modbus RTU on a serial line |
 | `ascii://<device>` | Modbus ASCII on a serial line |
@@ -75,10 +76,26 @@ The serial flags apply to `rtu://` and `ascii://` and are ignored for network UR
 modbusctl client read --url rtu:///dev/ttyUSB0 --baud 9600 --parity even --unit 3 --start 0 --count 4
 
 # RTU device behind a serial-to-Ethernet bridge
-modbusctl client scan --url rtuovertcp://192.168.1.50:4001 --unit 7 --start 0 --end 200 --output scan.mcap
+modbusctl client scan --url rtuovertcp://192.168.1.50:4001 --unit 7 --start 0 --end 200 --output scan.mbcap
 ```
 
 `--unit` accepts a single ID, a range (`1-10`), a list (`1,5,25`), a mix (`1-10,255`) or `all` on the commands that probe several units. Each absent unit costs one `--timeout`, so use a short timeout (for example `--timeout 300`) when sweeping a bus. On serial lines `--parallel` is ignored.
+
+### Modbus/TCP Security
+
+A `tcp+tls://` device authenticates the client by its certificate (mutual TLS, as the Modbus/TCP Security specification requires), and the client checks the device's certificate. Three flags, on every client command and ignored for other URLs, give the PEM files:
+
+| Flag | Environment | Content |
+|---|---|---|
+| `--tls-cert` | `MODBUSCTL_TLS_CERT` | Client certificate (required); the file may also hold the key |
+| `--tls-key` | `MODBUSCTL_TLS_KEY` | Client private key (default: read from `--tls-cert`) |
+| `--tls-ca` | `MODBUSCTL_TLS_CA` | CA certificates that sign the device certificate (default: the system roots) |
+
+```sh
+modbusctl client read --url tcp+tls://192.168.1.10:802 --tls-cert client.pem --tls-key client-key.pem --tls-ca plant-ca.pem --start 100 --count 4
+```
+
+The device certificate must name the host of the URL (an IP address SAN for `tcp+tls://192.168.1.10:802`, a DNS name otherwise). A missing or unreadable file is invalid input (exit 3) and nothing is sent; a device the CA does not vouch for, or one that rejects the client certificate, is a transport error (exit 4). A capture made over TLS records the transport as `tls`, never the certificate files.
 
 <Aside type="tip" title="Raw addresses">
 `--start` and `--end` are raw PDU addresses from 0 to 65535. `--start 40001` is address 40001, not "holding register 1".
@@ -99,12 +116,12 @@ modbusctl
 │   ├── poll             Poll coils/registers at an interval
 │   ├── write            Write coils (FC05/FC15) or holding registers (FC06/FC16)
 │   ├── scan             Scan for readable register blocks
-│   ├── record           Record registers over time to MCAP
+│   ├── record           Record every spec read function over time to MBCAP
 │   └── sunspec          detect | models | map | probe
 ├── server
-│   ├── static           Serve scanned MCAP data
-│   └── replay           Replay recorded MCAP data
-├── mcap                 convert | decode | extract | info | strings | frequencies
+│   ├── static           Serve the values of a capture
+│   └── replay           Replay a capture over time, at any speed
+├── capture              decode | extract | strings | frequencies
 ├── discover             Discover Modbus devices on subnets
 ├── completion           bash | zsh | fish | powershell
 └── version
@@ -124,7 +141,7 @@ modbusctl
 2. Find the readable register blocks. Start gently:
 
    ```sh
-   modbusctl client scan --ip 192.168.1.10 --start 0 --end 1000 --delay 100 --output scan.mcap
+   modbusctl client scan --ip 192.168.1.10 --start 0 --end 1000 --delay 100 --output scan.mbcap
    ```
 
 3. Decode a value you found:
@@ -153,7 +170,7 @@ modbusctl
 | `stepped` | Cheap triage of a huge range at `--step` positions. |
 | `linear` | Long contiguous maps, such as PLCs. |
 | `boundary` | Grow a known-good read (`--seed-start`, `--seed-count`) to its full extent. |
-| `sunspec` | Find the SunSpec base and capture every model to MCAP. |
+| `sunspec` | Find the SunSpec base and capture every model to an MBCAP file. |
 
 [ALGOS.md](https://github.com/otfabric/modbusctl/blob/main/ALGOS.md) specifies each algorithm, including worst-case request counts.
 
@@ -187,9 +204,7 @@ The safety model is explicit:
 
 ## Output and exit codes
 
-`--format text|json|table` (or `MODBUSCTL_OUTPUT_FORMAT`) controls the final result on stdout for the client commands. Progress for `scan` and `record` goes to stderr, so stdout stays a single parseable result. `client poll --format json` writes one JSON object per poll (JSON Lines). With `--format json`, a fatal error is one JSON object with `kind`, `code` and `message`.
-
-`mcap convert --format` is a different flag: it chooses `csv` or `json` export (environment variable `MODBUSCTL_FORMAT`).
+`--format text|json|table` (or `MODBUSCTL_OUTPUT_FORMAT`) controls the final result on stdout for the client commands. Progress for `scan` and `record` goes to stderr, so stdout stays a single parseable result. Capture files take their encoding from the file name (`.mbcap`, `.mbcap.jsonl`, `.mbcap.csv`). `client poll --format json` writes one JSON object per poll (JSON Lines). With `--format json`, a fatal error is one JSON object with `kind`, `code` and `message`.
 
 | Code | Meaning |
 |---|---|
@@ -215,23 +230,81 @@ MODBUSCTL_URL=rtu:///dev/ttyUSB0 MODBUSCTL_BAUD=9600 MODBUSCTL_PARITY=even MODBU
 
 ## Record, replay and simulate
 
-MCAP (Modbus Capture) is modbusctl's own file format, inspired by PCAP: a JSON header with the target and function code, followed by binary records with timestamps, addresses and raw register data. `client scan` and `client record` write it; the `mcap` commands analyse it.
+`client read`, `client scan` and `client record` write **MBCAP** capture files; `server static`, `server replay` and the `capture` commands read them. MBCAP is the capture format of [go-modbus-capture](/projects/go-modbus-capture/): every answered read is stored as its exact request and response PDUs, with the time the response arrived, for several devices and acquisition streams in one file. Its tool `mbcapctl` inspects, verifies, converts, filters, merges, splits, trims and repairs capture files; modbusctl does not duplicate those. [Captures and traces](/docs/protocols/modbus/captures/) describes the format and the tools around it.
 
 ```sh
-# Turn a scan into a block list, then record those blocks every second for a minute
-modbusctl mcap extract --input scan.mcap --output register-ranges.json
-modbusctl client record --ip 192.168.1.10 --blocks-file register-ranges.json --interval 1000 --duration 60000 --output session.mcap
+# Turn a scan into a plan, then record those blocks every second for a minute
+modbusctl capture extract --input scan.mbcap --output register-ranges.json
+modbusctl client record --ip 192.168.1.10 --blocks-file register-ranges.json --interval 1000 --duration 60000 --output session.mbcap
 
-# Serve the data as a Modbus TCP device: fixed values, or replayed over time
-modbusctl server static --input session.mcap --port 1502
-modbusctl server replay --input session.mcap --port 1502 --loops 0
+# Check the file, and turn it into JSON Lines to read or diff
+mbcapctl verify session.mbcap
+mbcapctl convert session.mbcap session.mbcap.jsonl
 
-# Look for device names and ~50 Hz frequency readings
-modbusctl mcap strings --input session.mcap
-modbusctl mcap frequencies --input session.mcap
+# Serve it as a Modbus TCP device: its last values, or replayed over time
+modbusctl server static --input session.mbcap --port 1502
+modbusctl server replay --input session.mbcap --port 1502 --speed 10 --loops 0
 ```
 
-`server` and `discover` are Modbus TCP only. The servers listen on all interfaces and accept any client, so run them on trusted networks. `discover` caps large subnets unless you pass `--force-large-scan`, and `--resolve-mac` uses raw sockets that may need `CAP_NET_RAW`.
+`--interval` and `--duration` are milliseconds. A failed or retried attempt leaves no sample, exception responses are kept only with `--record-exceptions`, and the file is flushed every 10 seconds, so an interrupted recording is readable up to the last flush.
+
+### What a capture can hold
+
+Captures hold the read functions of the Modbus specification and nothing else: FC01 to FC04, FC07, FC08 (the sub-functions that return data: 0x00, 0x02, 0x0B to 0x12), FC11, FC12, FC17, FC20, FC24 and FC43 Read Device Identification. The plan file of `client record` names them:
+
+```json
+[
+  {"start_address": 100, "register_count": 10},
+  {"function": 1, "start_address": 0, "register_count": 16},
+  {"function": 8, "sub_function": 0, "data": "A537"},
+  {"function": 17},
+  {"function": 20, "file_records": [{"file": 1, "record": 0, "length": 10}]},
+  {"function": 24, "fifo_address": 1234},
+  {"function": 43, "device_id_code": 1}
+]
+```
+
+An entry without `function` is an address block read with `--function`, which is what `client scan` and `capture extract` write. Any other function code, vendor and unknown ones included, or an FC08 sub-function that changes device state, is refused before anything is sent, and a capture file holding one is refused when loaded (`capture_unsupported_function`, exit 3).
+
+### Serving a capture
+
+`server static` serves the last recorded values, or the values at `--at` (a time since the start of the capture). `server replay` follows the recording at its original pace (`--speed 1`), faster (`--speed 60`, a minute per second) or slower (`--speed 0.1`); `--loops 0` repeats forever, `--loops N` plays N times and then keeps the last values, and `--from` starts part-way in.
+
+| Flag | Effect |
+|---|---|
+| `--target`, `--unit` | Every target of a capture answers on its recorded unit ID. `--target` picks one, `--unit` serves it on another unit ID |
+| `--missing exception\|zero\|silence` | The answer for data the capture does not hold. Default: Illegal Function for a function never recorded, Illegal Data Address otherwise |
+| `--before-first hold\|absent` | Replay only: before an address is first sampled, serve its first sample (default) or treat it as unrecorded |
+| `--listen` | Address to listen on, for example `127.0.0.1`. Default: every interface |
+| `--max-clients` | Concurrent connections served (default 10); further ones are closed |
+| `--tls-cert`, `--tls-key`, `--tls-ca` | Serve Modbus/TCP Security. `--tls-ca` is required: every client must present a certificate it signed |
+
+FC01 to FC04 are answered from the values recorded per address, also for a range that was never requested as such, as long as every address in it was recorded. FC43 is answered from the recorded objects, and the other functions with the response recorded for exactly that request. Writes are refused with Illegal Function: a replayed device is read-only. Nothing is decoded or interpolated: between two samples the earlier value holds, and what was never recorded does not exist. On shutdown both servers print what they served, including the requests for data the capture does not hold.
+
+```sh
+# Serve a capture over TLS on the Modbus/TCP Security port
+modbusctl server static --input plant.mbcap --port 802 --tls-cert server.pem --tls-key server-key.pem --tls-ca plant-ca.pem
+```
+
+### Looking inside the values
+
+The `capture` commands work on the FC01 to FC04 samples of one target and one function; a capture with several takes `--target` and `--function`.
+
+```sh
+modbusctl capture decode --input site.mbcap --target 2 --function 4 --profile meter.json
+modbusctl capture strings --input session.mbcap      # device names, in four byte orders
+modbusctl capture frequencies --input session.mbcap  # registers that read like ~50 Hz
+```
+
+`discover` is Modbus TCP only. Unless you pass `--listen`, the servers listen on all interfaces, and without TLS they accept any client, so run them on trusted networks. `discover` caps large subnets unless you pass `--force-large-scan`, and `--resolve-mac` uses raw sockets that may need `CAP_NET_RAW`.
+
+<Aside type="note" title="Coming from modbusctl 2.x">
+modbusctl 3 reads and writes MBCAP only. Files recorded with modbusctl 2.x are refused with a message saying so (`capture_legacy_format`), and nothing converts them: record the device again. The [release notes](https://github.com/otfabric/modbusctl/blob/main/RELEASE.md) list every change that affects scripts.
+</Aside>
+
+<Aside type="tip" title="From a packet trace instead of a recording">
+A capture can also come from traffic you already have. [Modbus Trace Explorer](/projects/modbus-trace-explorer/) and `mbtracectl` turn a pcap or pcapng trace into an MBCAP file of what the devices really answered, which `server replay` then serves.
+</Aside>
 
 ## SunSpec
 

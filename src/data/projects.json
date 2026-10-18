@@ -10,7 +10,33 @@
 		],
 		"status": "available",
 		"install": "go get github.com/otfabric/go-modbus",
-		"description": "Modbus client and server: TCP, RTU, ASCII, TLS and UDP, typed register codecs, pooling and retries.",
+		"description": "Modbus client and server for the functions of the specification: TCP, RTU, ASCII, TLS and UDP, typed register codecs, pooling, retries and a PDU tap for recording.",
+		"icon": "go-modbus"
+	},
+	{
+		"id": "go-modbus-capture",
+		"name": "go-modbus-capture",
+		"repo": "go-modbus-capture",
+		"category": "library",
+		"protocols": [
+			"modbus"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-modbus-capture",
+		"description": "MBCAP, the capture format for what Modbus devices answered and when, so a virtual device can serve it again. Go library and mbcapctl to inspect, verify, convert, filter, merge and repair captures.",
+		"icon": "go-modbus"
+	},
+	{
+		"id": "go-modbus-trace",
+		"name": "go-modbus-trace",
+		"repo": "go-modbus-trace",
+		"category": "library",
+		"protocols": [
+			"modbus"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-modbus-trace",
+		"description": "Read pcap and pcapng traces of Modbus/TCP offline: transactions, devices, poll patterns and address coverage. Library and mbtracectl, with timeline, sub-trace and MBCAP export.",
 		"icon": "go-modbus"
 	},
 	{
@@ -128,7 +154,7 @@
 			"sunspec"
 		],
 		"status": "available",
-		"description": "Identify, fingerprint, scan, poll, decode and write Modbus devices. Record to MCAP and replay as a simulator.",
+		"description": "Identify, fingerprint, scan, poll, decode and write Modbus devices over TCP, serial and TLS. Record them to MBCAP capture files and replay those as a simulated device.",
 		"icon": "go-modbus"
 	},
 	{
@@ -390,6 +416,27 @@
 			"Export a JSON snapshot, the points as CSV, or a device file that sunspecctl serve turns back into the same device.",
 			"Modbus/TCP, RTU over TCP, Modbus/TCP Security (TLS) and serial RS-485. Read-only: only function codes 3 and 4 reach the wire.",
 			"A desktop application for macOS, Windows and Linux, or a daemon on a gateway with the same interface in any browser over an SSH tunnel."
+		]
+	},
+	{
+		"id": "modbus-trace-explorer",
+		"name": "Modbus Trace Explorer",
+		"repo": "modbus-trace-explorer",
+		"category": "ui",
+		"protocols": [
+			"modbus"
+		],
+		"status": "available",
+		"description": "Open a packet trace of Modbus/TCP traffic and see it in Modbus terms: every request with its response, per device, per poll and per register. Then export the real traffic to replay as a simulated device.",
+		"icon": "go-modbus",
+		"highlights": [
+			"Latency per device and per unit behind a gateway, with quantiles and a histogram: which device holds up the cycle.",
+			"Poll plans per client: what each client reads, how often, how regularly and how often the answer changes. Duplicate polling and cycles that overrun their interval show at once.",
+			"Exceptions, unanswered requests and gateway errors explained in words, with a filter grammar such as status:exception unit:4 addr:holding/4096-4160.",
+			"What was read and written per device, and the values of one register over time with the writes marked. Every connection with its role, resets, gaps and retransmissions.",
+			"Export one device, the current filter or everything as an MBCAP capture, with a preview of what goes in and why the rest stays out, ready for modbusctl server replay. Also CSV, JSON Lines and a pcapng sub-trace.",
+			"Reads pcap and pcapng from tcpdump, Wireshark, dumpcap or tshark, ring buffers and gzip files as they are, and MBCAP captures. A million rows page, filter and sort in milliseconds.",
+			"Read-only and offline: it never talks to devices, never writes to Modbus and does not capture live. A desktop application for macOS, Windows and Linux."
 		]
 	},
 	{

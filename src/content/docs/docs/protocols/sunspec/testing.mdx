@@ -112,7 +112,7 @@ go srv.Serve(ctx, &modbus.ServerConfig{URL: "tcp://127.0.0.1:1502"})
 ### Other simulators
 
 - [modbus-simulator](/projects/modbus-simulator/) serves a Modbus device from a JSON fixture of raw registers and codec fields and records a trace you can assert on in CI. It has no SunSpec support, so you lay out the marker, model headers and bodies yourself; use it when you need its fault injection or trace assertions.
-- `modbusctl client scan --algo sunspec` records every model body to an MCAP file, and `modbusctl server static` serves such a recording back at the Modbus level.
+- `modbusctl client scan --algo sunspec` records every model body to an [MBCAP capture](/docs/protocols/modbus/captures/), and `modbusctl server static` serves such a recording back at the Modbus level.
 
 ## What has been validated
 

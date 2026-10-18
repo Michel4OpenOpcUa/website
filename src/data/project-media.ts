@@ -3,6 +3,7 @@
 // videos and their posters live in public/videos/.
 import type { ImageMetadata } from 'astro';
 import sunspecExplorer from '../assets/projects/sunspec-explorer/inverter.png';
+import modbusTraceExplorer from '../assets/projects/modbus-trace-explorer/timeline.png';
 
 export interface ProjectMedia {
 	screenshot?: { src: ImageMetadata; alt: string; caption?: string };
@@ -20,6 +21,18 @@ export const projectMedia: Record<string, ProjectMedia> = {
 			src: '/videos/sunspec-explorer-demo.mp4',
 			poster: '/videos/sunspec-explorer-demo.jpg',
 			caption: 'One minute with SunSpec Explorer: connect, browse decoded models, poll, record and export, against a device simulated with sunspecctl serve.',
+		},
+	},
+	'modbus-trace-explorer': {
+		screenshot: {
+			src: modbusTraceExplorer,
+			alt: 'Modbus Trace Explorer with a ten-minute trace of six devices open: the timeline lists each transaction with time, client, server, unit, transaction ID, function and summary, and the detail pane decodes the selected Read Holding Registers response field by field with its byte ranges.',
+			caption: 'The timeline: one row per transaction, request and response together, with the selected response decoded field by field down to the bytes.',
+		},
+		video: {
+			src: '/videos/modbus-trace-explorer-demo.mp4',
+			poster: '/videos/modbus-trace-explorer-demo.jpg',
+			caption: 'Two minutes with Modbus Trace Explorer on a synthetic site trace: find slow devices, poll problems and wrong registers, then export a device for replay.',
 		},
 	},
 };

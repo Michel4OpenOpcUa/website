@@ -104,7 +104,7 @@ The settings and immediate-control models in the 120-145 range and the 7xx DER c
 | [sunspecctl](/projects/sunspecctl/) | Command-line tool on go-sunspec. Detects, lists, reads and polls SunSpec devices as tables or JSON, over Modbus TCP, RTU, ASCII and TLS. Serves a simulated device from a JSON file, which `capture` writes from a real device. |
 | [SunSpec Explorer](/projects/sunspec-explorer/) | Graphical application on go-sunspec. Shows every model of a device fully decoded, polls, records and exports, and never writes to the device. Runs as a desktop application on macOS, Windows and Linux, or as a daemon on a gateway with the interface in a browser. |
 | [go-modbus](/projects/go-modbus/) | The Modbus transport under go-sunspec. Its `sunspec` subpackage detects the marker and enumerates model headers, without point decoding. |
-| [modbusctl](/projects/modbusctl/) | `modbusctl client sunspec detect`, `models`, `map` and `probe` for transport-level discovery, and `client scan --algo sunspec` to capture every model to an MCAP file. |
+| [modbusctl](/projects/modbusctl/) | `modbusctl client sunspec detect`, `models`, `map` and `probe` for transport-level discovery, and `client scan --algo sunspec` to capture every model to an MBCAP file that `modbusctl server` can replay. |
 
 <CardGrid>
   <LinkCard title="Go library" description="Discover and decode SunSpec devices with go-sunspec." href="/docs/protocols/sunspec/library/" />

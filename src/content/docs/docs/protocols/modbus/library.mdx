@@ -16,7 +16,7 @@ import { Aside, Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
 go get github.com/otfabric/go-modbus
 ```
 
-go-modbus requires **Go 1.23** or later. Its only dependency is [go-serial](/projects/go-serial/), used for RTU and ASCII.
+go-modbus requires **Go 1.23** or later. Its only dependency is [go-serial](/projects/go-serial/), used for RTU and ASCII. This page follows go-modbus v1.7.1.
 
 The library is organized in tiers. Use the lowest one that does the job:
 
@@ -234,10 +234,41 @@ defer server.Shutdown(context.Background())
 
 - Returning a Modbus sentinel such as `modbus.ErrIllegalDataAddress` sends that exception. Any other error becomes Server Device Failure. Panics are recovered and also answered with Server Device Failure.
 - Each connection runs in its own goroutine, so handlers must be safe for concurrent use.
-- FC07, FC11, FC12, FC22, FC23 and FC43/14 are served only if the handler also implements the optional interface (`ExceptionStatusHandler`, `CommEventCounterHandler`, `CommEventLogHandler`, `MaskWriteHandler`, `ReadWriteHandler`, `DeviceIdentificationHandler`). Otherwise they get Illegal Function. FC08, FC17, FC20, FC21 and FC24 are not served.
+- The other functions of the specification are served if the handler also implements their optional interface: `ExceptionStatusHandler` (FC07), `DiagnosticsHandler` (FC08), `CommEventCounterHandler` (FC11), `CommEventLogHandler` (FC12), `ReportServerIDHandler` (FC17), `ReadFileRecordHandler` and `WriteFileRecordHandler` (FC20, FC21), `MaskWriteHandler` (FC22), `ReadWriteHandler` (FC23), `FIFOQueueHandler` (FC24) and `DeviceIdentificationHandler` (FC43/14). The server parses and validates each request, the handler supplies the data, and the server encodes the response. Without the interface the answer is Illegal Function.
+- Vendor, user-defined and unknown function codes are not supported: they always get Illegal Function, and the connection stays usable. So does FC43 with an MEI type other than 14.
+- Returning `modbus.ErrNoResponse` sends no answer at all and keeps the connection, as a serial device does for Diagnostics Force Listen Only Mode.
 - The server does not filter unit IDs. That is the handler's job (`req.UnitID`).
 - `ServerConfig.Timeout` is the idle session timeout (default 120 s). `MaxClients` defaults to 10.
 - On TLS, `req.ClientRole` carries the role from the client certificate. Check it before serving writes.
+
+## Restrict and record a client
+
+`Config.AllowedFunctionCodes` limits the function codes a client sends. A request with any other function code fails with `ErrFunctionCodeNotAllowed` before a connection is dialled or a byte is sent. Nil or empty, the default, means no restriction.
+
+```go
+// A read-only client for holding and input registers.
+client, err := modbus.New(modbus.Config{
+	URL: "tcp://plc:502",
+	AllowedFunctionCodes: []modbus.FunctionCode{
+		modbus.FCReadHoldingRegisters, modbus.FCReadInputRegisters,
+	},
+})
+```
+
+### Record what a device answered
+
+`Config.PDUTap` receives the raw request and response PDUs (function code and data, without MBAP, CRC or LRC framing) of every answered request, with the time the response arrived. It is what a recorder needs to capture a device and serve it again later; modbusctl writes its [MBCAP captures](/docs/protocols/modbus/captures/) from it.
+
+```go
+conf.PDUTap = modbus.PDUTapFunc(func(ctx context.Context, ex modbus.PDUExchange) {
+	log.Printf("unit %d: % X -> % X", ex.UnitID, ex.Request, ex.Response)
+})
+```
+
+- The tap is called synchronously, once per answered request, and must not block.
+- Every request on the wire is reported: reads, writes and probes. On a retry only the attempt that returned the response is reported.
+- It is called before the method validates the response, so exception responses and responses the method then rejects are reported too.
+- A request refused by `AllowedFunctionCodes`, a transport error or a timeout is not reported. With no tap set, nothing is copied.
 
 ## Errors
 

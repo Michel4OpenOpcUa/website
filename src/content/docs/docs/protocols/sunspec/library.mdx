@@ -16,7 +16,7 @@ import { Aside, Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
 go get github.com/otfabric/go-sunspec
 ```
 
-go-sunspec requires **Go 1.23** or later and go-modbus **v1.4.2** or later, and depends on nothing else. The packages are `sunspec` (discovery, reading, decoding, encoding and serving) and `sunspec/registry` (model metadata). This page follows go-sunspec v0.5.1.
+go-sunspec requires **Go 1.23** or later and go-modbus **v1.5.0** or later, and depends on nothing else. The packages are `sunspec` (discovery, reading, decoding, encoding and serving), `sunspec/registry` (model metadata) and `sunspec/devicefile` (SunSpec devices as JSON files). This page follows go-sunspec v0.6.0.
 
 ## Connect and read
 
@@ -76,6 +76,19 @@ func main() {
 	}
 }
 ```
+
+### A read-only client
+
+`Detect`, `Discover` and every `Device` method only read registers, with function codes 03 and 04. A monitoring program can make that a property of its connection, so that no code path, its own or a dependency's, can write to the device:
+
+```go
+client, err := modbus.New(modbus.Config{
+	URL:                  "tcp://192.168.1.100:502",
+	AllowedFunctionCodes: sunspec.ReadFunctionCodes(), // FC 03 and FC 04
+})
+```
+
+The client refuses any other function code with `modbus.ErrFunctionCodeNotAllowed` before a byte reaches the wire. Everything in go-sunspec works through such a client unchanged; sunspecctl and SunSpec Explorer read devices this way.
 
 ### Transports
 
@@ -265,6 +278,37 @@ What a client sees:
 | Coils, discrete inputs, FC 22, FC 23 | Exception 1 |
 
 With `RegType` set to input registers nothing is writable. The `Server` stores an accepted write as it is and does not judge the value: that is what `OnWrite` is for. `OnWrite` and the function given to `Update` run with the `Server` locked, so they must not call its methods.
+
+### Device files
+
+Package `devicefile` reads and writes a SunSpec device as a JSON file: capture a real device, edit it, serve it again. It is the format `sunspecctl serve` runs and `sunspecctl capture` writes, and SunSpec Explorer exports (since v0.6.0, when it moved from sunspecctl into the library).
+
+```go
+import "github.com/otfabric/go-sunspec/devicefile"
+
+// Serve a file: every value and the layout are validated first.
+file, err := devicefile.Load("device.json")
+if err != nil {
+	return err // e.g. "device.json: line 3, column 14: invalid character ..."
+}
+srv, err := file.Server(nil)
+if err != nil {
+	return err // e.g. "models[1] (model 103): point W: ..."
+}
+err = srv.Serve(ctx, &modbus.ServerConfig{URL: "tcp://127.0.0.1:1502"})
+
+// Copy a real device into a file that serves the same registers and values.
+captured, err := devicefile.Capture(ctx, device, false)
+if err != nil {
+	return err
+}
+err = captured.WriteFile("device.json")
+```
+
+- **Capture** writes models that decode cleanly as point values, and a model without a schema, or one that would not read back the same, as `registers`. `Capture(ctx, device, true)` writes every model as registers.
+- **Template**: `devicefile.Template(registry.ByID(103))` is a model with every point present and `null`, to fill in.
+- **Strict**: unknown members, a point given twice and names the model does not have are errors (`devicefile.ErrInvalid`, with the model, group instance and point), and malformed JSON reports its line and column (`devicefile.ErrSyntax`).
+- **JSON Schema**: `devicefile/devicefile.schema.json` (draft 2020-12), also returned by `devicefile.Schema()`, for editors and other tools.
 
 ### Encoding without I/O
 
