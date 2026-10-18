@@ -269,6 +269,25 @@
 		"icon": "go-otfp"
 	},
 	{
+		"id": "lan-tracker",
+		"name": "LAN Tracker",
+		"repo": "lan-tracker",
+		"category": "discovery",
+		"protocols": [],
+		"status": "available",
+		"description": "A history of what is connected to your OT networks: which MAC held which IP and when, names, DHCP leases, TCP reachability and duplicate addresses. Passive by default.",
+		"icon": "lan-tracker",
+		"highlights": [
+			"Answers questions after the fact: who held 192.168.110.51 yesterday at 10:15, since when two devices claim the same IP, and when port 502 on an inverter stopped answering.",
+			"Passive by default: listens to ARP, DHCP, mDNS, DNS answers, LLDP and the kernel neighbour table, and sends nothing until you enable active discovery for an interface.",
+			"Optional active discovery inside a strict safety envelope: ARP sweeps, ping and plain TCP connects with no payload, 5 probe starts per second in all by default, excluded addresses and a persistent kill switch. Preview any scan with scan plan.",
+			"DHCPv4 in depth: the servers and relays that answer, checked against an allowlist, each client's exchanges, and a lease history with the gateway and DNS servers handed out.",
+			"Events for every material change (new devices, IP changes, duplicate IPs, rogue DHCP servers, TCP state changes, collection gaps), in its database and in the systemd journal.",
+			"Does not identify equipment: no models, firmware or banner grabbing. Your own description on a device is the only statement about what it is.",
+			"One static binary under systemd on Linux edge devices (Raspberry Pi CM4, RevPi Connect, x86 edge boxes), with a local CLI, a REST API on a Unix socket and Prometheus metrics. No data leaves the box."
+		]
+	},
+	{
 		"id": "modbus-interop",
 		"name": "modbus-interop",
 		"repo": "modbus-interop",
