@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" font-family="IBM Plex Sans, Segoe UI, sans-serif" role="img" aria-label="LAN Tracker's history of one IP address on one day: a PLC holds 192.168.110.60 from 06:00, a service laptop claims the same address at 10:20, and port 502 stops answering at 14:15 and answers again at 15:15">
+  <rect width="720" height="300" fill="#F4F6F8"/>
+  <text x="40" y="44" font-size="15" font-weight="600" fill="#17212B">192.168.110.60 on eth1</text>
+  <text x="680" y="44" font-size="12" fill="#5A6875" text-anchor="end" font-family="IBM Plex Mono, monospace">lan-tracker hosts history</text>
+  <!-- hour grid -->
+  <g stroke="#D9DFE4" stroke-width="1">
+    <path d="M150 64V236M256 64V236M362 64V236M468 64V236M574 64V236M680 64V236"/>
+  </g>
+  <g font-size="11" fill="#5A6875" font-family="IBM Plex Mono, monospace" text-anchor="middle">
+    <text x="150" y="254">06:00</text><text x="256" y="254">08:00</text><text x="362" y="254">10:00</text>
+    <text x="468" y="254">12:00</text><text x="574" y="254">14:00</text><text x="680" y="254">16:00</text>
+  </g>
+  <!-- lane labels -->
+  <g font-size="12" fill="#17212B">
+    <text x="40" y="96" font-weight="600">PLC</text>
+    <text x="40" y="111" fill="#5A6875" font-family="IBM Plex Mono, monospace" font-size="10">00:30:de:0a:00:07</text>
+    <text x="40" y="150" font-weight="600">SVC-LAPTOP</text>
+    <text x="40" y="165" fill="#5A6875" font-family="IBM Plex Mono, monospace" font-size="10">3c:52:82:aa:00:10</text>
+    <text x="40" y="204" font-weight="600">tcp/502</text>
+    <text x="40" y="219" fill="#5A6875" font-family="IBM Plex Mono, monospace" font-size="10">connect check</text>
+  </g>
+  <!-- PLC binding -->
+  <rect x="150" y="90" width="530" height="14" rx="3" fill="#0A7C80"/>
+  <!-- laptop binding (conflict) -->
+  <rect x="380" y="144" width="300" height="14" rx="3" fill="#B35A1F" opacity="0.25"/>
+  <rect x="380" y="144" width="10" height="14" rx="2" fill="#B35A1F"/>
+  <!-- tcp/502 states -->
+  <rect x="150" y="198" width="437" height="14" rx="3" fill="#2F5D9E"/>
+  <rect x="587" y="198" width="27" height="14" fill="#B35A1F"/>
+  <rect x="614" y="198" width="26" height="14" fill="#5A6875"/>
+  <rect x="640" y="198" width="40" height="14" rx="3" fill="#2F5D9E"/>
+  <!-- conflict marker -->
+  <path d="M380 76V236" stroke="#B35A1F" stroke-width="2" stroke-dasharray="4 3"/>
+  <rect x="300" y="58" width="160" height="20" rx="3" fill="#FFFFFF" stroke="#B35A1F"/>
+  <text x="380" y="72" font-size="11" fill="#B35A1F" text-anchor="middle" font-family="IBM Plex Mono, monospace">DUPLICATE_IP 10:20</text>
+  <g font-size="10" fill="#17212B" font-family="IBM Plex Mono, monospace">
+    <text x="587" y="230" fill="#B35A1F" text-anchor="middle">TIMEOUT</text>
+    <text x="640" y="190" fill="#2F5D9E" text-anchor="middle">OPEN 15:15</text>
+  </g>
+  <text x="40" y="282" font-size="12" fill="#5A6875" font-family="IBM Plex Mono, monospace">WHO HELD WHICH ADDRESS · WHEN · WHAT ANSWERED</text>
+</svg>

@@ -23,7 +23,11 @@ const protocols = (await getProtocols()).filter((p) => data.protocols.includes(p
 const related = (await getProjects()).filter(
 	(p) => p.id !== project.id && p.data.status === 'available' && p.data.protocols.some((id) => data.protocols.includes(id)),
 );
-const releases = data.category === 'cli' || data.category === 'ui' ? `${repoUrl(data.repo!)}/releases` : undefined;
+// Tools ship release binaries; libraries are installed with go get.
+const releases =
+	data.category === 'cli' || data.category === 'ui' || (data.category === 'discovery' && !data.install)
+		? `${repoUrl(data.repo!)}/releases`
+		: undefined;
 const media = projectMedia[project.id];
 const screenshotUrl = media?.screenshot && (await getImage({ src: media.screenshot.src, width: 1200, format: 'png' })).src;
 const url = absolute(`/projects/${project.id}/`);

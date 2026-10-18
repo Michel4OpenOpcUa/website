@@ -10,7 +10,7 @@ export const categories: { id: Category; label: string; description: string }[] 
 	{ id: 'library', label: 'Protocol libraries', description: 'Pure Go clients and servers. No cgo.' },
 	{ id: 'cli', label: 'CLI tools', description: 'Command-line tools to discover, read, write and diagnose devices.' },
 	{ id: 'transport', label: 'Building blocks', description: 'Transport layers shared by the protocol libraries.' },
-	{ id: 'discovery', label: 'Discovery', description: 'Find out what is actually running on a network.' },
+	{ id: 'discovery', label: 'Discovery', description: 'Find out what is actually running on a network, and what changed on it.' },
 	{ id: 'interop', label: 'Interop suites', description: 'Dockerized reference stacks that test implementations against each other.' },
 	{ id: 'ui', label: 'UI apps', description: 'Graphical applications built on the libraries.' },
 	{ id: 'mcp', label: 'MCP servers', description: 'Let AI agents work with industrial devices through the Model Context Protocol.' },
