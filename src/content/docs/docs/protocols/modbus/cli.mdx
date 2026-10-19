@@ -212,7 +212,7 @@ The safety model is explicit:
 | 2 | Usage error (reserved) |
 | 3 | Invalid input, flags or configuration |
 | 4 | Transport: TCP or UDP dial failure, or a serial port that cannot be opened |
-| 5 | Timeout (documented as reserved for typed timeouts; a timed-out `client write` exits 5) |
+| 5 | Timeout: a request or network timeout on a client command (SunSpec and FC08 diagnostics report timeouts as 6) |
 | 6 | Protocol error or Modbus exception |
 | 7 | Partial success: valid output, but some units, scan requests or polls failed |
 | 10 | Output, internal or unknown error |

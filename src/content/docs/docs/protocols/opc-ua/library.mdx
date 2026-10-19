@@ -268,7 +268,7 @@ For services without a helper, use `Client.Send`.
         -addext "subjectAltName=URI:urn:otfabric:opcua:client,DNS:localhost"
     ```
 
-    Use `-newkey ed25519` for `ECC_curve25519`. The guide asks for RSA 2048 bits or more, and 4096 bits for `Aes128_Sha256_RsaOaep` and `Aes256_Sha256_RsaPss`. Key files may be PKCS #1, PKCS #8 or SEC 1, PEM or DER. In production use certificates from your own CA and keep private keys at mode `0600`.
+    Use `-newkey ed25519` for `ECC_curve25519`. RSA keys need 2048 bits or more for every RSA policy; 4096 bits also works. Key files may be PKCS #1, PKCS #8 or SEC 1, PEM or DER. In production use certificates from your own CA and keep private keys at mode `0600`.
 
 2. **Trust the server.** Pass the server's CA (or self-signed certificate) with `TrustedCertificates`. It is merged with the system pool; the client checks the chain, validity period, key usage and, with `SecurityFromEndpoint`, the ApplicationUri. `InsecureSkipVerify()` disables all of this and is for development only.
 

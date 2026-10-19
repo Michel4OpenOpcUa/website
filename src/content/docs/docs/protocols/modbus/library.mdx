@@ -310,7 +310,7 @@ Retries apply to writes too. If a write reached the device and the response was 
 
 ## Logging and metrics
 
-Client logging is off by default. Set `Config.Logger` with `modbus.NewStdLogger`, `modbus.NewSlogLogger`, `modbus.NewSlogFieldLogger` or `modbus.NopLogger()`. Debug level can log raw TX and RX frames, including register values; treat those logs as sensitive. Note that for the server, a nil `ServerConfig.Logger` uses `slog.Default()`.
+Client logging is off by default. Set `Config.Logger` with `modbus.NewStdLogger`, `modbus.NewSlogLogger`, `modbus.NewSlogFieldLogger` or `modbus.NopLogger()`. Debug level can log raw TX and RX frames, including register values; treat those logs as sensitive. The server is silent by default too: a nil `ServerConfig.Logger` disables logging.
 
 Metrics are callbacks. Implement `ClientMetrics` (`OnRequest`, `OnResponse`, `OnError`, `OnTimeout`), optionally `AttemptMetrics` for per-attempt and re-dial events, or `ServerMetrics`, and assign it to the `Metrics` field. Callbacks run on the request path and must not block. `client.Info()` returns a snapshot for health checks.
 

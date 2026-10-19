@@ -19,7 +19,7 @@ snap7-interop publishes two container images. Both speak classic S7comm over ISO
 | `ghcr.io/otfabric/snap-interop-native` | Native Snap7, built from the SCADACS fork at a pinned revision (Snap7 1.4.0 lineage, LGPL-3.0-or-later) |
 | `ghcr.io/otfabric/snap-interop-python` | Pure-Python server from `python-snap7` 3.0.0, with no native library in the image |
 
-The current release is **v0.1.0**, built for `linux/amd64` and `linux/arm64`. Tags never move and there is no `latest` tag; pin by digest where you can. The images in the project and its documentation are named `snap-interop`, while the repository is `snap7-interop`.
+The current release is **v0.1.0**, built for `linux/amd64` and `linux/arm64`. Tags never move and there is no `latest` tag; pin by digest where you can. The images and the Go module keep the older name `snap-interop`, while the repository is `snap7-interop`.
 
 The repository does not depend on go-s7comm, so any S7 client can use it.
 
