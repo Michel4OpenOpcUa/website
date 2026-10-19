@@ -56,7 +56,7 @@ const schema = [
 
 <BaseLayout
 	title="OT protocol ecosystem map"
-	description={`Who implements Modbus, OPC UA, BACnet, IEC 104, IEC 61850, Siemens S7 and OpenADR: ${stats.implementations} open-source and commercial stacks with language, licence, roles and latest release.`}
+	description={`Who implements Modbus, OPC UA, BACnet, IEC 104, IEC 61850, Siemens S7, OpenADR and OCPP: ${stats.implementations} open-source and commercial stacks with language, licence, roles and latest release.`}
 	image="/ecosystem-card.png"
 	imageAlt="The OT protocol ecosystem map: protocols in the middle, implementations around them"
 	pageType="CollectionPage"
@@ -163,9 +163,10 @@ const schema = [
 										<circle class="halo" cx={l.x} cy={l.y} r="18" />
 										<circle class="dot" cx={l.x} cy={l.y} r={l.impl.otfabric ? 10 : 8} />
 										{l.impl.interop && !l.impl.otfabric && <circle class="tested" cx={l.x} cy={l.y} r="13" />}
-										<text x={l.side === 'right' ? l.x + 18 : l.x - 18} y={l.y - 1} text-anchor={l.side === 'right' ? 'start' : 'end'}>
+										{l.leader && <path class="leader" d={l.leader} />}
+										<text x={l.lx} y={l.ly - 1} text-anchor={l.side === 'right' ? 'start' : 'end'}>
 											<tspan class="name">{short(l.impl.name)}</tspan>
-											<tspan class="meta" x={l.side === 'right' ? l.x + 18 : l.x - 18} dy="18">{short(`${l.impl.languages.join(', ')} · ${l.impl.license.replace(' WITH GCC-exception-2.0', '+exc.')}`, 30)}</tspan>
+											<tspan class="meta" x={l.lx} dy="18">{short(`${l.impl.languages.join(', ')} · ${l.impl.license.replace(' WITH GCC-exception-2.0', '+exc.')}`, 30)}</tspan>
 										</text>
 									</a>
 								))}
@@ -786,6 +787,12 @@ const schema = [
 	.leaf.otf .dot {
 		stroke: var(--ot-fg-strong);
 		stroke-width: 2.5;
+	}
+	.leaf .leader {
+		fill: none;
+		stroke: var(--ot-muted);
+		opacity: 0.5;
+		stroke-width: 1;
 	}
 	.leaf text {
 		pointer-events: none;
