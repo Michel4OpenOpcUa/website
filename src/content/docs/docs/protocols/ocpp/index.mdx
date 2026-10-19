@@ -1,0 +1,125 @@
+---
+title: OCPP
+description: How OCPP-J works (stations and the CSMS, WebSocket and subprotocols, CALL frames, versions 1.6J, 2.0.1 and 2.1, security profiles, transactions and smart charging) and which OT Fabric projects implement it.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+OCPP (Open Charge Point Protocol) is the protocol between an EV charging station and the system that manages it. The Open Charge Alliance (OCA) publishes it, with a JSON schema for every message. This page explains **OCPP-J**, OCPP over WebSocket with JSON, in the three versions the OT Fabric projects implement: **1.6J** (with the Security Whitepaper extensions), **2.0.1** and **2.1**.
+
+<Aside type="caution" title="Pre-release">
+[go-ocpp](/projects/go-ocpp/) v0.1.3 and [ocppctl](/projects/ocppctl/) v0.1.1 are pre-release, and their APIs and flags may still change. They are interoperability tested, not OCA certified. See [Testing and interop](/docs/protocols/ocpp/testing/).
+</Aside>
+
+## The two roles
+
+| Role | OCPP 2.x name | OCPP 1.6 name | In go-ocpp |
+|---|---|---|---|
+| The charger | Charging Station | Charge Point | package `client` |
+| The management system | CSMS (Charging Station Management System) | Central System | package `server` |
+
+The **station is always the WebSocket client**: it opens the connection to the CSMS, so a charger behind a mobile router or NAT can be managed. Once the connection is open, both sides send requests. The station boots, authorizes cards, reports transactions and sends meter values; the CSMS starts and stops sessions remotely, sets charging limits, reads and writes configuration, and triggers firmware updates and log uploads.
+
+## Connecting
+
+The station connects to the CSMS's endpoint with its own **identity** as the last path segment:
+
+```
+wss://csms.example.com/ocpp/CS001
+```
+
+In the WebSocket handshake it offers the versions it speaks as **subprotocols** (`ocpp2.1`, `ocpp2.0.1`, `ocpp1.6`), in order of preference, and the CSMS picks one. The whole connection then speaks that version. 1.6 and 2.x differ in almost every message, so a CSMS that serves both has a handler per version on the same endpoint.
+
+The CSMS decides whether to accept the station **before** the WebSocket upgrade: an unknown identity gets HTTP 404, wrong credentials HTTP 401.
+
+## Messages on the wire
+
+Every OCPP-J message is a JSON array. A request is a **CALL**, and every CALL is answered by exactly one **CALLRESULT** or **CALLERROR**:
+
+```json
+[2, "19223201", "BootNotification", {"reason": "PowerUp", "chargingStation": {"vendorName": "VendorX", "model": "SingleSocketCharger"}}]
+[3, "19223201", {"currentTime": "2026-10-19T08:00:00Z", "interval": 300, "status": "Accepted"}]
+[4, "19223201", "FormatViolation", "chargingStation: required", {}]
+```
+
+| Type | Number | Versions | Meaning |
+|---|---|---|---|
+| CALL | 2 | all | A request, with a message id, an action and a payload |
+| CALLRESULT | 3 | all | The answer to a CALL, with the same message id |
+| CALLERROR | 4 | all | An error answer: `NotImplemented`, `NotSupported`, `FormatViolation`, `SecurityError` and others |
+| CALLRESULTERROR | 5 | 2.1 | The receiver of a CALLRESULT says the result was wrong |
+| SEND | 6 | 2.1 | A message that is never answered, for streams of data |
+
+Each side has **one outstanding CALL** at a time: it waits for the answer before it sends the next request. Requests from the other side can arrive meanwhile. The **action** names the message (`BootNotification`, `Heartbeat`, `TransactionEvent`, `SetChargingProfile`, …), and each action is sent by one role, except DataTransfer, which both send.
+
+A request or answer that does not match its OCA schema is answered with a CALLERROR. go-ocpp validates every message against the schemas in both directions, and ocppctl reports which field failed and why.
+
+## Versions
+
+| Version | Status in go-ocpp | What it brings |
+|---|---|---|
+| OCPP 1.6J | 39 actions: 28 core, 11 from the Security Whitepaper (Edition 4) | Still the most widely deployed. Connectors numbered across the station, configuration keys, transactions with an integer id the CSMS assigns |
+| OCPP 2.0.1 | 64 actions (Edition 4, errata 2026-09) | A device model of components and variables, EVSEs with connectors, TransactionEvent with an id the station chooses, security built in, ISO 15118 support messages |
+| OCPP 2.1 | 91 actions (Edition 2, errata 2026-09) | Builds on 2.0.1: bidirectional charging and DER control, tariffs and cost, battery swap, local controllers, and the SEND and CALLRESULTERROR message types |
+| OCPP 1.6 SOAP, 1.5 and older | Out of scope | |
+
+2.0.1 and 2.1 are close, but not the same: their types are generated separately from each version's schemas (`ocpp201` and `ocpp21`), because the schemas do differ. 2.1 opened up the id token types, for example.
+
+## A charging session
+
+A charging session in OCPP 2.0.1, as the station sees it:
+
+1. **BootNotification**: the station registers. The CSMS answers `Accepted` (with the heartbeat interval), `Pending` or `Rejected`. Many CSMSs refuse other messages until the boot is accepted.
+2. **StatusNotification** for each connector, then **Heartbeat** at the interval the CSMS gave.
+3. A driver presents a card: **Authorize** with the id token.
+4. **TransactionEvent** `Started`, then `Updated` with meter values while charging, then `Ended` with the final meter reading.
+
+In OCPP 1.6 the session is **StartTransaction**, **MeterValues** and **StopTransaction** instead, and the CSMS assigns the transaction id in its answer to StartTransaction. In 2.x the station chooses a string id.
+
+The CSMS can start the same session remotely (**RequestStartTransaction**, in 1.6 **RemoteStartTransaction**), stop it, or limit it.
+
+## Smart charging
+
+The CSMS limits power with **charging profiles**: a station maximum, a default for every transaction (TxDefaultProfile) or a profile for one transaction (TxProfile), each a schedule of limits in W or A. **SetChargingProfile** installs one, **GetCompositeSchedule** asks the station what it will actually do, and **ClearChargingProfile** removes them. Grid operators and energy management systems use this to keep a site within its connection capacity. How a station combines its profiles is charging logic, which belongs to the application: go-ocpp carries the messages, and its [smart-charging example](https://github.com/otfabric/go-ocpp/tree/main/examples/smart-charging) shows a simple composite schedule.
+
+## Configuration
+
+A 1.6 station has **configuration keys** (GetConfiguration, ChangeConfiguration), such as `HeartbeatInterval`. A 2.x station has a **device model** of components and variables (GetVariables, SetVariables, GetBaseReport with NotifyReport), such as the variable `HeartbeatInterval` of the component `OCPPCommCtrlr`.
+
+## Security
+
+OCPP defines three **security profiles**. In OCPP 1.6 they come from the Security Whitepaper; in 2.x they are part of the specification.
+
+| Profile | Transport | The station proves its identity with |
+|---|---|---|
+| 1 | `ws://`, no encryption | An HTTP Basic password. For closed networks only |
+| 2 | `wss://`, TLS | An HTTP Basic password; the station verifies the CSMS certificate |
+| 3 | `wss://`, mutual TLS | A client certificate whose CommonName is its identity |
+
+The Basic user name is the station identity. go-ocpp and ocppctl require TLS 1.2 or later, and **TLS verification cannot be turned off**: a test CA is trusted explicitly instead. go-ocpp's `ocppcert` package computes the CertificateHashData that DeleteCertificate and GetCertificateStatus refer to.
+
+Not all of OCPP is security: a station that connects under the identity of another can push it off its CSMS, and remote start and stop act on real chargers and real money. Test against stations and a CSMS you own, with test identities and tokens.
+
+## Where OCPP is used in energy
+
+Charging stations are among the largest flexible loads on the low-voltage grid, and OCPP is how a charge point operator, an aggregator or a building's energy management system reaches them. The same smart charging messages that cap a site at its connection limit can follow a price or a grid signal, for example one an energy management system receives over [OpenADR](/docs/protocols/openadr/). OCPP 2.1 adds bidirectional charging and DER control, so a car can feed power back.
+
+OCPP is one of several protocols around a charger. ISO 15118 runs between the car and the station (Plug & Charge), OCPI between charge point operators and roaming platforms, and OSCP between grid operators and charge point operators about capacity. OT Fabric implements OCPP.
+
+## OT Fabric for OCPP
+
+| Project | What it is |
+|---|---|
+| [go-ocpp](/projects/go-ocpp/) | OCPP 1.6J, 2.0.1 and 2.1 for Go: a charging station client and a CSMS server on one RPC engine, every action typed and validated against the OCA schemas, security profiles 1 to 3, compression, a test kit and certificate helpers. One dependency. Pre-release, v0.1.3. |
+| [ocppctl](/projects/ocppctl/) | A command-line tool on go-ocpp: probe a CSMS, send any message, simulate one or hundreds of stations, run scenarios in CI, and serve a CSMS for station development. v0.1.1. |
+| [ocpp-interop](/projects/ocpp-interop/) | Docker images of five independent OCPP implementations behind one container contract, with deterministic fixtures for every action of each version. v0.4.1. |
+
+<CardGrid>
+  <LinkCard title="Go library" description="Stations, a CSMS, handlers, security profiles and testing with go-ocpp." href="/docs/protocols/ocpp/library/" />
+  <LinkCard title="ocppctl" description="Probe, send, simulate, run scenarios and serve a CSMS." href="/docs/protocols/ocpp/cli/" />
+  <LinkCard title="Testing and interop" description="Reference stacks, fixtures and what has been validated." href="/docs/protocols/ocpp/testing/" />
+  <LinkCard title="Ecosystem map" description="Who else implements OCPP, in which language and licence." href="/ecosystem/?protocol=ocpp" />
+</CardGrid>

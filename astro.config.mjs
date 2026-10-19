@@ -64,6 +64,7 @@ export default defineConfig({
             { label: 'IEC 61850 / MMS', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/iec-61850' } }] },
             { label: 'Siemens S7', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/s7' } }] },
             { label: 'OpenADR', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/openadr' } }] },
+            { label: 'OCPP', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/ocpp' } }] },
           ],
         },
         {

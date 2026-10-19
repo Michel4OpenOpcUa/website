@@ -1,0 +1,107 @@
+---
+name: "OCPP"
+standard: "OCPP 1.6J, 2.0.1 and 2.1 (Open Charge Alliance)"
+summary: "The protocol between EV charging stations and the management system that runs them: booting, authorizing, transactions, metering, smart charging and remote control."
+order: 9
+facts:
+  - { label: 'Transport', value: 'JSON over WebSocket (OCPP-J), TLS' }
+  - { label: 'Versions', value: '1.6J, 2.0.1, 2.1' }
+  - { label: 'Library', value: 'go-ocpp' }
+  - { label: 'CLI', value: 'ocppctl' }
+  - { label: 'Interop', value: 'ocpp-interop v0.4.1' }
+icon: go-ocpp
+docs: /docs/protocols/ocpp/
+---
+
+import Callout from '../../components/Callout.astro';
+
+OCPP (Open Charge Point Protocol) is how an EV charging station talks to its **CSMS**, the Charging Station Management System of a charge point operator (in OCPP 1.6, the *Central System*). The station opens a WebSocket to the CSMS with its own identity in the URL, and from then on either side sends requests: the station boots, authorizes a card, reports a transaction and sends meter values; the CSMS starts and stops sessions remotely, limits power, reads and changes configuration, and updates firmware. Messages are JSON, and the Open Charge Alliance publishes a JSON schema for every one of them.
+
+## Where you meet it
+
+- Public and workplace charging networks run by charge point operators
+- Home and fleet chargers managed by an energy management system or an aggregator
+- Smart charging: limiting the power of a station or a whole site to what the grid connection allows
+
+## Quickstart
+
+### From the command line
+
+Download `ocppctl` from [GitHub Releases](https://github.com/otfabric/ocppctl/releases). No CSMS at hand? Start one:
+
+```sh
+ocppctl server start --insecure-transport --no-auth
+```
+
+and talk to it from another terminal:
+
+```sh
+# Which OCPP version does the CSMS pick?
+ocppctl client probe --url ws://localhost:9000/CS001 --insecure-transport
+
+# Register the station: Accepted, Pending or Rejected?
+ocppctl client boot --url ws://localhost:9000/CS001 --insecure-transport
+
+# A simulated station that stays connected and charges by itself
+ocppctl client run --url ws://localhost:9000/CS002 --insecure-transport
+
+# From the CSMS side: list the stations and start a session on one
+ocppctl server stations
+ocppctl server call RequestStartTransaction --station CS002 --yes \
+  --payload '{"remoteStartId":1,"idToken":{"idToken":"TESTTOKEN","type":"ISO14443"}}'
+```
+
+A real CSMS uses TLS: `--url wss://csms.example.com/ocpp/CS001` with a password from `--password-file` (security profile 2), or a client certificate (profile 3).
+
+### From Go
+
+```sh
+go get github.com/otfabric/go-ocpp
+```
+
+A CSMS that accepts every boot, and a charging station that connects to it (OCPP 2.0.1, abridged from the go-ocpp README):
+
+```go title="main.go"
+// CSMS: answer the stations' CALLs.
+type csms struct{ ocpp201.UnimplementedCSMSHandler }
+
+func (csms) BootNotification(ctx context.Context, p ocpp.Peer, req *ocpp201.BootNotificationRequest) (*ocpp201.BootNotificationResponse, error) {
+	return &ocpp201.BootNotificationResponse{Status: ocpp201.RegistrationStatusAccepted, CurrentTime: time.Now().UTC(), Interval: 300}, nil
+}
+
+srv, err := server.New(
+	server.WithHandler(ocpp.V201, ocpp201.CSMS(csms{})),
+	server.WithAuthenticator(server.BasicAuth(lookupPassword)),
+)
+http.Handle("/ocpp/", srv) // behind TLS
+
+// Charging station.
+c, err := client.New("wss://csms.example.com/ocpp/STATION001",
+	client.WithHandler(ocpp.V201, ocpp201.ChargingStation(station{})),
+	client.WithBasicAuth("STATION001", password),
+	client.WithReconnect(client.DefaultReconnect()),
+)
+err = c.Connect(ctx)
+boot, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{
+	Reason:          ocpp201.BootReasonPowerUp,
+	ChargingStation: ocpp201.ChargingStationType{VendorName: "Example", Model: "TestStation"},
+})
+```
+
+Every request is validated against its OCA schema before it is sent, every response when it arrives, and every incoming request before a handler sees it.
+
+## What go-ocpp and ocppctl support
+
+| | |
+|---|---|
+| Versions | OCPP 1.6J with the Security Whitepaper extensions (39 actions), 2.0.1 (64 actions) and 2.1 (91 actions, with SEND and CALLRESULTERROR) |
+| Roles | Charging Station (`client`) and CSMS (`server`), with CALLs from either end; several versions on one endpoint |
+| Validation | Generated from the OCA JSON schemas, always on, in both directions |
+| Security | Security profiles 1 to 3 (HTTP Basic, TLS, mutual TLS); authentication before the WebSocket upgrade; TLS verification cannot be turned off |
+| Transport | WebSocket compression (RFC 7692), ping keepalive, reconnection with the OCPP back-off, limits on stations, message size, queues and rate |
+| Testing | `ocpptest` for an application's handlers; ocppctl simulates hundreds of stations, runs YAML scenarios in CI, and serves a CSMS for station development |
+| Dependencies | One: a WebSocket library ([coder/websocket](https://github.com/coder/websocket)) |
+
+<Callout type="note" title="Pre-release">
+go-ocpp v0.1.3 and ocppctl v0.1.1 are pre-release, and the API may still change. Both are tested in both roles against five independent implementations packaged by [ocpp-interop](https://github.com/otfabric/ocpp-interop) v0.4.1: The Mobility House ocpp (Python), ChargeTimeEU Java-OCA-OCPP (Java), lorenzodonini/ocpp-go (Go), EVerest libocpp (C++) and CitrineOS (TypeScript), including TLS and compression. Passing those tests is not an Open Charge Alliance certification.
+</Callout>

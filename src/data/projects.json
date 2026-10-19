@@ -145,6 +145,19 @@
 		"icon": "go-openadr"
 	},
 	{
+		"id": "go-ocpp",
+		"name": "go-ocpp",
+		"repo": "go-ocpp",
+		"category": "library",
+		"protocols": [
+			"ocpp"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-ocpp",
+		"description": "OCPP 1.6J, 2.0.1 and 2.1 for charging stations and CSMSs: every action typed and validated against the OCA schemas, security profiles 1 to 3, one dependency.",
+		"icon": "go-ocpp"
+	},
+	{
 		"id": "modbusctl",
 		"name": "modbusctl",
 		"repo": "modbusctl",
@@ -241,6 +254,18 @@
 		"status": "available",
 		"description": "Siemens S7 command-line client for ISO-on-TCP (port 102).",
 		"icon": "go-s7comm"
+	},
+	{
+		"id": "ocppctl",
+		"name": "ocppctl",
+		"repo": "ocppctl",
+		"category": "cli",
+		"protocols": [
+			"ocpp"
+		],
+		"status": "available",
+		"description": "Probe a CSMS, send any OCPP message, simulate hundreds of charging stations, run scenarios in CI, or serve a test CSMS for station development.",
+		"icon": "go-ocpp"
 	},
 	{
 		"id": "go-cotp",
@@ -396,6 +421,18 @@
 		"status": "available",
 		"description": "OpenADR 3 reference stacks: the OpenLEADR VTN and the ElaadNL client, plus a specification-driven conformance suite.",
 		"icon": "go-openadr"
+	},
+	{
+		"id": "ocpp-interop",
+		"name": "ocpp-interop",
+		"repo": "ocpp-interop",
+		"category": "interop",
+		"protocols": [
+			"ocpp"
+		],
+		"status": "available",
+		"description": "OCPP reference stacks: The Mobility House ocpp, ChargeTimeEU Java-OCA-OCPP, ocpp-go, EVerest libocpp and CitrineOS, for 1.6J, 2.0.1 and 2.1.",
+		"icon": "go-ocpp"
 	},
 	{
 		"id": "sunspec-explorer",
