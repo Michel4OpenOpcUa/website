@@ -16,10 +16,10 @@ snap7-interop publishes two container images. Both speak classic S7comm over ISO
 
 | Image | Implementation |
 |---|---|
-| `ghcr.io/otfabric/snap-interop-native` | Native Snap7, built from the SCADACS fork at a pinned revision (Snap7 1.4.0 lineage, LGPL-3.0-or-later) |
-| `ghcr.io/otfabric/snap-interop-python` | Pure-Python server from `python-snap7` 3.0.0, with no native library in the image |
+| `ghcr.io/otfabric/snap7-interop-native` | Native Snap7, built from the SCADACS fork at a pinned revision (Snap7 1.4.0 lineage, LGPL-3.0-or-later) |
+| `ghcr.io/otfabric/snap7-interop-python` | Pure-Python server from `python-snap7` 3.2.1, with no native library in the image |
 
-The current release is **v0.1.0**, built for `linux/amd64` and `linux/arm64`. Tags never move and there is no `latest` tag; pin by digest where you can. The images and the Go module keep the older name `snap-interop`, while the repository is `snap7-interop`.
+The current release is **v0.3.0**, built for `linux/amd64` and `linux/arm64`. Tags never move and there is no `latest` tag; pin by digest where you can. Releases up to v0.2.0 were published as `snap-interop-native` and `snap-interop-python`; those tags stay available.
 
 The repository does not depend on go-s7comm, so any S7 client can use it.
 
@@ -63,7 +63,7 @@ A fixture is a JSON file that describes the server's memory: which areas exist, 
 1. Pull an image:
 
    ```sh
-   docker pull ghcr.io/otfabric/snap-interop-native:v0.1.0
+   docker pull ghcr.io/otfabric/snap7-interop-native:v0.3.0
    ```
 
 2. Start it with a compiled fixture from a checkout of the repository. Map the container's port 102 to an unprivileged host port such as 1102:
@@ -74,7 +74,7 @@ A fixture is a JSON file that describes the server's memory: which areas exist, 
      --cap-drop ALL --cap-add NET_BIND_SERVICE \
      -v "$PWD/fixtures/compiled:/fixtures:ro" \
      -e SNAP_INTEROP_FIXTURE=/fixtures/basic-db.compiled.json \
-     ghcr.io/otfabric/snap-interop-native:v0.1.0
+     ghcr.io/otfabric/snap7-interop-native:v0.3.0
    ```
 
 3. Point a client at it, with rack 0 and slot 2:
@@ -135,7 +135,7 @@ This pulls pinned image digests, starts both containers for each fixture on host
 | `SNAP_INTEROP_MANAGED=0` | Use servers that are already running, at `SNAP_INTEROP_NATIVE_ADDR` and `SNAP_INTEROP_PYTHON_ADDR` |
 | `SNAP_INTEROP_FIXTURE=<id>` | Run a single fixture, for example `basic-db` |
 
-`make check` compiles and lints the interop package but does not start Docker. Running the matrix in go-s7comm's own CI against pinned images is still listed as open work in snap7-interop.
+`make check` compiles and lints the interop package but does not start Docker. go-s7comm's interop workflow runs the full matrix against the pinned images on every push and pull request.
 
 Besides interop, go-s7comm has unit tests with frame fixtures in `testdata/`, race detector runs (`make test-race`), benchmarks for discovery, probing and the wire parsers (`make bench`), static analysis (`make lint`, `make lint-ci`) and `govulncheck` (`make vuln`). s7commctl's own tests cover command wiring, configuration, input validation, output formatting, the write confirmation helpers and the pcap and replay parsers. Protocol codec coverage lives in go-s7comm.
 
