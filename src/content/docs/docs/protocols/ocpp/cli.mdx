@@ -1,0 +1,261 @@
+---
+title: ocppctl
+description: Installing and using ocppctl, the OCPP 1.6J, 2.0.1 and 2.1 command-line tool to probe a CSMS, send messages, simulate charging stations, run scenarios in CI and serve a test CSMS.
+sidebar:
+  label: ocppctl
+  order: 2
+---
+
+import { Aside, Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
+
+[ocppctl](https://github.com/otfabric/ocppctl) is a command-line tool for OCPP 1.6J, 2.0.1 and 2.1, in both roles, built on [go-ocpp](/docs/protocols/ocpp/library/). As a **Charging Station** it probes a CSMS, sends any message, runs one or thousands of simulated stations and runs scenarios with expectations. As a **CSMS** it accepts real or simulated stations, answers them from a model, streams everything they send and sends them CALLs on request. Offline, it validates payloads, decodes frames and computes certificate hashes. Output is text, a table or JSON, with stable exit codes.
+
+<Aside type="caution" title="Responsible use">
+OCPP controls real chargers and real money. `server call` resets stations and starts and stops sessions; `client call` and the simulated stations start and stop transactions a CSMS may bill; a simulated station under the identity of a real one can push that station off its CSMS. Use ocppctl on systems you own or are authorized to test, with test identities and test tokens.
+</Aside>
+
+It is meant for CSMS development and QA, station and firmware development, commissioning and troubleshooting, and test setups without hardware. It is a test and diagnostic tool, not a compliance test: passing a scenario says what you checked, not that a product conforms.
+
+## Install
+
+Pre-built binaries for Linux (x86-64, ARM64, ARMv7), macOS (Apple Silicon, Intel) and Windows (x86-64, ARM64) are on [GitHub Releases](https://github.com/otfabric/ocppctl/releases), with SHA-256 checksums.
+
+<Tabs>
+  <TabItem label="Linux">
+```sh
+VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/ocppctl/releases/latest | sed 's|.*/v||')
+case "$(uname -m)" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; armv7l) ARCH=armv7 ;; esac
+FILE="ocppctl-${VERSION}-linux-${ARCH}.tar.gz"
+BASE="https://github.com/otfabric/ocppctl/releases/download/v${VERSION}"
+curl -fsSLO "${BASE}/${FILE}" && curl -fsSLO "${BASE}/ocppctl-${VERSION}-checksums.txt"
+grep "${FILE}" "ocppctl-${VERSION}-checksums.txt" | sha256sum -c -
+mkdir -p ocppctl-dl && tar -xzf "${FILE}" -C ocppctl-dl
+sudo install -m 0755 "$(find ocppctl-dl -type f -name 'ocppctl*' | head -n1)" /usr/local/bin/ocppctl
+```
+  </TabItem>
+  <TabItem label="macOS">
+```sh
+VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/ocppctl/releases/latest | sed 's|.*/v||')
+case "$(uname -m)" in arm64) ARCH=arm64 ;; x86_64) ARCH=amd64 ;; esac
+FILE="ocppctl-${VERSION}-darwin-${ARCH}.tar.gz"
+BASE="https://github.com/otfabric/ocppctl/releases/download/v${VERSION}"
+curl -fsSLO "${BASE}/${FILE}" && curl -fsSLO "${BASE}/ocppctl-${VERSION}-checksums.txt"
+grep "${FILE}" "ocppctl-${VERSION}-checksums.txt" | shasum -a 256 -c -
+mkdir -p ocppctl-dl && tar -xzf "${FILE}" -C ocppctl-dl
+sudo install -m 0755 "$(find ocppctl-dl -type f -name 'ocppctl*' | head -n1)" /usr/local/bin/ocppctl
+```
+  </TabItem>
+  <TabItem label="Go">
+```sh
+go install github.com/otfabric/ocppctl@latest
+```
+  </TabItem>
+</Tabs>
+
+The Windows commands (PowerShell) are in the [README](https://github.com/otfabric/ocppctl#windows-powershell). Check the install with `ocppctl version`.
+
+## Command tree
+
+```
+ocppctl
+├── client                  act as a Charging Station
+│   ├── probe               connect, report what the handshake negotiated, disconnect
+│   ├── call <Action>       send one CALL, print the response
+│   ├── send <Action>       send one SEND (OCPP 2.1)
+│   ├── boot | heartbeat | authorize | status | meter | data-transfer
+│   ├── transaction start | stop
+│   ├── run                 run simulated stations from a model
+│   ├── script <file>       run a scenario with expectations
+│   └── generate-config     write the commented station model
+├── server                  act as a CSMS
+│   ├── start               accept stations, answer them from a model, stream events
+│   ├── call <Action>       send a CALL to a connected station
+│   ├── stations            list the connected stations
+│   └── generate-config     write the commented CSMS model
+├── actions                 list the actions of a version
+├── validate <Action>       validate a payload against the OCA schema
+├── frame decode | encode   the OCPP-J frame codec
+├── cert hash               CertificateHashData of a certificate
+├── completion              bash, zsh, fish or PowerShell
+└── version
+```
+
+Action names are case-sensitive, as in OCPP (`BootNotification`). Every command has `--help` with examples.
+
+## Connecting to a CSMS
+
+Every `client` command takes the CSMS endpoint and the station identity as `--url ws[s]://host[:port]/path/<identity>`.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--ocpp-version` | `2.1,2.0.1,1.6` | Versions to offer, in order of preference; the CSMS picks one. Give one to force it |
+| `--password-file` | | HTTP Basic password (profiles 1 and 2), or `OCPPCTL_PASSWORD`. Never a flag value or in the URL |
+| `--tls-ca` | system roots | CAs that verify the CSMS certificate |
+| `--tls-cert`, `--tls-key` | | The station's client certificate (profile 3) |
+| `--insecure-transport` | off | Allow `ws://` (profiles 0 and 1) |
+| `--compression` | off | Offer permessage-deflate |
+| `--timeout`, `--connect-timeout` | `30s`, `10s` | Response timeout of a CALL; dial, TLS and handshake |
+
+There is no way to skip the verification of the CSMS certificate: trust a test CA with `--tls-ca`.
+
+## Is my CSMS reachable?
+
+`client probe` connects, reports what the handshake negotiated and disconnects, without sending an OCPP message:
+
+```console
+$ ocppctl client probe --url wss://localhost:19193/CS001 --tls-ca ca.pem --tls-cert cs001.pem --tls-key cs001.key
+target          wss://localhost:19193/CS001
+identity        CS001
+offered         2.1, 2.0.1, 1.6
+negotiated      2.1
+tls             TLS 1.3, TLS_AES_128_GCM_SHA256, certificate CN=localhost (issuer CN=Test Root CA, valid until 2027-10-18), client certificate sent
+authentication  certificate
+compression     not negotiated
+handshake       7 ms
+```
+
+`--each-version` tries every version on its own connection and lists which the CSMS accepts. A refusal says why: HTTP 401 is the password, HTTP 404 an unknown identity or a wrong path, `no_common_version` a CSMS that speaks none of the offered versions, `transport_tls_failed` an untrusted certificate.
+
+## Sending messages
+
+```sh
+# Register the station: the command succeeds whatever the status
+ocppctl client boot --url wss://csms.example.com/ocpp/CS001 --format json | jq -r .response.status
+
+# Any message, from the command line, a file or stdin
+ocppctl client call Authorize --url "$URL" --ocpp-version 2.0.1 \
+  --payload '{"idToken":{"idToken":"04A1B2C3D4E5F6","type":"ISO14443"}}'
+ocppctl client call StatusNotification --url "$URL" --boot --payload @status.json
+
+# A shortcut as a payload builder: build, edit, send
+ocppctl client meter --ocpp-version 1.6 --connector 1 --energy-wh 1500 --payload-only |
+  jq '.meterValue[0].sampledValue[0].context = "Sample.Clock"' |
+  ocppctl client call MeterValues --url "$URL" --ocpp-version 1.6 --payload -
+```
+
+The payload is validated against the schema of the version the CSMS chose before it is sent. An invalid one exits 3 and nothing is sent; the JSON error names the field, the reason and the CALLERROR code a peer would answer with. `--raw` sends it anyway, to see how a CSMS copes. `--boot` sends a BootNotification first and requires Accepted.
+
+The shortcuts `boot`, `heartbeat`, `authorize`, `status`, `meter`, `data-transfer` and `transaction start|stop` build the payload for the negotiated version: StartTransaction and StopTransaction in 1.6, TransactionEvent Started and Ended in 2.x.
+
+A CALL that may change state and gets no answer in time exits 5 with `outcome_unknown`: the CSMS may have acted on it, and ocppctl does not send it again.
+
+## Simulating stations
+
+`client run` keeps a simulated station connected: it boots until Accepted, sends StatusNotifications and heartbeats at the CSMS's interval, charges the sessions of its model with meter values, and answers the CSMS (remote start and stop, Reset, TriggerMessage, configuration keys and the device model, and per-action answers from the model). It reconnects with the OCPP back-off.
+
+```sh
+# One station from the built-in model
+ocppctl client run --url ws://localhost:9000/CS001 --insecure-transport
+
+# Your model, OCPP 2.0.1 only, for ten minutes, as JSON Lines
+ocppctl client generate-config --output station.yaml
+ocppctl client run --url wss://csms.example.com/ocpp/CS001 --ocpp-version 2.0.1 \
+  --config station.yaml --duration 10m --format json > events.jsonl
+
+# A load test: 100 stations, 50 ms apart, for 15 minutes
+ocppctl client run --url 'wss://csms.example.com/ocpp/LOAD{001..100}' --stagger 50ms --duration 15m --format json > load.jsonl
+```
+
+```yaml title="station.yaml"
+station: {vendor: Example, model: Simulator, serial: SIM-0001, firmware: 1.0.0}
+evses:
+  - {id: 1, connectors: [1]}
+  - {id: 2, connectors: [1]}
+meter_interval: 60s
+sessions:
+  - {after: 30s, evse: 1, connector: 1, id_token: 04A1B2C3D4E5F6, power_w: 11000, duration: 5m}
+answers:
+  UnlockConnector: {status: Unlocked}
+```
+
+A multi-station run ends with a summary of calls, latency and errors on stderr, and exits 7 when some stations failed.
+
+## Scenarios in CI
+
+`client script` runs a YAML scenario of calls, expected answers, and CALLs expected from the CSMS:
+
+```yaml title="remote-start.yaml"
+name: remote-start-2.0.1
+version: "2.0.1"
+steps:
+  - call: BootNotification
+    payload: {reason: PowerUp, chargingStation: {vendorName: Example, model: Simulator}}
+    expect: {status: Accepted}
+  - name: remote start
+    wait_for: RequestStartTransaction      # a CALL from the CSMS
+    timeout: 60s
+    expect:
+      idToken.idToken: {present: true}
+    answer: {status: Accepted}
+    save: {token: idToken.idToken, remote: remoteStartId}
+  - expect_no_call: 2s                     # the CSMS stays silent
+```
+
+Steps are `call`, `send`, `wait_for`, `expect_no_call`, `sleep`, `disconnect` and `reconnect`. Expectations match fields by path with equality, `regex`, `present` or `one_of`; `save` keeps a field for later payloads; `${now}`, `${uuid}`, `${identity}` and `--var` are variables.
+
+```sh
+ocppctl client script remote-start.yaml --url wss://csms-staging.example.com/ocpp/CI001 \
+  --keep-going --format json > result.json
+```
+
+Exit 0 when every step passed, 7 when some failed, 3 for an invalid scenario, 4 when the CSMS cannot be reached.
+
+## A CSMS for station development
+
+```sh
+# Terminal 1: every version, no TLS, no authentication, events as JSON Lines
+ocppctl server start --insecure-transport --no-auth --format json | tee events.jsonl
+
+# Terminal 2: point the station at ws://<this host>:9000/<identity>, then
+ocppctl server stations
+ocppctl server call Reset --station CS001 --yes --payload '{"type":"Immediate"}'
+ocppctl server call GetVariables --station CS001 \
+  --payload '{"getVariableData":[{"component":{"name":"OCPPCommCtrlr"},"variable":{"name":"HeartbeatInterval"}}]}'
+```
+
+The server answers from a model (`server generate-config`): boot status and interval per station, a token list, 1.6 transaction ids and per-action answers. It serves security profiles 0 to 3: `--passwords-file` for profile 2, `--tls-client-ca` for profile 3 (the identity is the certificate's CommonName). `server call` and `server stations` reach it through a control socket in the working directory. A CALL that may change the station needs `--yes`; read-only ones such as GetVariables do not. The server listens on all interfaces by default.
+
+## Offline tools
+
+```sh
+ocppctl actions --ocpp-version 2.0.1 --format table      # the actions of a version, and who sends them
+ocppctl validate BootNotification --ocpp-version 1.6 --response --payload @boot-response.json
+ocppctl frame decode '[2,"19223201","Heartbeat",{}]' --ocpp-version 1.6
+ocppctl cert hash --cert cs001.pem --issuer ca.pem       # CertificateHashData for DeleteCertificate
+```
+
+## Output formats and exit codes
+
+`--format text|json|table` (or `OCPPCTL_OUTPUT_FORMAT`) controls the result on stdout; progress and the `--debug` frame trace go to stderr. Streams (`client run`, `server start`) write one event per line, as JSON Lines with `--format json`. With JSON, a failure is a single error object with `kind`, `code`, `message` and an `ocpp` object (the CALLERROR code, the field that failed, the HTTP status of a refused handshake).
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 2 | Usage, or `server call` of a state-changing action without `--yes` |
+| 3 | Invalid input; nothing was sent |
+| 4 | Transport: cannot connect, TLS, handshake refused, no common version, connection lost |
+| 5 | Timeout (`outcome_unknown` when the request may have changed state) |
+| 6 | The peer answered with a CALLERROR or an invalid response, or did not accept the boot |
+| 7 | Partial success: failed scenario steps or stations |
+| 10 | Output or internal error, or interrupted |
+
+## Environment variables
+
+Most flags have an `OCPPCTL_*` variable, and a flag on the command line wins. The ones you set most often:
+
+| Variable | Flag |
+|---|---|
+| `OCPPCTL_URL` | `--url` |
+| `OCPPCTL_PASSWORD_FILE`, `OCPPCTL_PASSWORD` | `--password-file`, or the password itself |
+| `OCPPCTL_OCPP_VERSION` | `--ocpp-version` |
+| `OCPPCTL_TLS_CA`, `OCPPCTL_TLS_CERT`, `OCPPCTL_TLS_KEY` | `--tls-ca`, `--tls-cert`, `--tls-key` |
+| `OCPPCTL_OUTPUT_FORMAT` | `--format` |
+| `OCPPCTL_CONTROL_SOCKET` | `--control-socket` |
+
+The README lists all of them.
+
+## Tested against
+
+ocppctl v0.1.1 was run against the five reference implementations of [ocpp-interop](/docs/protocols/ocpp/testing/) v0.4.1, with every fixture sample in both directions. Of 1218 exchanges, 1154 passed, 29 were answered with a CALLERROR, 32 were skipped because the reference could not send the message, and 3 failed on schema-invalid responses of ocpp-go, which ocppctl refuses. Each one is explained in [docs/KNOWN_ISSUES.md](https://github.com/otfabric/ocppctl/blob/main/docs/KNOWN_ISSUES.md).
+
+<LinkCard title="ocppctl on GitHub" description="README, docs/station-model.md, docs/scenarios.md, docs/server-config.md, docs/exitcodes.md" href="https://github.com/otfabric/ocppctl" />

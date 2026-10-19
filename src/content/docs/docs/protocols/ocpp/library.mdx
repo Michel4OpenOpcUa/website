@@ -1,0 +1,304 @@
+---
+title: Go library
+description: Use go-ocpp to build OCPP 1.6J, 2.0.1 and 2.1 charging stations and CSMSs in Go, with typed and validated messages, handlers, security profiles, reconnection, testing, errors and observability.
+sidebar:
+  label: Go library
+  order: 1
+---
+
+import { Aside, Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
+
+[go-ocpp](/projects/go-ocpp/) implements both ends of OCPP-J in Go: a Charging Station (package `client`) and a CSMS (package `server`), on one RPC engine, for OCPP 1.6J, 2.0.1 and 2.1. Every action is a typed request and response generated from the OCA JSON schemas, and every message is validated in both directions. The authoritative reference for each symbol is the godoc on [pkg.go.dev](https://pkg.go.dev/github.com/otfabric/go-ocpp); [API.md](https://github.com/otfabric/go-ocpp/blob/main/API.md) in the repository is the map.
+
+<Aside type="caution" title="Pre-release">
+go-ocpp is pre-release, and a minor release may still change the API (every change is listed in its RELEASE.md). Pin a version. This page follows v0.1.3.
+</Aside>
+
+go-ocpp is a protocol library. It transports, validates and dispatches messages. Charging behaviour, authorization policy, persistence and billing belong to the application's handlers.
+
+## Install
+
+```sh
+go get github.com/otfabric/go-ocpp
+```
+
+Go 1.26 or later. The only dependency is [coder/websocket](https://github.com/coder/websocket).
+
+| Package | What it is |
+|---|---|
+| `client` | The Charging Station role (OCPP 1.6: Charge Point) |
+| `server` | The CSMS role (OCPP 1.6: Central System), an `http.Handler` |
+| `ocpp` | Shared types: versions, calls, handlers, errors, observability |
+| `ocpp16`, `ocpp201`, `ocpp21` | Typed messages, validation, call functions and handlers per version |
+| `ocppj` | The OCPP-J frame codec, with no I/O |
+| `ocpptest` | Testing an application's handlers over a loopback WebSocket |
+| `ocppcert` | CertificateHashData of a certificate |
+
+## Messages and call functions
+
+For every action `X` of a version, its package has `XRequest`, `XResponse`, a `Validate` method, and a call function:
+
+```go
+func X(ctx context.Context, c ocpp.Caller, req *XRequest) (*XResponse, error)
+```
+
+A call function checks, before anything is sent, that the connection speaks its version (`ErrUnsupportedVersion`), that the role sends this action (`ErrWrongDirection`) and that the request is valid (`*ocpp.ValidationError`). The response is validated when it arrives.
+
+- Field names follow Go's initialisms: `idTag` is `IDTag`, `evseId` is `EVSEID`.
+- Enumeration constants are the type name and the value: `ocpp201.RegistrationStatusAccepted`, `ocpp16.ResetSoft`.
+- Optional fields are pointers; `ocpp.Ptr(v)` makes one. Required arrays must not be nil.
+- `CustomData` (2.x) keeps vendor properties as raw JSON.
+
+| | ocpp16 | ocpp201 | ocpp21 |
+|---|---|---|---|
+| Actions | 39 (28 core, 11 security) | 64 | 91, one of them a SEND |
+| Station handler | `ChargePointHandler`, `ChargePoint(h)` | `ChargingStationHandler`, `ChargingStation(h)` | as ocpp201 |
+| CSMS handler | `CentralSystemHandler`, `CentralSystem(h)` | `CSMSHandler`, `CSMS(h)` | as ocpp201 |
+
+## A charging station
+
+```go
+c, err := client.New("wss://csms.example.com/ocpp/CS001",
+	client.WithHandler(ocpp.V201, ocpp201.ChargingStation(myHandler)), // answers the CSMS
+	client.WithBasicAuth("CS001", password),                           // security profile 2
+	client.WithCompression(),
+	client.WithReconnect(client.DefaultReconnect()),
+	client.WithPingInterval(30*time.Second),
+)
+if err != nil {
+	return err
+}
+if err := c.Connect(ctx); err != nil {
+	return err
+}
+defer c.Close()
+
+boot, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{
+	Reason:          ocpp201.BootReasonPowerUp,
+	ChargingStation: ocpp201.ChargingStationType{VendorName: "Example", Model: "TestStation"},
+})
+```
+
+The URL is the CSMS's endpoint followed by the station identity, percent-encoded. `wss://` is required; `ws://` needs `WithInsecureTransport()`. Credentials in the URL are refused, and the Basic user name must be the identity.
+
+The handler embeds `ocpp201.UnimplementedChargingStationHandler` and implements the actions it supports; the others are answered `NotSupported`. With handlers for several versions, the client offers all of them and the CSMS picks one (`c.Version()` after `Connect`).
+
+| Method | Behaviour |
+|---|---|
+| `Connect` | Dials once. It does not retry; `WithReconnect` redials only after an open connection is lost |
+| `Call` | Sends a CALL and waits. Calls from many goroutines go out one at a time (one outstanding CALL per direction); up to 64 wait, more get `ErrBusy`. Fails at once with `ErrNotConnected` while disconnected: nothing is queued |
+| `Send` | OCPP 2.1 SEND: queued and returned at once, never answered |
+| `Shutdown` | Graceful close: finishes what is in flight, then closes |
+| `Close` | Closes now. Final: a restarting station makes a new `Client` |
+| `SetReconnect` | Changes the back-off, for a CSMS that sets the RetryBackOff variables |
+
+`DefaultReconnect()` waits 5 s plus up to 10 s at random, doubled up to five times, as OCPP 2.x Part 4 describes. When a connection is lost, pending calls fail with `ErrConnectionLost` and nothing is resent: what to send again (transactions, for example) is the application's decision.
+
+## A CSMS
+
+```go
+srv, err := server.New(
+	server.WithHandler(ocpp.V16, ocpp16.CentralSystem(my16)), // one endpoint,
+	server.WithHandler(ocpp.V201, ocpp201.CSMS(my201)),       // three versions
+	server.WithHandler(ocpp.V21, ocpp21.CSMS(my21)),
+	server.WithAuthenticator(server.BasicAuth(passwordOf)),   // profiles 1 and 2
+	server.WithTLS(tlsConfig),
+	server.WithSessionHandler(onConnect, onDisconnect),
+)
+if err != nil {
+	return err
+}
+go srv.ListenAndServe(":8443") // or mount srv, an http.Handler, in your own server
+
+// Later, from anywhere: call a station.
+if s, ok := srv.Station("CS001"); ok {
+	resp, err := ocpp201.GetVariables(ctx, s, &ocpp201.GetVariablesRequest{ /* … */ })
+}
+```
+
+A `Server` is an `http.Handler`, so it can be mounted under any path behind an application's own middleware. `New` needs at least one handler and exactly one of `WithAuthenticator` and `WithoutAuthentication`. The station identity is the last path segment.
+
+Each connected station has a `Session`, which is an `ocpp.Peer`: pass it to any call function. A handler can call the station back while it handles a CALL, for example GetConfiguration while handling a BootNotification. When a station connects again under the same identity, the new session replaces the old one by default (`WithReplacePolicy(server.RejectNew)` refuses it with HTTP 409 instead).
+
+### The handshake
+
+Every upgrade request is checked in order before a session exists: an identity (404 without one), OCPP 2.x identity rules (400), authentication (401 or 404), shutting down (503), replacement policy (409), `WithMaxStations` (503), and the Origin header of browsers (403). A station that offers no version the server has a handler for is closed after the handshake, as OCPP-J requires.
+
+### Several instances
+
+A `Server` holds the sessions of its own process. To run several CSMS instances, route each station's WebSocket to one instance (a load balancer that balances connections is enough), record in a shared store where each station is connected from the session handler, and send a CALL through the instance that holds the station. The library needs no shared state.
+
+## Handlers
+
+Handler methods take the context, the peer and the typed request, and return the typed response:
+
+```go
+type csms struct{ ocpp201.UnimplementedCSMSHandler }
+
+func (csms) Authorize(ctx context.Context, p ocpp.Peer, req *ocpp201.AuthorizeRequest) (*ocpp201.AuthorizeResponse, error) {
+	status := ocpp201.AuthorizationStatusInvalid
+	if allowed(req.IDToken.IDToken) {
+		status = ocpp201.AuthorizationStatusAccepted
+	}
+	return &ocpp201.AuthorizeResponse{IDTokenInfo: ocpp201.IDTokenInfoType{Status: status}}, nil
+}
+```
+
+- An error with a code the version defines (`*ocpp.CallError`) is sent as that CALLERROR. Any other error is sent as `InternalError`, without its text.
+- Handlers of one connection run one at a time, in arrival order. Handlers of different connections run concurrently.
+- `ocpp.AfterResponse(ctx, f)` runs `f` once the response is on its way. Use it for what a use case sends after answering: NotifyReport after GetBaseReport, status notifications after UpdateFirmware, a reboot after Reset.
+
+```go
+func (h station) GetBaseReport(ctx context.Context, p ocpp.Peer, req *ocpp201.GetBaseReportRequest) (*ocpp201.GetBaseReportResponse, error) {
+	ocpp.AfterResponse(ctx, func() { h.sendReport(p, req.RequestID) }) // NotifyReport after the response
+	return &ocpp201.GetBaseReportResponse{Status: ocpp201.GenericDeviceModelStatusAccepted}, nil
+}
+```
+
+### Raw calls and vendor actions
+
+`Call` with a `json.RawMessage`, and an `ocpp.DispatcherFunc` as the handler, bypass the typed validation. That is how an application sends a vendor action that is not modelled, or accepts one non-conforming message from a station it must support, for that action only. Standard messages stay validated.
+
+## Security profiles
+
+<Tabs>
+  <TabItem label="Profile 1">
+```go
+// Station: HTTP Basic over ws://, closed networks and tests only.
+client.New("ws://csms.local:9000/ocpp/CS001",
+	client.WithInsecureTransport(),
+	client.WithBasicAuth("CS001", password))
+
+// CSMS: passwords per station; an unknown identity gets 404, a wrong password 401.
+server.WithAuthenticator(server.BasicAuth(func(ctx context.Context, id string) (string, bool) {
+	pw, ok := passwords[id]
+	return pw, ok
+}))
+```
+  </TabItem>
+  <TabItem label="Profile 2">
+```go
+// Station: TLS and HTTP Basic. RootCAs only when the CSMS's CA is not in the system roots.
+client.New("wss://csms.example.com/ocpp/CS001",
+	client.WithBasicAuth("CS001", password),
+	client.WithTLS(&tls.Config{RootCAs: pool}))
+
+// CSMS
+server.WithTLS(&tls.Config{Certificates: []tls.Certificate{serverCert}})
+server.WithAuthenticator(server.BasicAuth(passwordOf))
+```
+  </TabItem>
+  <TabItem label="Profile 3">
+```go
+// Station: mutual TLS, a client certificate whose CommonName is the identity.
+client.New("wss://csms.example.com/ocpp/CS001",
+	client.WithTLS(&tls.Config{RootCAs: pool, Certificates: []tls.Certificate{stationCert}}))
+
+// CSMS: stations on several profiles at once.
+server.WithTLS(&tls.Config{Certificates: []tls.Certificate{serverCert},
+	ClientAuth: tls.VerifyClientCertIfGiven, ClientCAs: stationCAs})
+server.WithAuthenticator(server.AnyOf(server.CertificateAuth(), server.BasicAuth(passwordOf)))
+```
+  </TabItem>
+</Tabs>
+
+TLS 1.2 is the minimum and verification cannot be turned off. Authentication runs before the WebSocket upgrade, so a refused station never gets a session. Passwords compare in constant time and print as `[redacted]`. A handler sees how a station connected with `p.(*server.Session).TLS()`. The [security-profiles example](https://github.com/otfabric/go-ocpp/tree/main/examples/security-profiles) runs all three on one server with a CA generated at start-up.
+
+## OCPP 2.1: SEND and CALLRESULTERROR
+
+OCPP 2.1 adds messages that are never answered. `Send` queues one and returns; it does not wait for the CALL slot. The 2.1 SEND action is NotifyPeriodicEventStream:
+
+```go
+err := ocpp21.NotifyPeriodicEventStream(ctx, c, &ocpp21.NotifyPeriodicEventStreamRequest{ /* … */ })
+```
+
+On the receiving end, the ocpp21 dispatchers deliver SENDs to the handler method of the same name, in arrival order with the CALLs. A CALLRESULT that fails validation on a 2.1 connection is answered with a CALLRESULTERROR, and the call returns the error.
+
+## Testing your handlers
+
+`ocpptest` runs a real go-ocpp peer over a loopback WebSocket, as `net/http/httptest` does for HTTP handlers. Everything it starts stops when the test ends.
+
+```go
+func TestMyCSMS(t *testing.T) {
+	stationSide := ocpptest.NewRecorder().Answer("Reset", `{"status":"Accepted"}`)
+	srv, url := ocpptest.CSMS(t, server.WithHandler(ocpp.V201, ocpp201.CSMS(myCSMS{})))
+	c := ocpptest.Station(t, url+"CS1", client.WithHandler(ocpp.V201, stationSide))
+
+	boot, err := ocpp201.BootNotification(ctx, c, &ocpp201.BootNotificationRequest{ /* … */ })
+	// …
+	reset, err := ocpp201.Reset(ctx, ocpptest.Session(t, srv, "CS1"), &ocpp201.ResetRequest{ /* … */ })
+}
+```
+
+A `Recorder` answers from canned payloads and records what it received (`Received`, `Wait`).
+
+## Certificates
+
+`ocppcert.Hash(cert, issuer, crypto.SHA256)` computes the CertificateHashData that DeleteCertificate and GetCertificateStatus name a certificate by: the hashes of the issuer's name and key, and the serial number. The library keeps no certificates; CSRs and OCSP requests are built with the standard library.
+
+## Errors
+
+Test errors with `errors.Is` and `errors.As`, never by comparing strings.
+
+| You want to know | Test |
+|---|---|
+| The peer answered with a CALLERROR | `errors.As(err, &ce)` with `ce *ocpp.CallError` |
+| A payload breaks its schema | `errors.As(err, &ve)` with `ve *ocpp.ValidationError` (`Field`, `Reason`, `Code`) |
+| No response in time | `errors.Is(err, ocpp.ErrTimeout)` |
+| The connection broke | `errors.Is(err, ocpp.ErrConnectionLost)` |
+| The peer closed on purpose | `errors.As(err, &ce)` with `ce *ocpp.CloseError`, then `ce.Normal()` |
+| A client could not connect, and why | `errors.Is(err, ocpp.ErrConnectFailed)`; `errors.As(err, &he)` with `he *client.HandshakeError` for the HTTP status |
+| Too many calls waiting | `errors.Is(err, ocpp.ErrBusy)` |
+| A session was replaced by a reconnect | `errors.Is(err, server.ErrReplaced)` |
+
+[ERRORS.md](https://github.com/otfabric/go-ocpp/blob/main/ERRORS.md) lists every error by method, the CALLERROR codes of each version (1.6 spells `FormationViolation` and `OccurenceConstraintViolation` as the specification does), and the WebSocket close codes.
+
+## Limits and timeouts
+
+| Option (client and server) | Default | Meaning |
+|---|---|---|
+| `WithResponseTimeout` | 30 s | Wait for a CALL's response |
+| `WithWriteTimeout` | 10 s | Writing one message; then the connection is lost |
+| `WithPingInterval` | off | WebSocket ping; no pong in time loses the connection |
+| `WithMaxQueuedCalls` | 64 | Calls waiting for the outgoing slot before `ErrBusy` |
+| `WithMaxMessageSize` | 64 KiB | Largest message, after decompression |
+| `WithMaxBadMessages` | off | Close after this many malformed frames |
+| `WithIncomingRateLimit` | off | Dispatch at most this many CALLs a second; the rest wait |
+| `server.WithMaxStations` | 10 000 | Simultaneous sessions |
+
+The caller's context bounds each call as well.
+
+## Logging, metrics and tracing
+
+- `WithLogger(*slog.Logger)`. Without it the library is silent. Payloads, passwords and authorization headers are never logged.
+- `WithMetrics(ocpp.Metrics)`: callbacks for connects, refusals, disconnects, reconnect attempts, calls done and handled, and protocol errors. Embed `ocpp.NopMetrics`.
+- `WithCallInterceptor` and `WithHandlerInterceptor` wrap every outgoing and incoming CALL, for tracing spans.
+- `WithFrameObserver` sees every frame, raw. ocppctl's `--debug` uses it.
+
+## Example programs
+
+Each example starts a CSMS and one or more stations in one process and prints a trace: `go run ./examples/<name>` from a checkout.
+
+| Example | Shows |
+|---|---|
+| `ocpp16`, `ocpp201`, `ocpp21` | A first CSMS and station per version; version negotiation and SEND in 2.1 |
+| `csms` | One server for all three versions with passwords, a station registry, Authorize, transactions and remote start |
+| `station-simulator` | Boot, heartbeats, charging sessions with meter values, reconnection; `-url` points it at any CSMS |
+| `smart-charging` | SetChargingProfile, a simple composite schedule, GetCompositeSchedule, ClearChargingProfile |
+| `security-profiles` | Profiles 1, 2 and 3 on one server, refused connections, certificate rotation |
+| `device-model` | GetBaseReport with NotifyReport, GetVariables, SetVariables, SetVariableMonitoring |
+| `remote-management` | TriggerMessage, UpdateFirmware, GetLog, Reset with a station that reboots |
+| `vendor-extensions` | DataTransfer both ways, 2.x customData, a raw call of an action that is not modelled |
+| `observability` | A JSON slog logger, counting metrics, interceptors and a frame observer |
+
+## Limitations
+
+- **No offline queue.** A call fails at once with `ErrNotConnected` or `ErrConnectionLost`, never silently; the application queues transaction messages. A queue behind a `Store` interface is planned.
+- **No charging logic.** Smart charging calculation, signed meter values, firmware and log upload, ISO 15118 contract logic, local authorization lists and persistence belong to the application; the examples show how.
+- **Planned:** switching URL and security profile after SetNetworkProfile, a Local Controller role (2.x), typed constants for configuration keys and device model variables, and OpenTelemetry and Prometheus adapters as a separate module.
+- **Out of scope:** OCPP 1.6 SOAP, 1.5 and older.
+- Station identities are matched exactly, including case.
+
+[FEATURES.md](https://github.com/otfabric/go-ocpp/blob/main/FEATURES.md) compares go-ocpp feature by feature with eight other open-source implementations.
+
+<LinkCard title="go-ocpp on GitHub" description="README, API.md, ERRORS.md, OBSERVABILITY.md, SECURITY.md, examples" href="https://github.com/otfabric/go-ocpp" />

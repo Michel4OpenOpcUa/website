@@ -1,6 +1,6 @@
 {
  "title": "Industrial Protocol Stack Landscape",
- "verified": "2026-10-18",
+ "verified": "2026-10-19",
  "notes": [
   "Stars and forks are snapshots taken on the verified date and cover the whole repository.",
   "repoCreated is the GitHub repository creation date; historySince is the year of the first commit in its history, which can be older.",
@@ -71,6 +71,15 @@
    "maturity": "Smaller, evolving",
    "commercial": "Less transparent",
    "summary": "2.0b and 3.x are different technologies, and 3.1 is not backward-compatible with 3.0."
+  },
+  {
+   "id": "ocpp",
+   "name": "OCPP",
+   "standard": "OCPP 1.6J, 2.0.1 and 2.1 (Open Charge Alliance)",
+   "focus": "Charging station to CSMS over WebSocket/JSON",
+   "maturity": "Mature for 1.6J, maturing for 2.x",
+   "commercial": "Established",
+   "summary": "2.0.1 is not backward-compatible with 1.6, while 2.1 extends 2.0.1, so a single \"OCPP supported\" claim says little without the version."
   }
  ],
  "implementations": [
@@ -2797,6 +2806,957 @@
     "https://github.com/otfabric/go-openadr"
    ],
    "verified": "2026-10-18"
+  },
+  {
+   "id": "mobilityhouse-ocpp",
+   "name": "ocpp (The Mobility House)",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "Python"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/mobilityhouse/ocpp",
+   "repo": "mobilityhouse/ocpp",
+   "stars": 1048,
+   "forks": 398,
+   "repoCreated": "2019-05-09",
+   "historySince": "2019",
+   "lastCommit": "2026-10-04",
+   "release": {
+    "version": "2.1.0",
+    "date": "2025-07-16",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/ocpp/2.1.0/"
+   },
+   "roles": [
+    "CSMS",
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1",
+    "2.1"
+   ],
+   "interop": "ocpp-interop",
+   "maintenance": "active",
+   "package": "https://pypi.org/project/ocpp/",
+   "notes": "Asyncio library for both sides of an OCPP-J connection. The README names 1.6 and 2.0.1; release 2.1.0 added an ocpp.v21 package (PR #728).",
+   "sources": [
+    "https://github.com/mobilityhouse/ocpp",
+    "https://pypi.org/pypi/ocpp/json",
+    "https://github.com/mobilityhouse/ocpp/blob/master/CHANGELOG.md"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "java-oca-ocpp",
+   "name": "Java-OCA-OCPP (ChargeTime)",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "Java"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/ChargeTimeEU/Java-OCA-OCPP",
+   "repo": "ChargeTimeEU/Java-OCA-OCPP",
+   "stars": 380,
+   "forks": 201,
+   "repoCreated": "2016-05-02",
+   "historySince": "2016",
+   "lastCommit": "2026-03-31",
+   "release": {
+    "version": "2.0",
+    "date": "2025-12-13",
+    "source": "Maven Central",
+    "url": "https://central.sonatype.com/artifact/eu.chargetime.ocpp/java-oca-ocpp/2.0"
+   },
+   "roles": [
+    "CSMS",
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "1.6S",
+    "2.0.1"
+   ],
+   "interop": "ocpp-interop",
+   "maintenance": "active",
+   "package": "https://central.sonatype.com/namespace/eu.chargetime.ocpp",
+   "notes": "Client and server library. The README lists OCPP 1.6 over JSON and SOAP, 2.0.1 and 2.1. Version 2.0 moved to new Maven artifacts (java-oca-ocpp, ocpp2, ocpp-common); the older v1_6 artifacts stop at 1.1.0 from 2022. OCPP 2.1 is on master, not in the v2.0 release.",
+   "sources": [
+    "https://github.com/ChargeTimeEU/Java-OCA-OCPP",
+    "https://mvnrepository.com/artifact/eu.chargetime.ocpp"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "ocpp-go",
+   "name": "ocpp-go",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/lorenzodonini/ocpp-go",
+   "repo": "lorenzodonini/ocpp-go",
+   "stars": 377,
+   "forks": 176,
+   "repoCreated": "2019-04-19",
+   "historySince": "2019",
+   "lastCommit": "2025-08-17",
+   "release": {
+    "version": "v0.19.0",
+    "date": "2025-02-02",
+    "source": "Go module proxy",
+    "url": "https://proxy.golang.org/github.com/lorenzodonini/ocpp-go/@v/v0.19.0.info"
+   },
+   "roles": [
+    "CSMS",
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "1.6 Security extension",
+    "2.0.1"
+   ],
+   "interop": "ocpp-interop",
+   "maintenance": "slowing",
+   "package": "https://pkg.go.dev/github.com/lorenzodonini/ocpp-go",
+   "notes": "OCPP-J only, with no plans for SOAP. The README marks 2.0.1 as working in examples but needing more real-world testing.",
+   "sources": [
+    "https://github.com/lorenzodonini/ocpp-go",
+    "https://proxy.golang.org/github.com/lorenzodonini/ocpp-go/@v/list"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "everest-libocpp",
+   "name": "libocpp (EVerest)",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "C++"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/EVerest/libocpp",
+   "repo": "EVerest/libocpp",
+   "stars": 151,
+   "forks": 78,
+   "repoCreated": "2021-12-20",
+   "historySince": "2021",
+   "lastCommit": "2026-04-27",
+   "release": {
+    "version": "v0.31.1",
+    "date": "2025-12-11",
+    "source": "Git tag",
+    "url": "https://github.com/EVerest/libocpp/tree/v0.31.1"
+   },
+   "roles": [
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1",
+    "2.1",
+    "Security profiles",
+    "ISO 15118 certificate management"
+   ],
+   "interop": "ocpp-interop",
+   "relation": "Merged into the EVerest repository at lib/everest/ocpp",
+   "maintenance": "archived",
+   "notes": "Charging-station-side OCPP library. The standalone repository was archived on 2026-04-27 and development continues inside EVerest; its README says the 2.0.1 implementation has been OCA certified on several hardware platforms and 2.1 is under development. ocpp-interop runs the libocpp of everest-core 2026.02.1.",
+   "sources": [
+    "https://github.com/EVerest/libocpp",
+    "https://github.com/EVerest/EVerest/tree/main/lib/everest/ocpp"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "citrineos",
+   "name": "CitrineOS",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "TypeScript"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/citrineos/citrineos-core",
+   "repo": "citrineos/citrineos-core",
+   "stars": 299,
+   "forks": 168,
+   "repoCreated": "2023-10-17",
+   "historySince": "2023",
+   "lastCommit": "2026-10-06",
+   "release": {
+    "version": "v2.0.1",
+    "date": "2026-10-06",
+    "source": "GitHub release",
+    "url": "https://github.com/citrineos/citrineos-core/releases/tag/v2.0.1"
+   },
+   "roles": [
+    "CSMS"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1",
+    "2.1"
+   ],
+   "interop": "ocpp-interop",
+   "maintenance": "active",
+   "package": "https://www.npmjs.com/package/@citrineos/base",
+   "notes": "Modular CSMS server with an operator UI, RabbitMQ messaging and published container images. The README carries the OCA OCPP 2.0.1 Core and Advanced Security certification logo, and its API routes include 2.1.",
+   "sources": [
+    "https://github.com/citrineos/citrineos-core",
+    "https://github.com/citrineos/citrineos-core/releases",
+    "https://registry.npmjs.org/@citrineos/base"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "everest",
+   "name": "EVerest",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "C++"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/EVerest/EVerest",
+   "repo": "EVerest/EVerest",
+   "stars": 282,
+   "forks": 206,
+   "repoCreated": "2021-12-20",
+   "historySince": "2020",
+   "lastCommit": "2026-10-16",
+   "release": {
+    "version": "2026.02.1",
+    "date": "2026-07-16",
+    "source": "GitHub release",
+    "url": "https://github.com/EVerest/EVerest/releases/tag/2026.02.1"
+   },
+   "roles": [
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1",
+    "2.1",
+    "ISO 15118"
+   ],
+   "upstream": [
+    "everest-libocpp"
+   ],
+   "relation": "Contains libocpp under lib/everest/ocpp",
+   "maintenance": "active",
+   "notes": "LF Energy charging station software stack, formerly the everest-core repository. Its README lists OCPP 1.6, 2.0.1 and 2.1 next to ISO 15118-2/-20, DIN SPEC 70121 and IEC 61851.",
+   "sources": [
+    "https://github.com/EVerest/EVerest",
+    "https://github.com/EVerest/EVerest/releases"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "steve",
+   "name": "SteVe",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "Java"
+   ],
+   "license": "GPL-3.0-or-later",
+   "url": "https://github.com/steve-community/steve",
+   "repo": "steve-community/steve",
+   "stars": 1140,
+   "forks": 497,
+   "repoCreated": "2013-09-05",
+   "historySince": "2013",
+   "lastCommit": "2026-10-11",
+   "release": {
+    "version": "steve-3.14.1",
+    "date": "2026-08-12",
+    "source": "GitHub release",
+    "url": "https://github.com/steve-community/steve/releases/tag/steve-3.14.1"
+   },
+   "roles": [
+    "CSMS"
+   ],
+   "capabilities": [
+    "1.2S/J",
+    "1.5S/J",
+    "1.6S",
+    "1.6J",
+    "1.6 Security extension"
+   ],
+   "maintenance": "active",
+   "notes": "Long-running open-source CSMS with a web UI. It covers OCPP 1.x only. The README notes an OCA 1.6 certification of the Powerfill backend built on SteVe, which does not apply to SteVe itself.",
+   "sources": [
+    "https://github.com/steve-community/steve",
+    "https://github.com/steve-community/steve/releases"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "microocpp",
+   "name": "MicroOcpp",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "C++"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/matth-x/MicroOcpp",
+   "repo": "matth-x/MicroOcpp",
+   "stars": 548,
+   "forks": 217,
+   "repoCreated": "2020-04-16",
+   "historySince": "2020",
+   "lastCommit": "2025-12-04",
+   "release": {
+    "version": "v1.2.0",
+    "date": "2024-11-03",
+    "source": "GitHub release",
+    "url": "https://github.com/matth-x/MicroOcpp/releases/tag/v1.2.0"
+   },
+   "roles": [
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1"
+   ],
+   "maintenance": "active",
+   "notes": "OCPP client for microcontrollers such as ESP32. All 1.6 feature profiles are supported; 2.0.1 use cases are alpha and off by default. Commercial support is offered via micro-ocpp.com.",
+   "sources": [
+    "https://github.com/matth-x/MicroOcpp",
+    "https://www.micro-ocpp.com/"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "rust-ocpp",
+   "name": "rust-ocpp",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "Rust"
+   ],
+   "license": "MIT OR Apache-2.0",
+   "url": "https://github.com/tommymalmqvist/rust-ocpp",
+   "repo": "tommymalmqvist/rust-ocpp",
+   "stars": 105,
+   "forks": 35,
+   "repoCreated": "2021-06-04",
+   "historySince": "2021",
+   "lastCommit": "2026-10-13",
+   "release": {
+    "version": "3.0.4",
+    "date": "2025-11-30",
+    "source": "crates.io",
+    "url": "https://crates.io/crates/rust-ocpp/3.0.4"
+   },
+   "roles": [
+    "CSMS",
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1",
+    "2.1 (WIP)"
+   ],
+   "maintenance": "active",
+   "package": "https://crates.io/crates/rust-ocpp",
+   "notes": "Message types validated against the OCA JSON schemas, with no transport. The repository moved from codelabsab/rust-ocpp; 2.1 sits behind a work-in-progress feature flag.",
+   "sources": [
+    "https://github.com/tommymalmqvist/rust-ocpp",
+    "https://crates.io/api/v1/crates/rust-ocpp"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "ocpp-rpc",
+   "name": "ocpp-rpc",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "JavaScript"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/mikuso/ocpp-rpc",
+   "repo": "mikuso/ocpp-rpc",
+   "stars": 136,
+   "forks": 47,
+   "repoCreated": "2022-04-19",
+   "historySince": "2022",
+   "lastCommit": "2026-08-10",
+   "release": {
+    "version": "2.2.1",
+    "date": "2025-07-17",
+    "source": "npm",
+    "url": "https://www.npmjs.com/package/ocpp-rpc/v/2.2.1"
+   },
+   "roles": [
+    "CSMS",
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1",
+    "2.1",
+    "Security profiles"
+   ],
+   "maintenance": "active",
+   "package": "https://www.npmjs.com/package/ocpp-rpc",
+   "notes": "Node.js client and server for the OCPP-J RPC framing, with schema validation and support for security profiles 1 to 3. Message handling beyond the RPC layer is left to the application.",
+   "sources": [
+    "https://github.com/mikuso/ocpp-rpc",
+    "https://registry.npmjs.org/ocpp-rpc"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "ocpp-core",
+   "name": "OCPP.Core",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "C#"
+   ],
+   "license": "GPL-3.0",
+   "url": "https://github.com/dallmann-consulting/OCPP.Core",
+   "repo": "dallmann-consulting/OCPP.Core",
+   "stars": 306,
+   "forks": 125,
+   "repoCreated": "2020-12-28",
+   "historySince": "2020",
+   "lastCommit": "2026-10-04",
+   "release": {
+    "version": "V1.8.0",
+    "date": "2026-10-04",
+    "source": "GitHub release",
+    "url": "https://github.com/dallmann-consulting/OCPP.Core/releases/tag/V1.8.0"
+   },
+   "roles": [
+    "CSMS"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1",
+    "2.1"
+   ],
+   "maintenance": "active",
+   "notes": "Small .NET OCPP server with a management web UI and SQL Server or SQLite storage. The README lists 1.6J, 2.0 and 2.1; the bundled 2.0 schemas are 2.0.1.",
+   "sources": [
+    "https://github.com/dallmann-consulting/OCPP.Core",
+    "https://github.com/dallmann-consulting/OCPP.Core/releases/tag/V1.8.0"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "open-ocpp",
+   "name": "Open OCPP",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "C++"
+   ],
+   "license": "LGPL-2.1",
+   "url": "https://github.com/c-jimenez/open-ocpp",
+   "repo": "c-jimenez/open-ocpp",
+   "stars": 175,
+   "forks": 72,
+   "repoCreated": "2022-01-10",
+   "historySince": "2022",
+   "lastCommit": "2026-04-13",
+   "release": {
+    "version": "v1.6.0",
+    "date": "2025-06-19",
+    "source": "GitHub release",
+    "url": "https://github.com/c-jimenez/open-ocpp/releases/tag/v1.6.0"
+   },
+   "prerelease": {
+    "version": "v2.0.0-alpha",
+    "date": "2025-06-19",
+    "source": "GitHub release"
+   },
+   "roles": [
+    "CSMS",
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1",
+    "Security profiles"
+   ],
+   "maintenance": "active",
+   "notes": "C++ library for charge points, central systems and local controllers. The 1.x line keeps the 1.6 API; 2.0.0-alpha on the develop branch adds 2.0.1 with a new API.",
+   "sources": [
+    "https://github.com/c-jimenez/open-ocpp",
+    "https://github.com/c-jimenez/open-ocpp/releases"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "openocpp-chargelab",
+   "name": "OpenOCPP (ChargeLab)",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "C++"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://openocpp.com/",
+   "repo": "ChargeLab/OpenOCPP",
+   "stars": 90,
+   "forks": 45,
+   "repoCreated": "2025-06-06",
+   "historySince": "2025",
+   "lastCommit": "2026-09-17",
+   "release": {
+    "version": "v1.0.0",
+    "date": "2025-06-13",
+    "source": "Git tag",
+    "url": "https://github.com/ChargeLab/OpenOCPP/tree/v1.0.0"
+   },
+   "roles": [
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1",
+    "Security profile 2"
+   ],
+   "maintenance": "active",
+   "notes": "Embedded charger firmware released by CSMS vendor ChargeLab in June 2025, with an ESP32 demo. The README reports passing the OCTT 2.0.1 core test cases as part of a vendor declaration of conformance.",
+   "sources": [
+    "https://github.com/ChargeLab/OpenOCPP",
+    "https://chargelab.co/blog/introducing-openocpp",
+    "https://openocpp.com/"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "izivia-ocpp-toolkit",
+   "name": "ocpp-toolkit (IZIVIA)",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "Kotlin"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/IZIVIA/ocpp-toolkit",
+   "repo": "IZIVIA/ocpp-toolkit",
+   "stars": 46,
+   "forks": 16,
+   "repoCreated": "2022-06-09",
+   "historySince": "2022",
+   "lastCommit": "2026-10-02",
+   "release": {
+    "version": "3.0.0",
+    "date": "2026-09-10",
+    "source": "Maven Central",
+    "url": "https://central.sonatype.com/artifact/com.izivia/ocpp-toolkit/3.0.0"
+   },
+   "roles": [
+    "CSMS",
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.2",
+    "1.5",
+    "1.6J",
+    "1.6S",
+    "2.0.1"
+   ],
+   "maintenance": "active",
+   "package": "https://central.sonatype.com/artifact/com.izivia/ocpp-toolkit",
+   "notes": "Kotlin library from French operator IZIVIA with a generic API across OCPP versions. The charging station side of 1.6 and 2.0.1 is complete over OCPP-J; security features beyond HTTP basic auth are not.",
+   "sources": [
+    "https://github.com/IZIVIA/ocpp-toolkit",
+    "https://maven-central.storage-download.googleapis.com/maven2/com/izivia/ocpp-toolkit/maven-metadata.xml"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "wwcp-ocpp",
+   "name": "WWCP_OCPP (Open Charging Cloud)",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "C#"
+   ],
+   "license": "AGPL-3.0",
+   "url": "https://github.com/OpenChargingCloud/WWCP_OCPP",
+   "repo": "OpenChargingCloud/WWCP_OCPP",
+   "stars": 71,
+   "forks": 26,
+   "repoCreated": "2016-05-23",
+   "historySince": "2016",
+   "lastCommit": "2026-10-19",
+   "release": null,
+   "roles": [
+    "CSMS",
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "1.6 Security extension",
+    "2.0.1",
+    "2.1"
+   ],
+   "maintenance": "active",
+   "notes": "Library with CSMS, charging station, local controller and gateway roles, plus its own OCPP CSE vendor extensions. 2.0.1 is served through the 2.1 code; no releases or tags are published.",
+   "sources": [
+    "https://github.com/OpenChargingCloud/WWCP_OCPP"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "monta-library-ocpp",
+   "name": "library-ocpp (Monta)",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "Kotlin"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/monta-app/library-ocpp",
+   "repo": "monta-app/library-ocpp",
+   "stars": 6,
+   "forks": 2,
+   "repoCreated": "2024-09-05",
+   "historySince": "2024",
+   "lastCommit": "2026-10-19",
+   "release": {
+    "version": "v3.0.2",
+    "date": "2026-09-29",
+    "source": "Git tag (JitPack)",
+    "url": "https://jitpack.io/#monta-app/library-ocpp"
+   },
+   "roles": [
+    "CSMS"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1"
+   ],
+   "maintenance": "active",
+   "notes": "OCPP library published by charging platform Monta and distributed through JitPack. The README documents the server-initiated message API.",
+   "sources": [
+    "https://github.com/monta-app/library-ocpp"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "ocpp-charging-stations-simulator",
+   "name": "e-mobility charging stations simulator (SAP)",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "TypeScript"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/SAP/e-mobility-charging-stations-simulator",
+   "repo": "SAP/e-mobility-charging-stations-simulator",
+   "stars": 229,
+   "forks": 100,
+   "repoCreated": "2022-05-18",
+   "historySince": "2020",
+   "lastCommit": "2026-10-18",
+   "release": {
+    "version": "v4.12.0",
+    "date": "2026-08-23",
+    "source": "GitHub release",
+    "url": "https://github.com/SAP/e-mobility-charging-stations-simulator/releases"
+   },
+   "roles": [
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1"
+   ],
+   "maintenance": "active",
+   "notes": "Node.js simulator that runs many OCPP-J charging stations for CSMS load and conformance testing. The repository also ships a small mock OCPP server.",
+   "sources": [
+    "https://github.com/SAP/e-mobility-charging-stations-simulator",
+    "https://github.com/SAP/e-mobility-charging-stations-simulator/releases"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "ha-ocpp",
+   "name": "Home Assistant OCPP integration",
+   "protocol": "ocpp",
+   "type": "derived",
+   "languages": [
+    "Python"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/lbbrhzn/ocpp",
+   "repo": "lbbrhzn/ocpp",
+   "stars": 407,
+   "forks": 166,
+   "repoCreated": "2021-02-04",
+   "historySince": "2021",
+   "lastCommit": "2026-10-15",
+   "release": {
+    "version": "v0.12.1",
+    "date": "2026-10-05",
+    "source": "GitHub release",
+    "url": "https://github.com/lbbrhzn/ocpp/releases/tag/v0.12.1"
+   },
+   "roles": [
+    "CSMS"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1",
+    "2.1 (experimental)"
+   ],
+   "upstream": [
+    "mobilityhouse-ocpp"
+   ],
+   "relation": "Built on the mobilityhouse ocpp library",
+   "maintenance": "active",
+   "notes": "Home Assistant integration that acts as a central system for local chargers. Its manifest requires ocpp>=2.1.0.",
+   "sources": [
+    "https://github.com/lbbrhzn/ocpp",
+    "https://github.com/lbbrhzn/ocpp/releases/tag/v0.12.1"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "open-e-mobility",
+   "name": "Open e-Mobility (ev-server)",
+   "protocol": "ocpp",
+   "type": "legacy",
+   "languages": [
+    "TypeScript"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/sap-labs-france/ev-server",
+   "repo": "sap-labs-france/ev-server",
+   "stars": 176,
+   "forks": 163,
+   "repoCreated": "2017-03-24",
+   "historySince": "2020",
+   "lastCommit": "2023-08-06",
+   "release": {
+    "version": "V2.7.8",
+    "date": "2023-05-16",
+    "source": "Git tag",
+    "url": "https://github.com/sap-labs-france/ev-server/tree/V2.7.8"
+   },
+   "roles": [
+    "CSMS"
+   ],
+   "capabilities": [
+    "1.2S",
+    "1.5S/J",
+    "1.6S",
+    "1.6J"
+   ],
+   "maintenance": "archived",
+   "notes": "Node.js CSMS backend from SAP Labs France with smart charging, billing and roaming. The repository is archived; OCPP 2.0 was planned but never added.",
+   "sources": [
+    "https://github.com/sap-labs-france/ev-server"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "newmotion-ocpp",
+   "name": "NewMotion OCPP (Scala)",
+   "protocol": "ocpp",
+   "type": "legacy",
+   "languages": [
+    "Scala"
+   ],
+   "license": "GPL-3.0",
+   "url": "https://github.com/ShellRechargeSolutionsEU/ocpp",
+   "repo": "ShellRechargeSolutionsEU/ocpp",
+   "stars": 212,
+   "forks": 64,
+   "repoCreated": "2012-08-01",
+   "historySince": "2012",
+   "lastCommit": "2021-10-08",
+   "release": {
+    "version": "v9.2.3",
+    "date": "2020-01-21",
+    "source": "Git tag",
+    "url": "https://github.com/ShellRechargeSolutionsEU/ocpp/tree/v9.2.3"
+   },
+   "roles": [
+    "CSMS",
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.5J",
+    "1.6J"
+   ],
+   "maintenance": "archived",
+   "notes": "OCPP-J library developed and used by NewMotion, later Shell Recharge. It is archived; the README notes only partial 2.0 support and a separate library for SOAP.",
+   "sources": [
+    "https://github.com/ShellRechargeSolutionsEU/ocpp"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "motown",
+   "name": "Motown",
+   "protocol": "ocpp",
+   "type": "legacy",
+   "languages": [
+    "Java"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/motown-io/motown",
+   "repo": "motown-io/motown",
+   "stars": 44,
+   "forks": 13,
+   "repoCreated": "2013-11-11",
+   "historySince": "2013",
+   "lastCommit": "2019-02-01",
+   "release": {
+    "version": "0.14.0",
+    "date": "2019-02-01",
+    "source": "Git tag",
+    "url": "https://github.com/motown-io/motown/tree/0.14.0"
+   },
+   "roles": [
+    "CSMS"
+   ],
+   "capabilities": [
+    "1.2S",
+    "1.5S",
+    "1.5J"
+   ],
+   "maintenance": "quiet",
+   "notes": "Early open-source charging back office with OCPP and OCPI modules. No commits since 2019.",
+   "sources": [
+    "https://github.com/motown-io/motown"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "trialog-qocpp",
+   "name": "Trialog QOCPP",
+   "protocol": "ocpp",
+   "type": "commercial",
+   "languages": [
+    "C++"
+   ],
+   "license": "Commercial",
+   "url": "https://www.trialog.com/en/solutions-for-charging-station-manufacturers/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "CSMS",
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1"
+   ],
+   "maintenance": "n/a",
+   "notes": "OCPP communication stacks sold in two variants: QOCPP-CS for charging stations and QOCPP-CSMS for supervisors. Both are C++ on Qt; the datasheets list 2.1 bidirectional charging as a prototype licence option.",
+   "sources": [
+    "https://www.trialog.com/en/solutions-for-charging-station-manufacturers/",
+    "https://www.trialog.com/wp-content/uploads/2022/12/QOCPP-CS_OCPP-Communication-Stack_Datasheet.pdf",
+    "https://www.trialog.com/wp-content/uploads/2022/12/QOCPP-CSMS_OCPP-Communication-Stack_Datasheet.pdf"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "delta-ocpp-stack",
+   "name": "Delta OCPP Stack",
+   "protocol": "ocpp",
+   "type": "commercial",
+   "languages": [],
+   "license": "Commercial",
+   "url": "https://www.deltathailand.com/en/products/Infrastructure/Energy-Automotive-Middleware/Communication/OCPP-Stack",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6",
+    "2.0.1"
+   ],
+   "maintenance": "n/a",
+   "notes": "Portable OCPP stack offered by Delta Electronics (Thailand) as automotive middleware, with 2.1 on its roadmap. Language and licensing terms are not published.",
+   "sources": [
+    "https://www.deltathailand.com/en/products/Infrastructure/Energy-Automotive-Middleware/Communication/OCPP-Stack"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "bytesnap-ocpp",
+   "name": "ByteSnap OCPP software",
+   "protocol": "ocpp",
+   "type": "commercial",
+   "languages": [],
+   "license": "Commercial",
+   "url": "https://www.bytesnap.com/products/charging-point-ocpp-software-licensing/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6",
+    "2.0"
+   ],
+   "maintenance": "n/a",
+   "notes": "UK design house offering an OCPP client and library for chargers, as a product or under a customised software licence. The page names OCPP 1.6 and 2.0 without further detail.",
+   "sources": [
+    "https://www.bytesnap.com/products/charging-point-ocpp-software-licensing/"
+   ],
+   "verified": "2026-10-19"
+  },
+  {
+   "id": "otfabric-go-ocpp",
+   "name": "go-ocpp",
+   "protocol": "ocpp",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/otfabric/go-ocpp",
+   "repo": "otfabric/go-ocpp",
+   "stars": 0,
+   "repoCreated": "2026-10-18",
+   "historySince": "2026",
+   "lastCommit": "2026-10-19",
+   "release": {
+    "version": "v0.1.3",
+    "date": "2026-10-19",
+    "source": "GitHub release",
+    "url": "https://github.com/otfabric/go-ocpp/releases/tag/v0.1.3"
+   },
+   "roles": [
+    "CSMS",
+    "Charging station"
+   ],
+   "capabilities": [
+    "1.6J",
+    "2.0.1",
+    "2.1",
+    "Security profiles"
+   ],
+   "interop": "ocpp-interop",
+   "maintenance": "active",
+   "emerging": true,
+   "otfabric": true,
+   "package": "https://pkg.go.dev/github.com/otfabric/go-ocpp",
+   "notes": "Both roles on one RPC engine, every action typed and validated against the OCA schemas, including the 2.1 SEND and CALLRESULTERROR. Tested against the five ocpp-interop references.",
+   "sources": [
+    "https://github.com/otfabric/go-ocpp"
+   ],
+   "verified": "2026-10-19"
   }
  ]
 }

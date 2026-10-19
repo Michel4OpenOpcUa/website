@@ -12,11 +12,11 @@ export const ogImage = {
 
 /** Meta description for the homepage: what OT Fabric is, with the protocols people search for. */
 export const homeDescription =
-	'Open-source protocol libraries, CLIs and interoperability suites for Modbus, SunSpec, OPC UA, BACnet, IEC 104, IEC 61850, Siemens S7 and OpenADR.';
+	'Open-source protocol libraries, CLIs and interoperability suites for Modbus, SunSpec, OPC UA, BACnet, IEC 104, IEC 61850, Siemens S7, OpenADR and OCPP.';
 
 /** Longer description for the homepage and machine-readable summaries. */
 export const longDescription =
-	'OT Fabric builds open-source, MIT-licensed protocol libraries, command-line tools and interoperability test suites for industrial (OT) devices: Modbus, SunSpec, OPC UA, BACnet/IP, IEC 60870-5-104, IEC 61850 / MMS, Siemens S7 and OpenADR. Built by people and AI agents together.';
+	'OT Fabric builds open-source, MIT-licensed protocol libraries, command-line tools and interoperability test suites for industrial (OT) devices: Modbus, SunSpec, OPC UA, BACnet/IP, IEC 60870-5-104, IEC 61850 / MMS, Siemens S7, OpenADR and OCPP. Built by people and AI agents together.';
 
 export const absolute = (path: string) => new URL(path, site.url).href;
 
@@ -53,6 +53,7 @@ export const organization = {
 		'IEC 61850',
 		'Siemens S7',
 		'OpenADR',
+		'OCPP',
 		'Model Context Protocol',
 	],
 };

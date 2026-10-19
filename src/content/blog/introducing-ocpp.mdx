@@ -1,0 +1,69 @@
+---
+title: 'OCPP joins OT Fabric: go-ocpp, ocppctl and five reference stacks'
+description: OCPP is the protocol between EV charging stations and the systems that run them. go-ocpp implements 1.6J, 2.0.1 and 2.1 in both roles, ocppctl puts it on the command line, and ocpp-interop tests both against five independent implementations.
+date: 2026-10-19
+authors: [OT Fabric]
+tags: [announcement, ocpp, ev-charging, energy, interop]
+featured: true
+cover:
+  alt: go-ocpp in the middle, connected to the reference stations of The Mobility House, ChargeTimeEU, ocpp-go and EVerest libocpp on the left and the reference CSMSs of The Mobility House, ChargeTimeEU, ocpp-go and CitrineOS on the right. 1458 scenarios pass, none fails.
+  image: ../../assets/blog/ocpp-interop-matrix.svg
+---
+
+import Callout from '../../components/Callout.astro';
+import MapLink from '../../components/ecosystem/MapLink.astro';
+
+Every public charger, most workplace chargers and a growing number of home chargers talk to a management system over OCPP, the Open Charge Point Protocol. It is how a charge point operator boots a station, authorizes a card, bills a session and limits power when a site reaches its grid connection limit. Chargers are among the largest flexible loads on the low-voltage grid, so OCPP is where EV charging meets energy management.
+
+Today OCPP becomes the ninth protocol in OT Fabric, with the same three pieces as every other: a library, a command-line tool and an interoperability suite.
+
+## go-ocpp
+
+[go-ocpp](/projects/go-ocpp/) implements OCPP-J, OCPP over WebSocket with JSON, for both ends of the connection: the **charging station** and the **CSMS**, on one RPC engine, with CALLs from either side.
+
+- **Three versions:** OCPP 1.6J with the Security Whitepaper extensions (39 actions), 2.0.1 (64) and 2.1 (91), including the SEND and CALLRESULTERROR message types that 2.1 adds. One CSMS endpoint can serve all three.
+- **Every message typed and validated.** The packages are generated from the Open Charge Alliance's JSON schemas, and validation is always on: every request before it is sent, every response when it arrives, every incoming request before a handler sees it.
+- **Security profiles 1 to 3**, with authentication before the WebSocket upgrade and TLS verification that cannot be turned off.
+- **Built to run in production:** reconnection with the OCPP back-off, keepalive, limits on stations, message size, queues and rate, graceful shutdown, slog logging, metrics hooks and tracing interceptors.
+- **One dependency**, a WebSocket library.
+
+It is a protocol library, not a charging management system. Charging behaviour, authorization policy and billing stay in your handlers, and nine example programs show how: a small CSMS for all three versions, a station simulator, smart charging, a device model, remote management and all three security profiles.
+
+## ocppctl
+
+[ocppctl](/projects/ocppctl/) puts go-ocpp on the command line, for the people who build and run charging infrastructure.
+
+```sh
+# Which version does this CSMS pick, over which TLS, with which certificate?
+ocppctl client probe --url wss://csms.example.com/ocpp/CS001 --password-file pw.txt
+
+# A hundred simulated stations for fifteen minutes, as JSON Lines
+ocppctl client run --url 'wss://csms.example.com/ocpp/LOAD{001..100}' --stagger 50ms --duration 15m --format json
+
+# A CSMS on your laptop for station and firmware development
+ocppctl server start --insecure-transport --no-auth
+```
+
+It sends any message with schema validation in both directions, runs YAML scenarios with expectations in CI, serves a CSMS that answers stations from a model, and validates payloads and decodes frames offline. Output is text, a table or JSON, with stable exit codes. The [ocppctl guide](/docs/protocols/ocpp/cli/) walks through it.
+
+## Tested against five independent stacks
+
+[ocpp-interop](/projects/ocpp-interop/) packages five independent OCPP implementations as containers behind one contract: The Mobility House ocpp (Python), ChargeTimeEU Java-OCA-OCPP (Java), lorenzodonini/ocpp-go (Go), EVerest libocpp (C++, a charging station) and CitrineOS (TypeScript, a CSMS). Its fixtures have a sample of every action of every version.
+
+go-ocpp is tested in both roles against all five: **1458 scenarios pass and none fails**, with TLS and compression, and OCPP 2.1 against three independent implementations. ocppctl runs the same references and passes 1154 of 1218 exchanges; every other result is explained in its known issues. The references were also tested against each other, and the defects that turned up in them are recorded with the line of upstream code that causes each one. The details are in [Testing and interop](/docs/protocols/ocpp/testing/).
+
+<Callout type="note" title="Pre-release, not certified">
+go-ocpp v0.1.3 and ocppctl v0.1.1 are pre-release, and the API may still change. Interoperability with five stacks is not conformance, and it is not Open Charge Alliance certification. What has not been covered yet, such as SEND against an independent implementation and real chargers, is listed openly.
+</Callout>
+
+## Built with AI agents
+
+Like the rest of OT Fabric, the OCPP projects are built by people and AI agents together, and each repository's AGENTS.md holds both to the same rules: never invent protocol behaviour, never mark an action implemented because its types compile, never skip or weaken a failing test, and never report an unsupported interop scenario as passed. The tests, the interop results and the list of known issues are public, so you can judge the result yourself.
+
+## Who else implements OCPP
+
+The [ecosystem map](/ecosystem/?protocol=ocpp) now covers OCPP: the stacks we interop test against, and the other open-source and commercial implementations, with language, licence, roles and latest release.
+
+<MapLink protocol="ocpp" title="Explore OCPP on the ecosystem map" />
+
+Start with the [OCPP overview](/docs/protocols/ocpp/), or `go get github.com/otfabric/go-ocpp`.

@@ -3,7 +3,7 @@ import { file, glob } from 'astro/loaders';
 import { docsLoader } from '@astrojs/starlight/loaders';
 import { docsSchema } from '@astrojs/starlight/schema';
 
-const protocolIds = ['modbus', 'opc-ua', 'bacnet', 'iec-104', 'iec-61850', 's7', 'sunspec', 'openadr'] as const;
+const protocolIds = ['modbus', 'opc-ua', 'bacnet', 'iec-104', 'iec-61850', 's7', 'sunspec', 'openadr', 'ocpp'] as const;
 
 export const collections = {
 	// Documentation, rendered by Starlight under /docs/.

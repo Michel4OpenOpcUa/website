@@ -1,7 +1,8 @@
 ---
 title: The industrial protocol stack landscape
-description: Who implements Modbus, OPC UA, BACnet, IEC 104, IEC 61850, Siemens S7 and OpenADR? 75 open-source and commercial stacks, verified against their own release channels, and an interactive map to explore them.
+description: Who implements Modbus, OPC UA, BACnet, IEC 104, IEC 61850, Siemens S7, OpenADR and OCPP? 100 open-source and commercial stacks, verified against their own release channels, and an interactive map to explore them.
 date: 2026-10-18
+updated: 2026-10-19
 authors: [OT Fabric]
 tags: [ecosystem, research, open-source]
 featured: true
@@ -16,7 +17,7 @@ import Callout from '../../components/Callout.astro';
 
 Nobody connects a plant, a substation or a building with one library. Every integration leans on stacks written by other people: a C library in a gateway, a Python tool on a laptop, a Java server in a SCADA system, a vendor SDK inside a controller. OT Fabric only makes sense as part of that ecosystem, which is why each of our protocols ships with an interop suite that tests against the established implementations.
 
-So we mapped the ecosystem. This post is the research: seven protocol families, 75 implementations, and what we learned checking every one of them against its own release channel. The interactive version lets you pick a protocol, filter by language, licence and activity, and jump straight to the source.
+So we mapped the ecosystem. This post is the research: eight protocol families, 100 implementations, and what we learned checking every one of them against its own release channel. The interactive version lets you pick a protocol, filter by language, licence and activity, and jump straight to the source.
 
 <MapLink />
 
@@ -107,6 +108,14 @@ Snap7 is distributed on SourceForge; the popular GitHub repository under SCADACS
 
 OpenLEADR covers both generations: Python for 2.0b, Rust for 3.1, where its README is upfront that subscriptions (webhooks) are not supported yet. ElaadNL's openadr3-client comes from an organization that builds EV charging infrastructure. The EPRI projects are legacy references; EPRI has discontinued support. The OpenADR Alliance's reference implementation is not publicly available, so it is not on the map, and we found no standalone commercial OpenADR SDKs comparable to other protocols. That branch stays open for verified submissions.
 
+## OCPP
+
+**Mature for 1.6J, maturing for 2.x.** OCPP 2.0.1 is not backward-compatible with 1.6, while 2.1 extends 2.0.1, so a claim of "OCPP support" says little without the version. The map lists versions and roles: the charging station and the CSMS.
+
+<LandscapeTable protocol="ocpp" />
+
+The open-source side is broad, with libraries in Python, Java, Go, C++, Rust, JavaScript, C# and Kotlin. Five of them run in [ocpp-interop](https://github.com/otfabric/ocpp-interop): The Mobility House ocpp, ChargeTimeEU Java-OCA-OCPP, ocpp-go, EVerest libocpp and CitrineOS. libocpp's own repository is archived; it now lives inside EVerest, the LF Energy charging station stack. SteVe and OCPP.Core are complete CSMS products rather than libraries, and MicroOcpp brings the station side to microcontrollers. Commercial stacks are sold for both sides, though versions and platforms are rarely published.
+
 ## The picture across protocols
 
 | Protocol | Open source | Commercial SDKs | Primary references |
@@ -118,6 +127,7 @@ OpenLEADR covers both generations: Python for 2.0b, Rust for 3.1, where its READ
 | IEC 61850 / MMS | Specialized | Established | libiec61850, IEC61850bean |
 | Siemens S7 | Mature for classic S7 | Established | Snap7, S7NetPlus, python-snap7, Apache PLC4X |
 | OpenADR | Smaller, evolving | Not transparent | OpenLEADR (Python and Rust), ElaadNL |
+| OCPP | Mature for 1.6J, maturing for 2.x | Established | The Mobility House ocpp, Java-OCA-OCPP, ocpp-go, EVerest libocpp, CitrineOS, SteVe |
 
 These are judgements about maturity and visibility, not measured conformance, security or quality. Our interop suites are where we test behaviour; this map is where we record who is out there.
 
