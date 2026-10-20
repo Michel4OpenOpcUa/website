@@ -1,6 +1,6 @@
 {
  "title": "Industrial Protocol Stack Landscape",
- "verified": "2026-10-19",
+ "verified": "2026-10-20",
  "notes": [
   "Stars and forks are snapshots taken on the verified date and cover the whole repository.",
   "repoCreated is the GitHub repository creation date; historySince is the year of the first commit in its history, which can be older.",
@@ -80,6 +80,15 @@
    "maturity": "Mature for 1.6J, maturing for 2.x",
    "commercial": "Established",
    "summary": "2.0.1 is not backward-compatible with 1.6, while 2.1 extends 2.0.1, so a single \"OCPP supported\" claim says little without the version."
+  },
+  {
+   "id": "dnp3",
+   "name": "DNP3",
+   "standard": "IEEE 1815-2012",
+   "focus": "SCADA master to outstation over TCP, UDP, TLS and serial lines",
+   "maturity": "Mature, with few active open stacks",
+   "commercial": "Very established",
+   "summary": "The long-standing open-source reference, opendnp3, is archived and its best-known successor is source-available, so the actively maintained, permissively licensed field is small and young."
   }
  ],
  "implementations": [
@@ -3757,6 +3766,656 @@
     "https://github.com/otfabric/go-ocpp"
    ],
    "verified": "2026-10-19"
+  },
+  {
+   "id": "stepfunc-dnp3",
+   "name": "dnp3 (Step Function I/O)",
+   "protocol": "dnp3",
+   "type": "independent",
+   "languages": [
+    "Rust",
+    "C",
+    "C++",
+    "C#",
+    "Java"
+   ],
+   "license": "Non-commercial (Step Function I/O)",
+   "commercialLicense": true,
+   "url": "https://github.com/stepfunc/dnp3",
+   "repo": "stepfunc/dnp3",
+   "stars": 159,
+   "forks": 37,
+   "historySince": "2020",
+   "lastCommit": "2026-10-19",
+   "release": {
+    "version": "1.7.0",
+    "date": "2026-09-21",
+    "source": "crates.io",
+    "url": "https://crates.io/crates/dnp3/1.7.0"
+   },
+   "prerelease": {
+    "version": "1.8.0-M1",
+    "date": "2026-10-12",
+    "source": "crates.io"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "capabilities": [
+    "TCP",
+    "TLS",
+    "UDP",
+    "Serial",
+    "File transfer"
+   ],
+   "interop": "dnp3-interop",
+   "maintenance": "active",
+   "package": "https://crates.io/crates/dnp3",
+   "notes": "Rust core with C, C++, .NET and Java bindings, also published to NuGet and Maven Central. The licence allows non-commercial, non-production use; production use needs a commercial licence from Step Function I/O. No Secure Authentication.",
+   "sources": [
+    "https://github.com/stepfunc/dnp3",
+    "https://crates.io/api/v1/crates/dnp3",
+    "https://www.nuget.org/packages/dnp3"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "opendnp3",
+   "name": "opendnp3",
+   "protocol": "dnp3",
+   "type": "independent",
+   "languages": [
+    "C++",
+    "Java",
+    "C#"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/dnp3/opendnp3",
+   "repo": "dnp3/opendnp3",
+   "stars": 336,
+   "forks": 269,
+   "historySince": "2013",
+   "lastCommit": "2022-05-18",
+   "release": {
+    "version": "3.1.2",
+    "date": "2022-04-22",
+    "source": "NuGet and git tag",
+    "url": "https://www.nuget.org/packages/opendnp3/3.1.2"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "capabilities": [
+    "TCP",
+    "TLS",
+    "UDP",
+    "Serial"
+   ],
+   "interop": "dnp3-interop",
+   "maintenance": "archived",
+   "package": "https://www.nuget.org/packages/opendnp3",
+   "notes": "For a decade the de facto open-source DNP3 stack, with Java and .NET bindings. Archived on 1 September 2022 at 3.1.2; still the engine under several Python bindings and forks. Secure Authentication was removed in 2016.",
+   "sources": [
+    "https://github.com/dnp3/opendnp3",
+    "https://www.nuget.org/packages/opendnp3"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "dsc-go-dnp3",
+   "name": "go-dnp3 (DSC Systems)",
+   "protocol": "dnp3",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "GPL-3.0-or-later",
+   "url": "https://github.com/dscsystems/go-dnp3",
+   "repo": "dscsystems/go-dnp3",
+   "stars": 2,
+   "forks": 0,
+   "historySince": "2026",
+   "lastCommit": "2026-10-18",
+   "release": {
+    "version": "v0.8.1",
+    "date": "2026-10-18",
+    "source": "Go module proxy",
+    "url": "https://proxy.golang.org/github.com/dscsystems/go-dnp3/@v/v0.8.1.info"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "capabilities": [
+    "TCP",
+    "TLS",
+    "UDP",
+    "Serial",
+    "File transfer",
+    "SAv5",
+    "Data sets"
+   ],
+   "interop": "dnp3-interop",
+   "maintenance": "active",
+   "emerging": true,
+   "package": "https://pkg.go.dev/github.com/dscsystems/go-dnp3",
+   "notes": "Pure Go master and outstation with Secure Authentication v5 (no aggressive mode), file transfer, data sets and multi-drop, plus command-line tools. Runs the DNP Users Group IED conformance procedures in CI. Pre-1.0: the README says the API is not yet stable.",
+   "sources": [
+    "https://github.com/dscsystems/go-dnp3",
+    "https://proxy.golang.org/github.com/dscsystems/go-dnp3/@latest"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "dnp3py",
+   "name": "dnp3py",
+   "protocol": "dnp3",
+   "type": "independent",
+   "languages": [
+    "Python"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/craigpnnl/dnp3py",
+   "repo": "craigpnnl/dnp3py",
+   "stars": 10,
+   "forks": 10,
+   "historySince": "2025",
+   "lastCommit": "2026-09-29",
+   "release": {
+    "version": "0.6.0",
+    "date": "2026-09-29",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/dnp3py/0.6.0/"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "capabilities": [
+    "TCP",
+    "IEEE 1815.2 (MESA DER)"
+   ],
+   "interop": "dnp3-interop",
+   "maintenance": "active",
+   "emerging": true,
+   "package": "https://pypi.org/project/dnp3py/",
+   "notes": "Pure Python on asyncio, targeting the level 2 subset, with a MESA IEEE 1815.2 DER outstation simulator. In dnp3-interop its outstation serves only a reduced fixture.",
+   "sources": [
+    "https://github.com/craigpnnl/dnp3py",
+    "https://pypi.org/pypi/dnp3py/json"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "cb-sigma-dnp3",
+   "name": "dnp3 (cB-Sigma)",
+   "protocol": "dnp3",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/cB-Sigma/dnp3",
+   "repo": "cB-Sigma/dnp3",
+   "stars": 0,
+   "forks": 0,
+   "historySince": "2026",
+   "lastCommit": "2026-10-12",
+   "release": {
+    "version": "v0.3.0",
+    "date": "2026-10-11",
+    "source": "Go module proxy",
+    "url": "https://proxy.golang.org/github.com/!c!b-!sigma/dnp3/@v/v0.3.0.info"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "capabilities": [
+    "TCP",
+    "TLS",
+    "UDP",
+    "Serial",
+    "File transfer",
+    "SAv5",
+    "Data sets"
+   ],
+   "maintenance": "active",
+   "emerging": true,
+   "package": "https://pkg.go.dev/github.com/cB-Sigma/dnp3",
+   "notes": "Pure Go master and outstation written for the SigmaM2M oneM2M platform, with Secure Authentication v5 including update key changes and user certificates, a gateway and device profile documents. Interop tested against opendnp3 by its authors. A companion module, dnp3-sim, is a fault-injecting simulated outstation built on it.",
+   "sources": [
+    "https://github.com/cB-Sigma/dnp3",
+    "https://proxy.golang.org/github.com/!c!b-!sigma/dnp3/@latest",
+    "https://github.com/cB-Sigma/dnp3-sim"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "nfm-dnp3",
+   "name": "nfm-dnp3",
+   "protocol": "dnp3",
+   "type": "independent",
+   "languages": [
+    "Python"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/fxodell/dnp3py",
+   "repo": "fxodell/dnp3py",
+   "stars": 0,
+   "forks": 0,
+   "historySince": "2026",
+   "lastCommit": "2026-02-06",
+   "release": {
+    "version": "1.0.1",
+    "date": "2026-02-06",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/nfm-dnp3/1.0.1/"
+   },
+   "roles": [
+    "master"
+   ],
+   "capabilities": [
+    "TCP"
+   ],
+   "maintenance": "active",
+   "package": "https://pypi.org/project/nfm-dnp3/",
+   "notes": "Small pure Python master over TCP: class polls, binary, analog and counter points, direct operate and select-before-operate. Imported as dnp3py, a different project from craigpnnl's dnp3py. MIT per its PyPI metadata; the repository has no licence file.",
+   "sources": [
+    "https://github.com/fxodell/dnp3py",
+    "https://pypi.org/pypi/nfm-dnp3/json"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "yadnp3",
+   "name": "yadnp3",
+   "protocol": "dnp3",
+   "type": "derived",
+   "languages": [
+    "C++",
+    "Python"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/f0rw4rd/yadnp3",
+   "repo": "f0rw4rd/yadnp3",
+   "stars": 0,
+   "forks": 0,
+   "historySince": "2013",
+   "lastCommit": "2026-10-19",
+   "release": {
+    "version": "3.2.1.4",
+    "date": "2026-10-19",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/yadnp3/3.2.1.4/"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "capabilities": [
+    "TCP",
+    "TLS",
+    "UDP",
+    "Serial",
+    "File transfer"
+   ],
+   "upstream": [
+    "opendnp3"
+   ],
+   "relation": "Fork of opendnp3 with Python bindings",
+   "maintenance": "active",
+   "emerging": true,
+   "package": "https://pypi.org/project/yadnp3/",
+   "notes": "\"Yet another opendnp3 fork\": continues the archived stack with new features (file transfer, device attributes, deadbands on the master) and pybind11 Python bindings as its focus. Describes itself as experimental.",
+   "sources": [
+    "https://github.com/f0rw4rd/yadnp3",
+    "https://pypi.org/pypi/yadnp3/json"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "pydnp3",
+   "name": "pydnp3",
+   "protocol": "dnp3",
+   "type": "derived",
+   "languages": [
+    "Python"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/Kisensum/pydnp3",
+   "repo": "Kisensum/pydnp3",
+   "stars": 37,
+   "forks": 36,
+   "historySince": "2018",
+   "lastCommit": "2019-10-21",
+   "release": {
+    "version": "0.1.0",
+    "date": "2018-06-07",
+    "source": "PyPI",
+    "url": "https://pypi.org/project/pydnp3/0.1.0/"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "upstream": [
+    "opendnp3"
+   ],
+   "relation": "Python bindings for opendnp3",
+   "maintenance": "quiet",
+   "package": "https://pypi.org/project/pydnp3/",
+   "notes": "The original pybind11 bindings for opendnp3. VOLTTRON's dnp3-python continued them.",
+   "sources": [
+    "https://github.com/Kisensum/pydnp3",
+    "https://pypi.org/pypi/pydnp3/json"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "volttron-dnp3-python",
+   "name": "dnp3-python (VOLTTRON)",
+   "protocol": "dnp3",
+   "type": "derived",
+   "languages": [
+    "Python"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/VOLTTRON/dnp3-python",
+   "repo": "VOLTTRON/dnp3-python",
+   "stars": 20,
+   "forks": 13,
+   "historySince": "2018",
+   "lastCommit": "2024-12-15",
+   "release": null,
+   "prerelease": {
+    "version": "0.3.0b2",
+    "date": "2024-11-13",
+    "source": "PyPI"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "upstream": [
+    "pydnp3",
+    "opendnp3"
+   ],
+   "relation": "Continuation of pydnp3, used by the VOLTTRON platform",
+   "maintenance": "slowing",
+   "package": "https://pypi.org/project/dnp3-python/",
+   "notes": "Python wrapper of opendnp3 from the VOLTTRON project (PNNL). Every PyPI release is a beta.",
+   "sources": [
+    "https://github.com/VOLTTRON/dnp3-python",
+    "https://pypi.org/pypi/dnp3-python/json"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "dart-dnp3",
+   "name": "dnp3 (Dart and Flutter)",
+   "protocol": "dnp3",
+   "type": "derived",
+   "languages": [
+    "Dart"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/gencto/dnp3_plugin",
+   "repo": "gencto/dnp3_plugin",
+   "stars": 0,
+   "forks": 0,
+   "historySince": "2026",
+   "lastCommit": "2026-10-13",
+   "release": {
+    "version": "0.3.2",
+    "date": "2026-10-12",
+    "source": "pub.dev",
+    "url": "https://pub.dev/packages/dnp3/versions/0.3.2"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "upstream": [
+    "stepfunc-dnp3"
+   ],
+   "relation": "Dart FFI bindings for Step Function I/O dnp3",
+   "maintenance": "active",
+   "emerging": true,
+   "package": "https://pub.dev/packages/dnp3",
+   "notes": "Own code MIT; it links the Step Function I/O library, so its non-commercial licence applies to apps built with it.",
+   "sources": [
+    "https://github.com/gencto/dnp3_plugin",
+    "https://pub.dev/api/packages/dnp3"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "gec-dnp3",
+   "name": "dnp3 (Green Energy Corp)",
+   "protocol": "dnp3",
+   "type": "legacy",
+   "languages": [
+    "C++"
+   ],
+   "license": "Apache-2.0",
+   "url": "https://github.com/gec/dnp3",
+   "repo": "gec/dnp3",
+   "stars": 108,
+   "forks": 42,
+   "historySince": "2010",
+   "lastCommit": "2013-05-22",
+   "release": {
+    "version": "1.0.0",
+    "source": "Git tag",
+    "url": "https://github.com/gec/dnp3/releases/tag/1.0.0"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "relation": "Predecessor of opendnp3",
+   "maintenance": "quiet",
+   "notes": "The Green Energy Corp code base that opendnp3 grew out of; its history continues in the opendnp3 repository.",
+   "sources": [
+    "https://github.com/gec/dnp3"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "tmw-dnp3-scl",
+   "name": "Triangle MicroWorks DNP3 libraries",
+   "protocol": "dnp3",
+   "type": "commercial",
+   "languages": [
+    "C",
+    "C#"
+   ],
+   "license": "Commercial",
+   "url": "https://www.trianglemicroworks.com/products/source-code-libraries/dnp-scl-pages/overview",
+   "stars": null,
+   "release": {
+    "version": "3.34",
+    "source": "Vendor release notes",
+    "url": "https://www.trianglemicroworks.com/products/source-code-libraries/dnp-scl-pages/what's-new"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "capabilities": [
+    "TLS",
+    "SAv5",
+    "File transfer"
+   ],
+   "maintenance": "n/a",
+   "notes": "ANSI C source code library for masters and outstations, with .NET components as an alternative. Widely used in IEDs and SCADA products. 3.34 (July 2026) adds TLS settings for full IEC 62351-3 conformance. Its dnp3-interop adapter is on hold: the licensed source has no agreed way into the builds yet.",
+   "sources": [
+    "https://www.trianglemicroworks.com/products/source-code-libraries/dnp-scl-pages/overview",
+    "https://www.trianglemicroworks.com/products/source-code-libraries/dnp-scl-pages/what's-new"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "freyrscada-dnp3",
+   "name": "FreyrSCADA DNP3",
+   "protocol": "dnp3",
+   "type": "commercial",
+   "languages": [
+    "C",
+    "C++",
+    "C#",
+    "Python"
+   ],
+   "license": "Commercial",
+   "url": "https://www.freyrscada.com/dnp3-ieee-1815-Source-Code-Library.html",
+   "stars": null,
+   "release": {
+    "version": "21.6.18",
+    "date": "2026-01-19",
+    "source": "NuGet",
+    "url": "https://www.nuget.org/packages/dnp3_protocol/21.6.18"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "capabilities": [
+    "TCP",
+    "Serial",
+    "File transfer"
+   ],
+   "maintenance": "n/a",
+   "package": "https://www.nuget.org/packages/dnp3_protocol",
+   "notes": "ANSI C stack for Windows, Linux and QNX with C++, C# and Python APIs, sold as source or as compiled libraries; free evaluation SDKs and simulators are distributed on GitHub and SourceForge.",
+   "sources": [
+    "https://www.freyrscada.com/dnp3-ieee-1815-Source-Code-Library.html",
+    "https://www.nuget.org/packages/dnp3_protocol",
+    "https://github.com/FreyrSCADA/DNP3"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "jpembedded-dnp3",
+   "name": "JPEmbedded DNP3 Library",
+   "protocol": "dnp3",
+   "type": "commercial",
+   "languages": [
+    "C++"
+   ],
+   "license": "Commercial",
+   "url": "https://www.st.com/en/partner-products-and-services/dnp3-library.html",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "capabilities": [
+    "Serial",
+    "TCP",
+    "SAv5",
+    "File transfer"
+   ],
+   "maintenance": "n/a",
+   "notes": "C++ source code with C, C++ and Java APIs and a hardware abstraction layer, so it runs with or without an operating system; listed in ST's partner programme for STM32 microcontrollers. Claims level 4 and IEC 62351 security.",
+   "sources": [
+    "https://www.st.com/en/partner-products-and-services/dnp3-library.html"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "beanit-dnp3",
+   "name": "Beanit DNP3",
+   "protocol": "dnp3",
+   "type": "commercial",
+   "languages": [
+    "Java"
+   ],
+   "license": "Commercial",
+   "url": "https://www.beanit.com/dnp3/",
+   "stars": null,
+   "release": null,
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "maintenance": "n/a",
+   "notes": "Pure Java library from the makers of IEC61850bean and j60870, sold under a commercial licence with a time-limited demo.",
+   "sources": [
+    "https://www.beanit.com/dnp3/"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "codesys-dnp3",
+   "name": "CODESYS DNP3 SL",
+   "protocol": "dnp3",
+   "type": "commercial",
+   "languages": [],
+   "license": "Commercial",
+   "url": "https://www.codesys.com/ecosystem/release-lifecycle/releases-updates/dnp3/",
+   "stars": null,
+   "release": {
+    "version": "2.0.1.0",
+    "date": "2026-08-04",
+    "source": "CODESYS Store",
+    "url": "https://www.codesys.com/ecosystem/release-lifecycle/releases-updates/dnp3/"
+   },
+   "roles": [
+    "outstation"
+   ],
+   "maintenance": "n/a",
+   "notes": "Makes a CODESYS controller a DNP3 outstation, licensed per device; needs a CODESYS runtime for Linux 4.10 or later. Master support is announced, not released.",
+   "sources": [
+    "https://www.codesys.com/ecosystem/release-lifecycle/releases-updates/dnp3/"
+   ],
+   "verified": "2026-10-20"
+  },
+  {
+   "id": "otfabric-go-dnp3",
+   "name": "go-dnp3",
+   "protocol": "dnp3",
+   "type": "independent",
+   "languages": [
+    "Go"
+   ],
+   "license": "MIT",
+   "url": "https://github.com/otfabric/go-dnp3",
+   "repo": "otfabric/go-dnp3",
+   "stars": 0,
+   "historySince": "2026",
+   "lastCommit": "2026-10-20",
+   "release": {
+    "version": "v1.3.1",
+    "date": "2026-10-20",
+    "source": "Go module proxy",
+    "url": "https://proxy.golang.org/github.com/otfabric/go-dnp3/@v/v1.3.1.info"
+   },
+   "roles": [
+    "master",
+    "outstation"
+   ],
+   "capabilities": [
+    "TCP",
+    "TLS",
+    "UDP",
+    "Serial",
+    "File transfer",
+    "SAv5"
+   ],
+   "interop": "dnp3-interop",
+   "maintenance": "active",
+   "emerging": true,
+   "otfabric": true,
+   "package": "https://pkg.go.dev/github.com/otfabric/go-dnp3",
+   "notes": "Both roles with no dependencies outside the standard library: file transfer, device attributes, multi-drop, dual end point and Secure Authentication v5 with aggressive mode and statistics. Tested against the four dnp3-interop references.",
+   "sources": [
+    "https://github.com/otfabric/go-dnp3"
+   ],
+   "verified": "2026-10-20"
   }
  ]
 }

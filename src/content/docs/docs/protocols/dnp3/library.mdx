@@ -1,0 +1,258 @@
+---
+title: Go library
+description: Use go-dnp3 to build DNP3 (IEEE 1815) masters and outstations in Go, with polls, events, controls, time synchronization, file transfer, TLS, UDP, serial, Secure Authentication v5, errors and observability.
+sidebar:
+  label: Go library
+  order: 1
+---
+
+import { Aside, LinkCard } from '@astrojs/starlight/components';
+
+[go-dnp3](/projects/go-dnp3/) implements both ends of DNP3 (IEEE 1815-2012) in Go: a master (package `client`) and an outstation (package `server`), on a complete link layer, transport function and application layer. It has no dependencies outside the Go standard library and no cgo. The authoritative reference for each symbol is the godoc on [pkg.go.dev](https://pkg.go.dev/github.com/otfabric/go-dnp3); [API.md](https://github.com/otfabric/go-dnp3/blob/main/API.md) in the repository is the map. This page follows v1.3.1.
+
+From v1.0.0 the API follows semantic versioning: a breaking change comes only with a new major version.
+
+## Install
+
+```sh
+go get github.com/otfabric/go-dnp3
+```
+
+Go 1.23 or later.
+
+| Package | What it is |
+|---|---|
+| `dnp3` | Shared types: sentinel and typed errors, `Logger`, `Metrics`, `State` |
+| `client` | The master |
+| `server` | The outstation and its point database |
+| `app` | Application layer codec and object library |
+| `transport` | Transport function: segmentation and reassembly |
+| `link` | Data link layer codec: FT3 frames, CRC, stream reader |
+| `secauth` | Secure Authentication v5: MACs, key wrap and the data they protect |
+
+`app`, `transport` and `link` are pure codecs, useful on their own to analysers and test tools.
+
+## A master
+
+A `client.Client` is the master for one outstation. `Dial` connects and runs the startup sequence; every request takes a `context.Context`.
+
+```go
+ctx := context.Background()
+c, err := client.Dial(ctx, "10.0.0.5:20000",
+	client.WithAddresses(1, 10),               // master 1, outstation 10
+	client.WithReconnect(client.Reconnect{}),  // exponential backoff
+	client.WithRetry(client.Retry{Attempts: 3}),
+)
+if err != nil {
+	log.Fatal(err)
+}
+defer c.Close()
+
+// An integrity poll: events of classes 1..3, then all static data.
+res, err := c.IntegrityPoll(ctx)
+if err != nil {
+	log.Fatal(err)
+}
+for _, m := range res.Measurements() {
+	switch v := m.Value.(type) {
+	case app.Analog:
+		fmt.Printf("%s %d = %.2f %s\n", m.GV, m.Index, v.Value, v.Flags)
+	case app.Binary:
+		fmt.Printf("%s %d = %v\n", m.GV, m.Index, v.Value)
+	}
+}
+```
+
+| Method | Function codes |
+|---|---|
+| `Read(ctx, headers...)` | READ of any group, variation, range, index list or count |
+| `IntegrityPoll(ctx)`, `EventPoll(ctx, classes...)` | READ of classes 1, 2, 3, 0, or of event classes |
+| `Operate(ctx, mode, cmds...)` | SELECT + OPERATE, DIRECT_OPERATE, DIRECT_OPERATE_NR; returns the statuses |
+| `SyncTime(ctx, procedure)`, `WriteTime`, `DelayMeasure` | LAN and non-LAN time synchronization |
+| `ColdRestart`, `WarmRestart` | Restarts; return the delay the outstation announces |
+| `EnableUnsolicited`, `DisableUnsolicited`, `AssignClass` | Unsolicited control and class assignment |
+| `Freeze`, `FreezeAtTime` | IMMED_FREEZE, FREEZE_CLEAR (also without acknowledgement), FREEZE_AT_TIME |
+| `ReadAttributes`, `WriteAttribute`, `ReadAttributeSet`, `WriteAttributeSet` | Device attributes (g0), set 0 or any other set |
+| `ReadFile`, `WriteFile`, `ListDirectory`, `FileInfo`, `DeleteFile`, `AuthenticateFile` | File transfer (g70) |
+| `Broadcast(ctx, dest, fc, headers...)` | A request to a broadcast address; nobody answers |
+| `Request(ctx, fc, headers...)` | Any function code, for what has no method of its own |
+
+Headers are built with `app.AllObjects`, `app.IndexRange`, `app.IndexList`, `app.CountOf` and `app.ClassHeaders`: `c.Read(ctx, app.IndexRange(app.G30V5, 0, 9))` reads analog inputs 0 to 9 as floats.
+
+### Unsolicited responses and automatic behaviour
+
+Unsolicited responses, and the responses to automatic and periodic polls, go to a `client.Handler`. The startup sequence, time synchronization and periodic polls are options:
+
+```go
+c, err := client.Dial(ctx, addr,
+	client.WithHandler(client.HandlerFunc(func(info client.ResponseInfo, ms []client.Measurement) {
+		for _, m := range ms {
+			fmt.Println(info.Unsolicited, m.GV, m.Index, m.Value)
+		}
+	})),
+	client.WithStartup(client.Startup{DisableUnsolicited: true, Integrity: true, EnableUnsolicited: []int{1, 2, 3}}),
+	client.WithTimeSync(client.TimeSyncLAN), // when the outstation sets NEED_TIME
+	client.WithPoll(client.Poll{Interval: time.Minute, Headers: app.ClassHeaders(1, 2, 3)}),
+)
+```
+
+By default the client clears DEVICE_RESTART when it is reported and runs an integrity poll after a restart or an event buffer overflow (`WithAutoClearRestart`, `WithAutoIntegrity`); `WithAutoEventPoll` polls the classes the IIN reports events for. DNP3 allows one request at a time: further requests wait their turn, up to `WithQueueLimit` (64).
+
+### Controls
+
+```go
+// Select-before-operate of a breaker.
+statuses, err := c.Operate(ctx, client.SelectBeforeOperate, client.CROB(0, app.OpLatchOn, 0, 0))
+
+// A set-point, directly.
+_, err = c.Operate(ctx, client.DirectOperate, client.SetPoint(1, 11.2))
+
+var ce *dnp3.CommandError
+if errors.As(err, &ce) {
+	log.Printf("index %d refused: %s", ce.Index, ce.Status)
+}
+```
+
+Several controls go in one request; `Operate` returns the status of each. With select-before-operate a refused SELECT ends the operation and the OPERATE is not sent. `WithRetry` repeats only the requests that are safe to repeat (reads, time, unsolicited and class functions): controls, freezes, restarts and writes are never repeated.
+
+## An outstation
+
+A `server.Server` is an outstation with a point database. Updates produce events by change and deadband, in the order they occur, buffered per master.
+
+```go
+breaker := server.HandlerFunc(func(ctx context.Context, c server.Command, op server.OperateType) app.CommandStatus {
+	crob, ok := c.Value.(app.CROB)
+	if !ok || c.Index != 0 || (crob.Op != app.OpLatchOn && crob.Op != app.OpLatchOff) {
+		return app.StatusNotSupported
+	}
+	// ... operate the device ...
+	return app.StatusSuccess
+})
+srv, err := server.New(
+	server.WithAddress(10),
+	server.WithMasters(1), // events are buffered for master 1 while it is away
+	server.WithHandler(breaker),
+	server.WithUnsolicited(server.Unsolicited{Enabled: true}),
+)
+if err != nil {
+	log.Fatal(err)
+}
+db := srv.Database()
+_ = db.AddBinaryInput(0, server.PointConfig{Class: 1}, app.Binary{Value: true, Flags: app.FlagOnline})
+_ = db.AddAnalogInput(0, server.PointConfig{Class: 2, StaticVariation: 5, Deadband: 0.5}, app.Analog{Value: 230.1, Flags: app.FlagOnline})
+
+go func() {
+	_ = db.UpdateAnalogInput(0, app.Analog{Value: 231.0, Flags: app.FlagOnline})
+}()
+log.Fatal(srv.ListenAndServe(":20000"))
+```
+
+- **Points.** Every point type, with its event class, static and event variation and deadband in a `PointConfig`. `Database.Batch` reports several updates together; `EventForce` and `EventSuppress` override change detection.
+- **Events.** A buffer per master that survives reconnects, with a limit per point type (`WithEventLimits`, 100 each) and oldest-first discard with EVENT_BUFFER_OVERFLOW. Multi-fragment responses wait for each confirmation.
+- **Unsolicited responses** with hold time and count, retries and retry delay; the enabled classes survive connections.
+- **Controls.** The `Handler` decides `Select` and `Operate`; select timeout and sequence checks, a limit of controls per request (`WithMaxControls`), and command events (g13, g43) for outputs with a `CommandEventClass`.
+- **Optional handlers** for restarts, time synchronization, management functions, writes of attributes and octet strings. Device attributes with `WithAttributes` and `WithAttributeSet`; files with `WithFileServer`, for example the read-only `server.FSFileServer` over any `fs.FS`.
+- **Scheduled freezes** (FREEZE_AT_TIME with an interval) belong to the server and survive restarts and reconnections.
+
+A master that repeats a request with the same sequence number gets the previous response; the request is not executed twice.
+
+## Transports
+
+| Transport | Client | Server |
+|---|---|---|
+| TCP | default | `ListenAndServe`, `Serve` |
+| TLS | `WithTLS` | `WithTLS` with `ListenAndServe`, or a TLS listener with `Serve` |
+| UDP | `WithStream(client.UDP(addr))` | `ServeUDP`, or `ServeUDPTo` with the master's address |
+| Serial, any byte stream | `WithStream` with an opener that returns the port | `ServeConn` |
+| Dual end point (the outstation connects) | `WithStream(client.Accept(l))` | `DialAndServe(ctx, masterAddr, server.Redial{})` |
+| Several outstations behind one port or line | one client per outstation address | `server.NewGroup(servers...)` |
+
+go-dnp3 opens no serial ports itself, so that it has no dependencies. Open the port with a serial library, such as [go-serial](/projects/go-serial/), and hand it over:
+
+```go
+c, err := client.Dial(ctx, "/dev/ttyUSB0", client.WithStream(func(ctx context.Context) (io.ReadWriteCloser, net.Addr, error) {
+	p, err := serial.Open(&serial.Config{Address: "/dev/ttyUSB0", BaudRate: 19200})
+	return p, nil, err
+}))
+```
+
+Leave the port's read timeout at zero: inactivity is detected by the link layer's keep-alive (`client.Link.KeepAlive`, 60 s by default).
+
+## Security
+
+Plain DNP3 has no authentication. Keep it on isolated networks, and restrict the masters an outstation answers with `server.WithMasters`, which keeps a misconfigured master out but is not authentication.
+
+**TLS.** `client.WithTLS` and `server.WithTLS` take a standard `*tls.Config`, which the library does not weaken. For mutual authentication set `ClientAuth: tls.RequireAndVerifyClientCert` and `ClientCAs` on the outstation; without it a TLS outstation accepts controls from any master that reaches it.
+
+**Secure Authentication v5.** With `WithSecureAuthentication` on both ends the outstation executes critical requests (controls, writes, restarts, freezes, file operations) only after the master proves it knows the session key:
+
+```go
+user := secauth.User{Number: 1, UpdateKey: updateKey} // 16 or 32 random octets, provisioned out of band
+
+srv, err := server.New(server.WithHandler(h), server.WithSecureAuthentication(server.SecureAuth{User: user}))
+
+c, err := client.Dial(ctx, addr,
+	client.WithSecureAuthentication(user),
+	client.WithAggressiveMode(), // the MAC in the request, after the first challenge
+)
+```
+
+- The master changes the **session keys** on every connection, every 15 minutes (`WithKeyChangeInterval`) and after an authentication failure, wrapped with the update key (AES key wrap, RFC 3394).
+- HMAC-SHA-256 truncated to 8 or 16 octets, or HMAC-SHA-1 to 4, 8 or 10.
+- The outstation keeps the 18 **security statistics** per master (g121), and reports them as events (g122) every `StatisticsThreshold` increments, for a SCADA system to alarm on.
+- Only the control direction is authenticated, and READ requests are not challenged: use TLS where responses must be protected.
+- Not implemented: the remote update key change, user management with certificates, AES-GMAC, and the master challenging the outstation's responses.
+
+## Errors
+
+Sentinels are tested with `errors.Is` (`dnp3.ErrTimeout`, `ErrConnectionLost`, `ErrNotConnected`, `ErrConnectFailed`, `ErrClosed`, `ErrBusy`, `ErrProtocol`, `ErrAuthentication`); refusals by the outstation are typed errors matched with `errors.As`:
+
+| Error | When |
+|---|---|
+| `*dnp3.IINError` | The outstation refused a request with NO_FUNC_CODE_SUPPORT, OBJECT_UNKNOWN, PARAMETER_ERROR or ALREADY_EXECUTING |
+| `*dnp3.CommandError` | A control was echoed with a status other than SUCCESS |
+| `*dnp3.FileError` | A file operation was refused |
+| `*dnp3.AuthError` | An authentication error from the peer; also matches `ErrAuthentication` |
+
+`Read`, `IntegrityPoll`, `EventPoll`, `Write` and `Request` return the `*Result` **together with** an `*IINError`, so that what the outstation did report is not lost:
+
+```go
+res, err := c.Read(ctx, app.IndexRange(app.G1V2, 0, 9))
+var ie *dnp3.IINError
+if errors.As(err, &ie) && ie.IIN.Has(app.IINParameterError) {
+	use(res.Measurements()) // some of 0..9 do not exist; these do
+}
+```
+
+[ERRORS.md](https://github.com/otfabric/go-dnp3/blob/main/ERRORS.md) has every case.
+
+## Logging and metrics
+
+- `WithLogger` on both sides; silent by default. `dnp3.NewSlogLogger` gives structured `log/slog` entries with `component`, `remote`, `outstation` and `master` fields, and per-frame debug entries cost nothing at info level.
+- `WithMetrics(dnp3.Metrics)`: connections, frames, framing errors, fragments and decode errors; `RequestMetrics` on the client (requests, durations, retries) and `ServerMetrics` on the outstation (requests handled, events discarded, unsolicited responses). Embed `dnp3.NopMetrics`.
+- `client.WithStateHandler` reports connecting, connected and disconnected, with the cause.
+
+## Example programs
+
+The first seven start an outstation and a master in one process: `go run ./examples/<name>` from a checkout.
+
+| Example | Shows |
+|---|---|
+| `quickstart` | The smallest outstation and master: three points, `Dial`, `IntegrityPoll` |
+| `commands` | Select-before-operate and direct operate, a trip, a set-point, a no-ack control, a refusal |
+| `events` | Event classes, a batch in one unsolicited response, a deadband, the startup sequence |
+| `files` | `FSFileServer`, `ListDirectory`, `ReadFile`, `FileInfo` |
+| `secure` | Secure Authentication v5: key change, challenged controls, aggressive mode, statistics, a wrong update key refused |
+| `dialout` | The dual end point: the outstation connects to its master and reconnects after a loss |
+| `observability` | slog logging and metrics on both sides, a state handler, retries, reconnect and a periodic poll |
+| `server`, `client` | A standalone outstation and master, for trying go-dnp3 against another implementation or a device |
+
+## Limitations
+
+- **Secure Authentication**: update keys are configured out of band; no remote update key change, user management or AES-GMAC. Aggressive mode is verified between go-dnp3's own ends only, as no reference stack in the interop suite has it.
+- **Data sets, private registration objects and the virtual terminal** (groups 83, 85 to 88, 90, 91, 112, 113) have no procedures: exchange them with the generic request methods.
+- **Conformance**: the outstation is tested with a scripted master and against four other stacks, but not with the DNP Users Group's IED conformance procedures, and go-dnp3 declares no subset level.
+- **UDP outstation**: one socket serves one master at a time.
+- **Multi-fragment requests** are neither sent nor reassembled: a request is one fragment.
+
+<LinkCard title="go-dnp3 on GitHub" description="README, API.md, INTEROPERABILITY.md, OBJECTS.md, ERRORS.md, OBSERVABILITY.md, SECURITY.md, examples" href="https://github.com/otfabric/go-dnp3" />

@@ -1,0 +1,108 @@
+---
+name: "DNP3"
+standard: "IEEE 1815-2012 (Distributed Network Protocol)"
+summary: "The SCADA protocol between control centres and the RTUs, IEDs and gateways in electric, water and oil and gas utilities: polls with time-stamped events, controls with select-before-operate, time synchronization and file transfer."
+order: 10
+facts:
+  - { label: 'Transport', value: 'TCP and UDP 20000, TLS 19999, serial' }
+  - { label: 'Roles', value: 'Master and outstation' }
+  - { label: 'Library', value: 'go-dnp3' }
+  - { label: 'CLI', value: 'dnp3ctl' }
+  - { label: 'Interop', value: 'dnp3-interop v0.4.1' }
+icon: go-dnp3
+docs: /docs/protocols/dnp3/
+---
+
+import Callout from '../../components/Callout.astro';
+
+DNP3 (Distributed Network Protocol, standardized as IEEE 1815) carries SCADA data between a **master**, the control centre or a SCADA front end, and **outstations**: the RTUs, IEDs and gateways out in substations, pumping stations and along feeders. An outstation keeps the current value of every point and a buffer of **time-stamped events**, so a master that polls rarely, or loses its link for an hour, still gets every change in order. Controls go through **select-before-operate**, so a breaker only moves when the outstation has confirmed exactly which one. DNP3 runs over serial lines, radio, TCP and UDP, and over TLS where the network is not trusted.
+
+## Where you meet it
+
+- Distribution and transmission SCADA, above all in North America, Australia and parts of Asia and Africa; IEC 60870-5-104 fills the same role in much of Europe
+- Water and wastewater, oil and gas pipelines, and the telemetry of other utilities
+- Distributed energy: IEEE 1547-2018 names DNP3 as one of the interfaces of a grid-connected inverter, with IEEE 1815.2 (the MESA profile) mapping its functions
+
+## Quickstart
+
+### From the command line
+
+Download `dnp3ctl` from [GitHub Releases](https://github.com/otfabric/dnp3ctl/releases). No outstation at hand? Start the built-in demo outstation:
+
+```sh
+dnp3ctl server start
+```
+
+and talk to it from another terminal:
+
+```sh
+# What does this outstation hold? (integrity poll of link address 10)
+dnp3ctl client poll --ip 127.0.0.1 --outstation 10
+
+# Watch events as they arrive, until Ctrl-C
+dnp3ctl client monitor --ip 127.0.0.1 --integrity
+
+# Open a breaker with select-before-operate
+dnp3ctl client operate --ip 127.0.0.1 --type crob --index 0 --op latch-off
+
+# Synchronize its clock
+dnp3ctl client time-sync --ip 127.0.0.1
+
+# Which outstations answer on this subnet?
+dnp3ctl discover --subnets 192.168.1.0/24
+```
+
+`--url tls://`, `udp://` and `serial:///dev/ttyUSB0` reach the same outstation over other transports, and `server start --config` serves a simulated RTU from a YAML model of points, controls and files.
+
+### From Go
+
+```sh
+go get github.com/otfabric/go-dnp3
+```
+
+A master that runs an integrity poll and operates a breaker (abridged from the go-dnp3 README):
+
+```go title="main.go"
+c, err := client.Dial(ctx, "10.0.0.5:20000",
+	client.WithAddresses(1, 10), // master 1, outstation 10
+	client.WithReconnect(client.Reconnect{}),
+)
+if err != nil {
+	log.Fatal(err)
+}
+defer c.Close()
+
+// Events of classes 1 to 3, then every current value.
+res, err := c.IntegrityPoll(ctx)
+for _, m := range res.Measurements() {
+	fmt.Println(m.GV, m.Index, m.Value)
+}
+
+// Select-before-operate of breaker 0.
+_, err = c.Operate(ctx, client.SelectBeforeOperate, client.CROB(0, app.OpLatchOn, 0, 0))
+```
+
+And an outstation with two points, which produces events as they change:
+
+```go
+srv, err := server.New(server.WithAddress(10), server.WithMasters(1), server.WithHandler(breaker))
+db := srv.Database()
+_ = db.AddBinaryInput(0, server.PointConfig{Class: 1}, app.Binary{Value: true, Flags: app.FlagOnline})
+_ = db.AddAnalogInput(0, server.PointConfig{Class: 2, Deadband: 0.5}, app.Analog{Value: 230.1, Flags: app.FlagOnline})
+log.Fatal(srv.ListenAndServe(":20000"))
+```
+
+## What go-dnp3 and dnp3ctl support
+
+| | |
+|---|---|
+| Roles | Master (`client`) and outstation (`server`), any number of masters and connections |
+| Procedures | Integrity and event polls, unsolicited responses, select-before-operate, direct operate and no-ack controls, LAN and non-LAN time synchronization, restarts, freezes (also at a time), assign class, device attributes, deadbands, broadcast, file transfer |
+| Transports | TCP, TLS, UDP and serial (any byte stream); the dual end point, where the outstation dials its master; several outstations behind one port or line |
+| Security | TLS with mutual authentication; Secure Authentication v5 with session key change, aggressive mode and security statistics |
+| Objects | Every group of IEEE 1815-2012 Annex A in use today, generated from one catalog |
+| Dependencies | None outside the Go standard library |
+
+<Callout type="note" title="Version 1, interoperability tested">
+go-dnp3 v1.3.1 follows semantic versioning; dnp3ctl v0.6.2 is pre-1.0. Both are tested as master and as outstation against four independent implementations packaged by [dnp3-interop](https://github.com/otfabric/dnp3-interop) v0.4.1: Step Function I/O dnp3 (Rust), opendnp3 (C++), DSC go-dnp3 (Go) and dnp3py (Python), over TCP, TLS, UDP and serial. That is interoperability, not a DNP Users Group conformance certification.
+</Callout>

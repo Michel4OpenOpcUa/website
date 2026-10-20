@@ -1,0 +1,122 @@
+---
+title: DNP3
+description: How DNP3 (IEEE 1815) works (masters and outstations, link addresses, objects, groups and variations, event classes, polls and unsolicited responses, select-before-operate, time synchronization, transports and Secure Authentication) and which OT Fabric projects implement it.
+sidebar:
+  label: Overview
+  order: 0
+---
+
+import { Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+DNP3, the Distributed Network Protocol, is the SCADA protocol between a control centre and the devices in the field of electric, water and oil and gas utilities. It was published in 1993, is maintained by the DNP Users Group, and has been an IEEE standard since 2010: **IEEE 1815**, now in its 2012 edition, which the OT Fabric projects implement. This page explains how DNP3 works on the wire, as far as it matters for using [go-dnp3](/projects/go-dnp3/) and [dnp3ctl](/projects/dnp3ctl/).
+
+## Masters and outstations
+
+| Role | What it is | In go-dnp3 | In dnp3ctl |
+|---|---|---|---|
+| Master | The control centre, a SCADA front end, a data concentrator: it polls and sends controls | package `client` | `dnp3ctl client …` |
+| Outstation | An RTU, an IED (a protection relay, a recloser control, a meter), a gateway: it holds the points | package `server` | `dnp3ctl server start` |
+
+Usually the master opens the TCP connection to the outstation, on port **20000**. In the **dual end point** of IEEE 1815-2012 annex A.3 it is the other way round: the outstation, behind a firewall or a cellular modem, connects to the master. A gateway is often both: an outstation towards the control centre and a master towards the devices behind it.
+
+## Three layers
+
+DNP3 has its own small protocol stack, which runs unchanged over a serial line, a radio link, TCP or UDP:
+
+| Layer | What it does |
+|---|---|
+| **Data link** | Frames of up to 292 octets (FT3 format) with a CRC every 16 octets, the source and destination **link addresses**, and optionally confirmed delivery. Over TCP the link layer is unconfirmed, as IEEE 1815 recommends |
+| **Transport function** | Splits an application fragment into segments that fit a frame, and reassembles them |
+| **Application layer** | Requests and responses of up to 2048 octets by default, made of a function code and **object headers**; responses carry the outstation's **internal indications** |
+
+**Link addresses** identify the stations: every frame names the station it is for and the one it is from, 0 to 65519. The master is often 1 and the outstation 10, but anything goes, and many outstations answer only the masters they are configured for. A request that times out against an outstation that accepts the TCP connection is most often a wrong link address.
+
+## Points: objects, groups and variations
+
+An outstation's data is a set of **points**, numbered from 0 within each type. There are no names on the wire: the outstation's point list says that analog input 0 is the voltage of phase L1.
+
+Every value travels as an **object** of a **group** and a **variation**. The group says what it is, the variation how it is encoded: `g30v5` is an analog input as a single-precision float with flags, `g30v1` the same as a 32-bit integer, `g30v0` "any variation, as the outstation chooses".
+
+| Point type | Static group | Event group | Controls |
+|---|---|---|---|
+| Binary input | g1 | g2 | |
+| Double-bit binary input (a breaker's open, closed or in transit) | g3 | g4 | |
+| Binary output | g10 | g11 | g12 (CROB) |
+| Counter, frozen counter | g20, g21 | g22, g23 | |
+| Analog input, frozen analog input | g30, g31 | g32, g33 | |
+| Analog output | g40 | g42 | g41 (set-points) |
+| Octet string | g110 | g111 | |
+
+Every value has **flags**, its quality: ONLINE, RESTART, COMM_LOST, REMOTE_FORCED, LOCAL_FORCED and, per type, OVER_RANGE or CHATTER_FILTER. A value without ONLINE is not valid. Further groups carry time (g50 to g52), class objects (g60), files (g70), the internal indications (g80), device attributes (g0) and Secure Authentication (g120 to g122). go-dnp3's [OBJECTS.md](https://github.com/otfabric/go-dnp3/blob/main/OBJECTS.md) lists every variation it knows.
+
+## Classes, events and polls
+
+What makes DNP3 suited to slow and unreliable links is its **event buffer**. Each point can be assigned to an event class, 1, 2 or 3. When it changes (or, for an analog value, moves by more than its **deadband**), the outstation records an event with the new value and a time stamp, and keeps it until the master has read **and confirmed** it. Class 0 is not an event class: it stands for the current value of every point.
+
+| Read | What the master gets |
+|---|---|
+| **Integrity poll** | Classes 1, 2, 3 and 0: every pending event, then every current value. What a master does after connecting or after the outstation restarts |
+| **Event poll** | Classes 1, 2 and 3, or some of them: only what changed |
+| **Static read** | Any group, variation and range, for example `g30v5` indexes 0 to 9 |
+
+A master that loses its link for an hour still receives every change, in order, with its time stamp, as long as the buffer does not overflow (the outstation then sets EVENT_BUFFER_OVERFLOW). An outstation keeps a buffer per master, so a second master with its own link address does not take events away from the first. A test tool that polls with the master's link address does.
+
+### Unsolicited responses
+
+Instead of waiting to be polled, an outstation can send its events by itself as **unsolicited responses**, once the master has enabled them per class (ENABLE_UNSOLICITED). It sends an empty one when it starts, retries until the master confirms, and can hold events for a moment to send several together.
+
+### Internal indications
+
+Every response carries two octets of **IIN**: DEVICE_RESTART (the outstation restarted; the master clears it), NEED_TIME (synchronize my clock), events pending per class, EVENT_BUFFER_OVERFLOW, LOCAL_CONTROL, DEVICE_TROUBLE, and the error bits with which a request is refused: NO_FUNC_CODE_SUPPORT, OBJECT_UNKNOWN and PARAMETER_ERROR. A master reacts to them: an integrity poll after a restart, a time synchronization on NEED_TIME. go-dnp3 does both automatically.
+
+## Controls
+
+Binary outputs are operated with a **CROB** (control relay output block): latch on or off, pulse on or off with on and off times and a count, or trip and close for a breaker with paired outputs. Analog outputs take **set-points** as integers or floats. Three modes:
+
+| Mode | Function codes | When |
+|---|---|---|
+| **Select-before-operate** | SELECT, then OPERATE with exactly the same objects and the next sequence number, within the select timeout | Breakers, anything that matters: the outstation confirms what it would do before it does it |
+| **Direct operate** | DIRECT_OPERATE | Set-points and outputs where one step is enough |
+| **Direct operate, no acknowledgement** | DIRECT_OPERATE_NR | Broadcasts and fast repetitive set-points; nothing is answered |
+
+The outstation echoes each control with a **status**: SUCCESS, or why it refused (NO_SELECT, LOCAL, OUT_OF_RANGE, NOT_SUPPORTED, …). A control is never repeated automatically: after a timeout it may or may not have been executed.
+
+## Time, freezes and the rest
+
+- **Time synchronization.** On a LAN the master records the moment it sent RECORD_CURRENT_TIME and writes that time; on a serial line it first measures the link delay (DELAY_MEASURE) and writes a corrected time.
+- **Freezes.** IMMED_FREEZE copies counters (or analog inputs) into their frozen counterparts at one instant; FREEZE_CLEAR also resets them; FREEZE_AT_TIME schedules a freeze, for example every hour on the hour.
+- **Assign class**, **restarts** (cold and warm, with the delay the outstation announces), **device attributes** (manufacturer, model, versions, point counts), **management functions** and **broadcasts** to every outstation on a line.
+- **File transfer** (group 70): directories, reading disturbance records and logs, writing configuration files.
+
+## Transports and security
+
+| Transport | Port | Notes |
+|---|---|---|
+| TCP | 20000 | The default today |
+| UDP | 20000 | Used on some radio and cellular networks |
+| TLS | 19999 | IEEE 1815-2012 annex B and IEC 62351-3, usually with mutual authentication |
+| Serial | | RS-232 and RS-485, often several outstations on one line (multi-drop) |
+
+Plain DNP3 has no authentication: whoever can reach port 20000 can read the outstation and operate its outputs. Two mechanisms protect it:
+
+- **TLS** encrypts and authenticates the connection, with certificates on both ends.
+- **Secure Authentication version 5** (IEEE 1815-2012 clause 7, SAv5) authenticates critical requests (controls, writes, restarts, freezes) even over serial lines: the outstation challenges them, and the master answers with an HMAC made with a session key. The master changes the session keys regularly, wrapped with a pre-shared update key. In aggressive mode the MAC travels in the request itself, saving a round trip.
+
+<Aside type="caution" title="Real equipment">
+DNP3 controls operate breakers, pumps and valves, and polling with a production master's link address takes its events away. Use dnp3ctl and go-dnp3 on outstations and networks you own or are authorized to test, and keep plain DNP3 off networks you do not trust.
+</Aside>
+
+## OT Fabric for DNP3
+
+| Project | What it is |
+|---|---|
+| [go-dnp3](/projects/go-dnp3/) | DNP3 master and outstation for Go: every procedure above in both roles, file transfer, device attributes, multi-drop, the dual end point, TLS, UDP and serial, and Secure Authentication v5 with aggressive mode and statistics. No dependencies outside the standard library. v1.3.1. |
+| [dnp3ctl](/projects/dnp3ctl/) | A command-line tool on go-dnp3: poll, monitor, operate, synchronize time, transfer files and find outstations as a master; simulate an outstation from a YAML model. v0.6.2. |
+| [dnp3-interop](/projects/dnp3-interop/) | Docker images of four independent DNP3 implementations behind one container contract, with deterministic fixtures, in both roles and over every transport. v0.4.1. |
+
+<CardGrid>
+  <LinkCard title="Go library" description="Masters, outstations, controls, events, files and Secure Authentication with go-dnp3." href="/docs/protocols/dnp3/library/" />
+  <LinkCard title="dnp3ctl" description="Poll, monitor, operate, transfer files and simulate an outstation." href="/docs/protocols/dnp3/cli/" />
+  <LinkCard title="Testing and interop" description="Reference stacks, fixtures and what has been validated." href="/docs/protocols/dnp3/testing/" />
+  <LinkCard title="Ecosystem map" description="Who else implements DNP3, in which language and licence." href="/ecosystem/?protocol=dnp3" />
+</CardGrid>

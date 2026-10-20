@@ -65,6 +65,7 @@ export default defineConfig({
             { label: 'Siemens S7', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/s7' } }] },
             { label: 'OpenADR', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/openadr' } }] },
             { label: 'OCPP', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/ocpp' } }] },
+            { label: 'DNP3', collapsed: true, items: [{ autogenerate: { directory: 'docs/protocols/dnp3' } }] },
           ],
         },
         {

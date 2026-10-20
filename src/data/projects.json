@@ -158,6 +158,19 @@
 		"icon": "go-ocpp"
 	},
 	{
+		"id": "go-dnp3",
+		"name": "go-dnp3",
+		"repo": "go-dnp3",
+		"category": "library",
+		"protocols": [
+			"dnp3"
+		],
+		"status": "available",
+		"install": "go get github.com/otfabric/go-dnp3",
+		"description": "DNP3 (IEEE 1815) master and outstation: every procedure in both roles, file transfer, multi-drop, TLS, UDP and serial, Secure Authentication v5. No dependencies.",
+		"icon": "go-dnp3"
+	},
+	{
 		"id": "modbusctl",
 		"name": "modbusctl",
 		"repo": "modbusctl",
@@ -266,6 +279,18 @@
 		"status": "available",
 		"description": "Probe a CSMS, send any OCPP message, simulate hundreds of charging stations, run scenarios in CI, or serve a test CSMS for station development.",
 		"icon": "go-ocpp"
+	},
+	{
+		"id": "dnp3ctl",
+		"name": "dnp3ctl",
+		"repo": "dnp3ctl",
+		"category": "cli",
+		"protocols": [
+			"dnp3"
+		],
+		"status": "available",
+		"description": "Poll, monitor and operate DNP3 outstations, synchronize their clocks, transfer files, find them on a subnet, or simulate one from a YAML model.",
+		"icon": "go-dnp3"
 	},
 	{
 		"id": "go-cotp",
@@ -433,6 +458,18 @@
 		"status": "available",
 		"description": "OCPP reference stacks: The Mobility House ocpp, ChargeTimeEU Java-OCA-OCPP, ocpp-go, EVerest libocpp and CitrineOS, for 1.6J, 2.0.1 and 2.1.",
 		"icon": "go-ocpp"
+	},
+	{
+		"id": "dnp3-interop",
+		"name": "dnp3-interop",
+		"repo": "dnp3-interop",
+		"category": "interop",
+		"protocols": [
+			"dnp3"
+		],
+		"status": "available",
+		"description": "DNP3 reference stacks: Step Function I/O dnp3, opendnp3, DSC go-dnp3 and dnp3py as masters and outstations, over TCP, TLS, UDP and serial.",
+		"icon": "go-dnp3"
 	},
 	{
 		"id": "sunspec-explorer",

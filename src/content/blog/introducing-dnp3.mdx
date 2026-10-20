@@ -1,0 +1,83 @@
+---
+title: 'DNP3 joins OT Fabric: go-dnp3, dnp3ctl and four reference stacks'
+description: DNP3 is the SCADA protocol of electric, water and oil and gas utilities, and the open-source field around it has thinned out. go-dnp3 implements master and outstation under MIT, dnp3ctl puts it on the command line, and dnp3-interop tests both against four independent implementations.
+date: 2026-10-20
+authors: [OT Fabric]
+tags: [announcement, dnp3, scada, energy, interop]
+featured: true
+cover:
+  alt: go-dnp3 in the middle, connected to the reference masters of Step Function I/O, opendnp3, DSC go-dnp3 and dnp3py on the left and their reference outstations on the right, over TCP, TLS, UDP and serial.
+  image: ../../assets/blog/dnp3-interop-matrix.svg
+---
+
+import Callout from '../../components/Callout.astro';
+import MapLink from '../../components/ecosystem/MapLink.astro';
+
+When a control centre in North America reads a feeder, opens a recloser or polls a pumping station, the message is very likely DNP3. Published in 1993 and standardized as IEEE 1815, it is the SCADA protocol between masters and the RTUs, IEDs and gateways in the field, built for links that are slow, noisy or down for an hour: an outstation keeps every change as a time-stamped event until the master has confirmed it, and a breaker only moves after select-before-operate.
+
+Today DNP3 becomes the tenth protocol in OT Fabric, with the same three pieces as every other: a library, a command-line tool and an interoperability suite.
+
+## Why DNP3, and why now
+
+OT Fabric is about connecting the devices that run energy and infrastructure, and DNP3 sits where many of them meet the utility:
+
+- **The utility's side of the grid edge.** IEC 60870-5-104 plays this role in much of Europe, and [we cover it](/protocols/iec-104/). DNP3 is its counterpart in North America, Australia and many other grids, and in water, wastewater and pipelines.
+- **Distributed energy.** IEEE 1547-2018 names DNP3 as one of the communication interfaces of a grid-connected inverter, and IEEE 1815.2 maps DER functions onto it. A battery, solar or EV charging startup that wants a utility interconnection may well have to speak it, next to [SunSpec Modbus](/protocols/sunspec/) on the device and [OpenADR](/protocols/openadr/) or [OCPP](/protocols/ocpp/) for flexibility.
+- **Gateways.** Data from substations and field devices is still converted between protocols in gateways, often DNP3 on one side and IEC 104, IEC 61850 or Modbus on the other. That is the IT-to-OT gateway work on our roadmap, and it needs every one of them.
+
+The open-source field is also thinner than its importance suggests. For a decade opendnp3 was the obvious choice; it was archived in 2022. Its best-known successor, Step Function I/O's Rust library, is excellent and actively maintained, but its licence allows non-commercial, non-production use only. The other open implementations we found in our [research for the ecosystem map](#who-else-implements-dnp3) are bindings to opendnp3, copyleft, master-only, or a few weeks old. go-dnp3 adds a permissively licensed (MIT) stack with both roles and Secure Authentication, tested against the established ones.
+
+## go-dnp3
+
+[go-dnp3](/projects/go-dnp3/) implements both ends of IEEE 1815-2012: the **master** and the **outstation**, on its own link layer, transport function and application layer, with no dependencies outside the standard library.
+
+- **Every procedure in both roles**: integrity and event polls, unsolicited responses, select-before-operate and direct operate, LAN and non-LAN time synchronization, restarts, freezes (also at a time and on a schedule), assign class, device attributes, deadbands, broadcast and file transfer.
+- **An outstation built for real deployments**: a point database for every point type with event classes and deadbands, event buffers per master that survive reconnects, multi-fragment responses, and several outstations behind one port or serial line.
+- **Every transport**: TCP, TLS, UDP and serial lines, and the dual end point, where an outstation behind a firewall or a cellular modem dials its master.
+- **Secure Authentication v5**, the part of DNP3 the open stacks mostly skipped: session key changes under an update key, challenged controls, aggressive mode and the security statistics an operator can alarm on.
+- **Version 1**: semantic versioning, `context.Context` on every call, reconnects, safe retries, structured logging and metrics.
+
+It is a protocol library. The point list, what a control does and how a SCADA system stores the data stay in your code, and seven example programs show how.
+
+## dnp3ctl
+
+[dnp3ctl](/projects/dnp3ctl/) puts go-dnp3 on the command line, for the engineers who commission, test and troubleshoot outstations.
+
+```sh
+# Everything an RTU holds, and every event as it arrives
+dnp3ctl client poll --ip 192.168.1.20
+dnp3ctl client monitor --ip 192.168.1.20 --integrity
+
+# Open a breaker with select-before-operate
+dnp3ctl client operate --ip 192.168.1.20 --type crob --index 0 --op latch-off
+
+# Which outstations answer on this subnet, at which link address?
+dnp3ctl discover --subnets 192.168.1.0/24
+
+# A simulated RTU from a YAML model, for master and gateway development
+dnp3ctl server start --config outstation.yaml
+```
+
+It also synchronizes clocks, restarts, freezes counters, reads device attributes and fetches disturbance records, over TCP, TLS, UDP and serial, with Secure Authentication. Output is text, a table or JSON with stable exit codes, so a site acceptance test can run as a script. The [dnp3ctl guide](/docs/protocols/dnp3/cli/) walks through it.
+
+## Tested against four independent stacks
+
+[dnp3-interop](/projects/dnp3-interop/) packages four independent DNP3 implementations as containers behind one contract: Step Function I/O dnp3 (Rust), opendnp3 (C++), DSC Systems go-dnp3 (Go) and dnp3py (Python). Each runs as master and as outstation, with deterministic fixtures, and the four are first tested against each other.
+
+go-dnp3 is tested in both roles against all four: polls, reads, every control case of the fixture, events, unsolicited responses, time synchronization, restarts and freezes; then TLS with mutual authentication, UDP and serial lines, file transfer, Secure Authentication, device attributes, broadcast, the dual end point and several outstations on one port, wherever a reference has the feature. The [coverage matrix](/docs/protocols/dnp3/testing/) shows each one per reference and direction. Running the stacks against each other also turned up behaviour of the references worth knowing, from a first SELECT that fails on a freshly started outstation to freezes that raise events for unchanged values. Each is recorded with its reproduction.
+
+<Callout type="note" title="Interoperability, not certification">
+go-dnp3 v1.3.1 and dnp3ctl v0.6.2 are interoperability tested, not DNP Users Group certified, and go-dnp3 declares no subset level. Aggressive mode is verified between go-dnp3's own ends only, because no reference implements it, and no real RTU or IED is in the suite yet. What is and is not covered is listed openly in [Testing and interop](/docs/protocols/dnp3/testing/).
+</Callout>
+
+## Built with AI agents
+
+Like the rest of OT Fabric, the DNP3 projects are built by people and AI agents together. Before the repositories went public, their documentation was reviewed claim by claim against the code, and the comparisons with other stacks against those stacks' own sources; a weekly workflow compares go-dnp3's object catalog with two other implementations and flags any drift. The tests, the interop matrix and the list of limitations are public, so you can judge the result yourself.
+
+## Who else implements DNP3
+
+The [ecosystem map](/ecosystem/?protocol=dnp3) now covers DNP3: 17 implementations, from the stacks we interop test against to Python bindings, a Dart plugin and the commercial source code libraries that run in many IEDs, with language, licence, roles and latest release.
+
+<MapLink protocol="dnp3" title="Explore DNP3 on the ecosystem map" />
+
+Start with the [DNP3 overview](/docs/protocols/dnp3/), or `go get github.com/otfabric/go-dnp3`.

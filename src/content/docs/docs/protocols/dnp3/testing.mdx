@@ -1,0 +1,141 @@
+---
+title: Testing and interop
+description: Test DNP3 code against four independent implementations with dnp3-interop (Step Function I/O dnp3, opendnp3, DSC go-dnp3 and dnp3py), and see what go-dnp3 and dnp3ctl have and have not been validated against.
+sidebar:
+  label: Testing and interop
+  order: 3
+---
+
+import { Aside, Steps, LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+Two kinds of OT Fabric repositories share the testing of DNP3. [dnp3-interop](/projects/dnp3-interop/) owns the reference implementations: adapters around independent DNP3 stacks, one container contract, deterministic fixtures and the reference-to-reference self-tests. It knows nothing about any library under test. [go-dnp3](/projects/go-dnp3/) is a consumer: it pulls the images, pinned by digest, and owns its own scenarios, assertions and compatibility claims.
+
+<Aside type="note" title="Not certification">
+Interoperability between two implementations does not establish conformance: both can share the same misreading of IEEE 1815. It is not a DNP Users Group certification either, which is a separate programme with its own IED conformance test procedures.
+</Aside>
+
+## dnp3-interop
+
+| Adapter | Upstream | Language | Licence | Roles |
+|---|---|---|---|---|
+| `stepfunc` | [Step Function I/O dnp3](https://github.com/stepfunc/dnp3) 1.7.0 | Rust | non-commercial, non-production | master and outstation |
+| `opendnp3` | [opendnp3](https://github.com/dnp3/opendnp3) 3.1.2 (archived) | C++ | Apache-2.0 | master and outstation |
+| `dscsystems` | [DSC Systems go-dnp3](https://github.com/dscsystems/go-dnp3) v0.8.1 | Go | GPL-3.0-or-later | master and outstation |
+| `dnp3py` | [dnp3py](https://github.com/craigpnnl/dnp3py) 0.6.0 | Python | MIT | master and outstation (its own fixture only) |
+
+The stacks do not all do the same, and the images say so: `print-capabilities` lists what each adapter supports, and a consumer skips, not fails, a scenario an image declares unsupported. Container contract 1.0 covers DNP3 over TCP; 1.1 adds TLS, UDP, serial, file transfer and Secure Authentication; 1.2 frozen analog inputs, command events, time and interval objects, the dual end point and security statistics; 1.3, the current one, device attributes, several controls in one request, freeze at time and analog freeze, deadbands, file append and authentication, event buffer overflow, link confirms and keep-alive, broadcast, management functions and several outstations on one port.
+
+| | stepfunc | opendnp3 | dscsystems | dnp3py |
+|---|:-:|:-:|:-:|:-:|
+| TLS (mutual), UDP, serial | yes | yes | yes | no |
+| File transfer (g70) | master (no delete) | no | both roles | no |
+| Secure Authentication v5 (g120) | no | no | both roles | no |
+
+The pins, with the exact commit and checksums of every dependency, are in [versions.yaml](https://github.com/otfabric/dnp3-interop/blob/main/versions.yaml); a weekly workflow builds and self-tests each upstream's latest release and keeps an issue open while a pin is behind. Each image is multi-arch (amd64 and arm64). The adapter for the Triangle MicroWorks DNP3 Source Code Library is on hold: its licensed source has no agreed way into the builds yet.
+
+The Step Function I/O crate is distributed under a non-commercial, non-production licence; its image exists for interoperability testing only. The DSC go-dnp3 adapter links a GPL library and is itself GPL-3.0-or-later. Nothing of either is linked into go-dnp3: third-party code runs in its own container only.
+
+### Fixtures
+
+A fixture describes what an outstation is: its link address, its points of every type with their values, flags and event classes, its controls and how they answer (select required, ranges, refusals), and for the later contracts its files, attributes and event buffer. The adapters make each implementation behave that way; consumers read the fixture from the image (`print-fixture`) and decide what to assert, so expectations cannot drift from the image.
+
+## Running the reference stacks
+
+<Steps>
+
+1. Start a reference outstation and wait for its readiness file, never for a delay:
+
+   ```sh
+   IMAGE=ghcr.io/otfabric/dnp3-interop-opendnp3@sha256:...   # pin the digest of a release
+   docker run -d --name ref -p 127.0.0.1:20000:20000 "$IMAGE" server
+   until docker exec ref test -f /run/dnp3-interop/ready; do sleep 0.1; done
+   ```
+
+2. Point your master at it, as master 1 to link address 1024. The server's stdout is a JSON Lines stream of what it received (`command`, `time-sync`, `restart`, …), to assert what your master actually put on the wire:
+
+   ```sh
+   docker logs -f ref | jq -c 'select(.event == "command")'
+   ```
+
+3. Or test your outstation with a reference master, and assert on the result document and the exit code:
+
+   ```sh
+   docker run --rm --network host ghcr.io/otfabric/dnp3-interop-stepfunc@sha256:... \
+     client operate --type g12v1 --index 0 --code LATCH_ON --mode sbo \
+     --host 127.0.0.1 --port 20000
+   ```
+
+</Steps>
+
+Every image has the same commands: `server`, `client <operation>` (integrity-poll, event-poll, read, operate, time-sync, restart, freeze, monitor, the file operations and more), `print-capabilities`, `print-fixture` and `version`. The servers are unauthenticated outstations that accept controls from anyone who reaches them: publish them on 127.0.0.1 only, and never attach them to a plant network.
+
+## The self-tests
+
+dnp3-interop tests its references against each other: every master against every outstation, every case of its case list, requiring identical result documents across pairings apart from time stamps, and checking values against the fixture. Then each transport and feature is checked in every pairing that declares it: TLS, UDP and serial in nine pairings, file transfer and Secure Authentication where the stacks have them. Every release runs them again on the published images, natively on amd64 and arm64, and attaches the compatibility report to the [GitHub release](https://github.com/otfabric/dnp3-interop/releases).
+
+A known upstream defect is recorded in `tests/known-bugs.tsv` and reported as a known bug instead of a failure. An entry that no longer reproduces fails the run, so the list cannot go stale and a pin can move.
+
+## go-dnp3 against the references
+
+`make interop` in go-dnp3 runs go-dnp3 as master against each reference outstation, and each reference master against go-dnp3's outstation (Docker needed). Both directions cover the integrity poll against the fixture's values and flags, reads of ranges and variations, every control case of the fixture, events and their confirmation, unsolicited responses, both time synchronization procedures, restarts, freezes and assign class, and every feature of contracts 1.1 to 1.3 that a reference has.
+
+M is go-dnp3 as master against the reference's outstation, O is go-dnp3 as outstation against the reference's master. A blank cell is a feature the reference does not have or its adapter does not expose.
+
+| Feature | stepfunc 1.7.0 | opendnp3 3.1.2 | DSC go-dnp3 v0.8.1 | dnp3py 0.6.0 |
+|---|:---:|:---:|:---:|:---:|
+| Integrity poll, reads, controls, events, unsolicited, time, restarts, freezes | M O | M O | M O | O |
+| TLS with mutual authentication, UDP, serial | M O | M O | M O | |
+| File transfer: read, write, list, info | O | | M O | |
+| Secure Authentication: key change, challenges, re-key, wrong key; statistics | | | M O | |
+| Device attributes, other sets | M O | | M O | |
+| Several controls in one request | M O | M O | M O | O |
+| FREEZE AT TIME, scheduled | M O | | M O | O |
+| Event buffer overflow | M O | M O | M O | M O |
+| Broadcast | M | M | M O | |
+| Several outstations behind one port | O | M O | M O | O |
+| Dual end point over TCP | M O | M O | M O | |
+| Command events (g13, g43) | O | O | M O | |
+
+The full matrix, with every feature and direction, is in go-dnp3's [INTEROPERABILITY.md](https://github.com/otfabric/go-dnp3/blob/main/INTEROPERABILITY.md#interop-coverage).
+
+## Beyond interop
+
+go-dnp3's own tests need nothing but Go:
+
+| Target | What it does |
+|---|---|
+| `make test` | Master and outstation against each other and against scripted peers over loopback, with the race detector: every function, reconnects, cancellation, many masters |
+| `e2e/chaos_test.go` | A line that corrupts, splits, duplicates and drops octets and kills connections under load, with and without Secure Authentication |
+| `make fuzz` | The link frame decoder, stream reader, transport reassembly, application fragment decoder, the outstation's request handling and the splitting of responses into fragments |
+| Outstation conformance | The outstation against a scripted master, procedure by procedure, including the link layer frame by frame |
+
+A weekly upstream watch compares go-dnp3's object catalog with the object definitions of Step Function I/O dnp3 and DSC go-dnp3, and opens an issue when they change or a new dnp3-interop release appears. It found that g86v2 is one octet, which go-dnp3 v1.3.0 corrected.
+
+## What is and is not validated
+
+**Validated**: both roles against four independent implementations, over TCP, TLS, UDP and serial; file transfer in both roles; Secure Authentication v5 in both roles against DSC go-dnp3, including a wrong update key refused; the dual end point in both roles.
+
+**Not covered yet**:
+
+- Aggressive mode against an independent implementation: no reference in dnp3-interop has it, so it is verified between go-dnp3's own ends.
+- The DNP Users Group's IED conformance procedures, which DSC go-dnp3 and Step Function I/O run and go-dnp3 does not; go-dnp3 declares no subset level.
+- Triangle MicroWorks, the most widely licensed commercial stack, while its adapter is on hold.
+- Real RTUs and IEDs. The references are stacks in containers.
+
+### Findings about the references
+
+Running four stacks against each other and against go-dnp3 turned up behaviour worth knowing:
+
+| Reference | Finding |
+|---|---|
+| Step Function I/O dnp3 1.7.0 | The first SELECT after its outstation starts can fail with NO_SELECT, when the master's confirm of the null unsolicited response arrives between SELECT and OPERATE. Its outstation does not implement ASSIGN CLASS. Its master decodes a one-octet signed device attribute without its sign |
+| opendnp3 3.1.2 | Its master synchronizes time only when the outstation asks for it, and sends neither DIRECT OPERATE NO ACK nor the freezes without acknowledgement. Its UDP outstation answers only the one peer it is configured with |
+| DSC go-dnp3 v0.8.1 | FREEZE AND CLEAR leaves a counter without a frozen counter uncleared, and a freeze raises events for frozen values that did not change. FREEZE AT TIME with time 0 is refused. Link addresses are not filtered: a master with a wrong address reads an IIN instead of timing out |
+| dnp3py 0.6.0 | Its outstation cannot serve the baseline fixture, ignores ranges and specific variations in a read, and answers a control of a point that does not exist with NOT_SUPPORTED but without PARAMETER_ERROR |
+
+Each is recorded, with its reproduction, in dnp3-interop's [COMPATIBILITY.md](https://github.com/otfabric/dnp3-interop/blob/main/docs/COMPATIBILITY.md).
+
+<CardGrid>
+  <LinkCard title="dnp3-interop on GitHub" description="Adapters, container contract, fixtures, capabilities and compatibility" href="https://github.com/otfabric/dnp3-interop" />
+  <LinkCard title="go-dnp3 INTEROPERABILITY.md" description="What is implemented, clause by clause, and the coverage matrix" href="https://github.com/otfabric/go-dnp3/blob/main/INTEROPERABILITY.md" />
+</CardGrid>

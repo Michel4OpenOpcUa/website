@@ -1,0 +1,295 @@
+---
+title: dnp3ctl
+description: Installing and using dnp3ctl, the DNP3 (IEEE 1815) command-line tool to poll, monitor and operate outstations, synchronize time, transfer files, find outstations and simulate an RTU from a YAML model.
+sidebar:
+  label: dnp3ctl
+  order: 2
+---
+
+import { Aside, Tabs, TabItem, LinkCard } from '@astrojs/starlight/components';
+
+[dnp3ctl](https://github.com/otfabric/dnp3ctl) is a command-line tool for DNP3 (IEEE 1815) in both roles, built on [go-dnp3](/docs/protocols/dnp3/library/). As a **master** it polls an RTU, IED or gateway, reads any object and range, watches unsolicited responses, operates controls, synchronizes the clock, restarts, freezes, reads device attributes and transfers files. As an **outstation** it simulates an RTU from a model of points, controls and files, so that a SCADA master or a protocol gateway has something to talk to. Output is text, a table or JSON, with stable exit codes. This page follows v0.6.2.
+
+<Aside type="caution" title="Responsible use">
+dnp3ctl sends real SCADA requests. `client operate` operates breakers and changes set-points; `restart`, `time-sync`, `freeze`, `assign-class`, `manage`, `write-attribute`, `write-deadband`, `clear-restart` and `unsolicited` change the outstation, and `file put` and `rm` change its files. An outstation discards the events a master has read, so polling an outstation in service with its master's link address takes those events away from it. Use dnp3ctl on outstations and networks you own or are authorized to test.
+</Aside>
+
+It is meant for commissioning and site acceptance tests, point-to-point checks, troubleshooting the link between a master and its outstations, master and gateway development, and test setups without hardware.
+
+## Install
+
+Pre-built binaries for Linux (x86-64, ARM64, ARMv7), macOS (Apple Silicon, Intel) and Windows (x86-64, ARM64) are on [GitHub Releases](https://github.com/otfabric/dnp3ctl/releases), with SHA-256 checksums.
+
+<Tabs>
+  <TabItem label="Linux">
+```sh
+VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/dnp3ctl/releases/latest | sed 's|.*/v||')
+case "$(uname -m)" in x86_64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; armv7l) ARCH=armv7 ;; *) echo "unsupported: $(uname -m)" >&2; exit 1 ;; esac
+FILE="dnp3ctl-${VERSION}-linux-${ARCH}.tar.gz"
+BASE="https://github.com/otfabric/dnp3ctl/releases/download/v${VERSION}"
+curl -fsSLO "${BASE}/${FILE}" && curl -fsSLO "${BASE}/dnp3ctl-${VERSION}-checksums.txt"
+grep "${FILE}" "dnp3ctl-${VERSION}-checksums.txt" | sha256sum -c -
+rm -rf dnp3ctl-dl && mkdir -p dnp3ctl-dl && tar -xzf "${FILE}" -C dnp3ctl-dl
+sudo install -m 0755 "dnp3ctl-dl/dnp3ctl-${VERSION}-linux-${ARCH}" /usr/local/bin/dnp3ctl
+```
+  </TabItem>
+  <TabItem label="macOS">
+```sh
+VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/otfabric/dnp3ctl/releases/latest | sed 's|.*/v||')
+case "$(uname -m)" in arm64) ARCH=arm64 ;; x86_64) ARCH=amd64 ;; *) echo "unsupported: $(uname -m)" >&2; exit 1 ;; esac
+FILE="dnp3ctl-${VERSION}-darwin-${ARCH}.tar.gz"
+BASE="https://github.com/otfabric/dnp3ctl/releases/download/v${VERSION}"
+curl -fsSLO "${BASE}/${FILE}" && curl -fsSLO "${BASE}/dnp3ctl-${VERSION}-checksums.txt"
+grep "${FILE}" "dnp3ctl-${VERSION}-checksums.txt" | shasum -a 256 -c -
+rm -rf dnp3ctl-dl && mkdir -p dnp3ctl-dl && tar -xzf "${FILE}" -C dnp3ctl-dl
+sudo install -m 0755 "dnp3ctl-dl/dnp3ctl-${VERSION}-darwin-${ARCH}" /usr/local/bin/dnp3ctl
+```
+  </TabItem>
+  <TabItem label="Go">
+```sh
+go install github.com/otfabric/dnp3ctl@latest
+```
+  </TabItem>
+</Tabs>
+
+The Windows commands (PowerShell) are in the [README](https://github.com/otfabric/dnp3ctl#windows-powershell). Check the install with `dnp3ctl version`. A binary built with `go install` reports version `dev`. To use a serial port without root on Linux, add yourself to the group that owns it (`dialout` on Debian and Ubuntu).
+
+## Command tree
+
+```
+dnp3ctl
+├── client
+│   ├── poll             integrity, event or class poll
+│   ├── read             read objects by group, variation and range
+│   ├── monitor          print every value the outstation reports, until interrupted
+│   ├── operate          CROB or analog set-point (sbo | direct | direct-no-ack)
+│   ├── time-sync        synchronize the clock (lan | non-lan | write)
+│   ├── restart          COLD_RESTART or WARM_RESTART
+│   ├── unsolicited      enable | disable
+│   ├── assign-class     ASSIGN_CLASS
+│   ├── freeze           IMMED_FREEZE, FREEZE_CLEAR, FREEZE_AT_TIME, or broadcast
+│   ├── attributes       device attributes (group 0), of any set
+│   ├── write-attribute  write a device attribute
+│   ├── write-deadband   write the deadband of analog inputs (g34)
+│   ├── manage           INITIALIZE_DATA, START_APPL, SAVE_CONFIG, …
+│   ├── clear-restart    clear the DEVICE_RESTART indication
+│   ├── ping             DELAY_MEASURE with round-trip time
+│   ├── file             ls | info | get | put | rm
+│   └── objects          the groups and variations dnp3ctl knows
+├── server
+│   ├── start            serve a simulated outstation from a model (or the built-in demo)
+│   └── generate-config  write an example outstation model
+├── discover             find DNP3 outstations on subnets
+├── completion           bash, zsh, fish or PowerShell
+└── version
+```
+
+Every command has `--help` with examples, and `--debug` traces every link frame and application fragment, decoded, to stderr.
+
+## Connecting to an outstation
+
+Every `client` command takes the outstation in one of three styles, which are mutually exclusive:
+
+| Flags | Connects to |
+|---|---|
+| `--url tcp://host[:port]` | DNP3 over TCP; port 20000 when omitted |
+| `--url tls://host[:port]` | DNP3 over TLS (IEEE 1815-2012 annex B, IEC 62351-3); port 19999 when omitted |
+| `--url udp://host[:port]` | DNP3 over UDP; `--udp-local-port` for outstations that answer only a configured master port |
+| `--url serial:///dev/ttyUSB0` | A serial line (`serial://COM3` on Windows), with `--baud` (9600), `--data-bits`, `--parity`, `--stop-bits` |
+| `--ip host [--port n]` | TCP on port 20000; TLS when a `--tls…` flag is given |
+| `--listen host[:port]` | Waits for the outstation to connect: the dual end point (annex A.3), for outstations behind a firewall or on a dial-out link |
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--outstation`, `--master` | 10, 1 | Link addresses. Both must match the outstation's configuration |
+| `--timeout`, `--response-timeout` | 10000, 5000 ms | Connecting and each request; each fragment of a response |
+| `--retries` | none | Repeat requests that are safe to repeat (reads, polls, time, unsolicited, assign class, file reads); never controls, freezes, restarts or writes |
+| `--tls-ca`, `--tls-cert`, `--tls-key`, `--tls-server-name` | | Verify the outstation; present a client certificate. `--tls-insecure` skips verification, for test setups only |
+| `--link-confirmed`, `--link-timeout`, `--link-retries`, `--keep-alive` | unconfirmed, 60 s keep-alive | The link layer |
+
+A request that times out (exit code 5) against an outstation that accepts the connection is most often a wrong `--outstation`. `dnp3ctl discover --subnets <host> --outstations 1,2,3,4,10` finds the right one.
+
+**Secure Authentication v5.** Give dnp3ctl the outstation's update key (`--sa-update-key-file` or `DNP3CTL_SA_UPDATE_KEY`), with which it changes the session keys, or a pre-shared session key (`--sa-key-file` or `DNP3CTL_SA_KEY`). Keys are hex, and **never** accepted on the command line, where they would end up in the shell history. `--sa-mac` chooses the MAC algorithm and `--sa-aggressive` turns on aggressive mode.
+
+```sh
+dnp3ctl client operate --ip 192.168.1.20 --type crob --index 0 --op latch-on --sa-update-key-file /etc/dnp3/outstation10.update.key
+```
+
+## Polls and reads
+
+```sh
+# Integrity poll: all pending events, then every current value
+dnp3ctl client poll --ip 192.168.1.20
+
+# The events of class 1 only
+dnp3ctl client poll --ip 192.168.1.20 --mode event --class 1
+
+# All analog inputs as floats with flags; binary inputs 0-15; counters 0, 3 and 7 and the binary outputs
+dnp3ctl client read --ip 192.168.1.20 --object g30v5
+dnp3ctl client read --ip 192.168.1.20 --object g1 --range 0-15
+dnp3ctl client read --ip 192.168.1.20 --object g20,g10 --range 0,3,7
+
+# At most 10 analog input events, with their time stamps
+dnp3ctl client read --ip 192.168.1.20 --object g32 --count 10
+```
+
+```console
+$ dnp3ctl client poll --ip 127.0.0.1
+Integrity poll of outstation 10 at tcp://127.0.0.1:20000: 14 objects in 1 ms  IIN: NEED_TIME|DEVICE_RESTART
+  g1v2    binary-input             0  on              [ONLINE]
+  g3v2    double-bit-input         0  on              [ONLINE]
+  g20v1   counter                  0  123456          [ONLINE]
+  g30v5   analog-input             0  11.02           [ONLINE]
+  g110v8  octet-string             0  FEEDER-7
+  ...
+```
+
+When the outstation answers with values and also sets an IIN error bit, the values are listed with the error and the exit code is 7. `dnp3ctl client objects` lists every group and variation.
+
+## Monitoring
+
+```sh
+# Everything the outstation reports, starting with an integrity poll, until Ctrl-C
+dnp3ctl client monitor --ip 192.168.1.20 --integrity
+
+# Analog input events only, as JSON Lines, for one minute
+dnp3ctl client monitor --ip 192.168.1.20 --object g32 --duration 60 --format json > events.jsonl
+
+# An outstation without unsolicited responses: poll its events every 5 seconds
+dnp3ctl client monitor --ip 192.168.1.20 --unsolicited none --poll-interval 5
+```
+
+The monitor enables unsolicited responses for classes 1 to 3 after connecting, after every reconnect and after a restart, clears the restart indication, and reconnects when the connection is lost. An outstation drops the first connection when a second one arrives from the same master address: give other commands another `--master` while a monitor runs.
+
+## Controls
+
+```sh
+# Close a breaker with select-before-operate (the default mode)
+dnp3ctl client operate --ip 192.168.1.20 --type crob --index 0 --op latch-on
+
+# Trip it with a direct operate and a 500 ms pulse
+dnp3ctl client operate --ip 192.168.1.20 --type crob --index 0 --op trip --on-time 500 --mode direct
+
+# A set-point, and two set-points in one request
+dnp3ctl client operate --ip 192.168.1.20 --type analog --index 0 --value 11.2
+dnp3ctl client operate --ip 192.168.1.20 --type analog --index 0,1 --value 11.2,230
+```
+
+`--op` is `latch-on`, `latch-off`, `pulse-on`, `pulse-off`, `close`, `trip` or `nul` (test the path without operating anything). A refused control exits with code 6 and the status the outstation echoed (`NO_SELECT`, `LOCAL`, `NOT_SUPPORTED`, `OUT_OF_RANGE`, …). Everything is validated before anything is sent, and a control is sent exactly once, also with `--retries`.
+
+## Time, restarts, freezes and attributes
+
+```sh
+dnp3ctl client time-sync --ip 192.168.1.20                                          # LAN procedure
+dnp3ctl client time-sync --url serial:///dev/ttyUSB0 --baud 19200 --method non-lan  # with delay measurement
+dnp3ctl client restart --ip 192.168.1.20 --type warm
+dnp3ctl client unsolicited enable --ip 192.168.1.20 --class 1,2
+dnp3ctl client assign-class --ip 192.168.1.20 --class 2 --object g30 --range 0-7
+dnp3ctl client freeze --ip 192.168.1.20 --object g20 --range 0-3 --clear
+dnp3ctl client freeze --ip 192.168.1.20 --at 2027-01-01T00:00:00Z --interval 1h     # FREEZE_AT_TIME
+dnp3ctl client attributes --ip 192.168.1.20                                         # manufacturer, model, versions, …
+dnp3ctl client ping --ip 192.168.1.20                                               # DELAY_MEASURE round trips
+```
+
+`--broadcast no-confirm|confirm|optional` sends a freeze or a direct operate to every outstation on the channel; nobody answers, and each sets IIN1.0 BROADCAST in its next response. dnp3ctl refuses a broadcast with Secure Authentication, which an outstation would discard.
+
+## Files
+
+```sh
+dnp3ctl client file ls --ip 192.168.1.20 --path /records
+dnp3ctl client file get --ip 192.168.1.20 --path /records/disturbance-0001.dat
+dnp3ctl client file put --ip 192.168.1.20 --input today.csv --path /logs/events.csv --append
+DNP3CTL_FILE_PASSWORD=… dnp3ctl client file ls --ip 192.168.1.20 --file-user engineer
+```
+
+`file get` does not overwrite an existing file without `--force`. The file password is read from the environment or `--file-password-file`, never from a flag.
+
+## Finding outstations
+
+```sh
+dnp3ctl discover --subnets 192.168.1.0/24
+dnp3ctl discover --subnets 10.0.1.0/24 --outstations 1,2,3,4,10,65532 --format table
+```
+
+The probe sends one link layer REQUEST_LINK_STATUS per link address and waits for LINK_STATUS. No application layer request is made, nothing is read and no event is taken.
+
+## Simulating an outstation
+
+```sh
+# The built-in demo outstation on port 20000
+dnp3ctl server start
+
+# Write its model, edit it, serve it
+dnp3ctl server generate-config --output outstation.yaml
+dnp3ctl server start --config outstation.yaml
+
+# TLS for two masters only; UDP; a serial line; with Secure Authentication
+dnp3ctl server start --config outstation.yaml --tls-cert server.pem --tls-key server.key --tls-client-ca ca.pem --allow 10.0.0.5,10.0.0.6
+dnp3ctl server start --config outstation.yaml --udp
+dnp3ctl server start --config outstation.yaml --serial /dev/ttyUSB0 --baud 19200
+dnp3ctl server start --config outstation.yaml --sa-update-key-file outstation.update.key
+
+# Several outstations behind one port, each at the link address of its model
+dnp3ctl server start --config rtu10.yaml --config rtu11.yaml --config rtu12.yaml
+
+# Connect to the master instead of listening (dual end point)
+dnp3ctl server start --config outstation.yaml --dial tls://scada.example.net --tls-ca ca.pem --tls-cert rtu.pem --tls-key rtu.key
+```
+
+A model names the outstation's link address, its points with their values, classes and deadbands, its controls and its files:
+
+```yaml title="outstation.yaml"
+outstation:
+  name: Demo feeder RTU
+  address: 10
+  unsolicited: {enabled: true}
+  restart_delay: 2s
+
+points:
+  - {type: binary-input, index: 0, name: Breaker closed, value: true, class: 1}
+  - {type: binary-output, index: 0, name: Breaker control status, value: true, class: 1}
+  - type: analog-input
+    index: 0
+    name: Voltage L1 (kV)
+    value: 11.02
+    class: 2
+    deadband: 0.01
+    static_variation: 5
+    simulate: {mode: sine, interval: 2s, min: 10.9, max: 11.1}
+  - {type: counter, index: 0, name: Energy (kWh), value: 123456, class: 3}
+
+controls:
+  - {type: crob, index: 0, name: Breaker, target: {type: binary-output, index: 0}, select_required: true}
+  - {type: crob, index: 2, name: Local panel, status: LOCAL}
+  - {type: analog, index: 0, name: Voltage set-point, min: 10, max: 12}
+
+files:
+  - {name: /records/disturbance-0001.dat, size: 8192}
+```
+
+The simulated outstation answers polls and reads of every point type in any variation, keeps an event buffer per master, reports unsolicited, executes controls on their `target` (or refuses them with the `status` you choose, to test a master), changes values by itself where the model says `simulate`, and answers time synchronization, restarts, freezes, attributes, management functions, broadcasts and file transfer. Every event is written to stdout as it happens, as text, a table or JSON Lines. The full model reference is [docs/server-config.md](https://github.com/otfabric/dnp3ctl/blob/main/docs/server-config.md).
+
+## Output formats and exit codes
+
+`--format text|json|table` (or `DNP3CTL_OUTPUT_FORMAT`) controls the result on stdout; progress and the `--debug` trace go to stderr. Streams (`client monitor`, `client ping`, `server start`) write one record as it happens, as JSON Lines with `--format json`. With JSON, a failure is a single error object `{"error": {"kind", "code", "message"}}`; the shapes are a stable contract ([docs/json-output.md](https://github.com/otfabric/dnp3ctl/blob/main/docs/json-output.md)).
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 2 | Usage: unknown command or flag, missing required flag |
+| 3 | Invalid input: nothing was sent |
+| 4 | Transport: cannot connect, connection lost, TLS failure |
+| 5 | Timeout: no answer |
+| 6 | The outstation refused the request (IIN error, control status, file status, authentication), or a protocol error |
+| 7 | Partial success: a valid result that holds failures |
+| 10 | Output or internal error |
+
+## Environment variables
+
+Every flag except `--debug` has a `DNP3CTL_*` variable, and a flag on the command line wins: `DNP3CTL_URL`, `DNP3CTL_OUTSTATION` and `DNP3CTL_OUTPUT_FORMAT` save repeating them. Three secrets are read only from the environment or a file, never from a flag: `DNP3CTL_SA_UPDATE_KEY`, `DNP3CTL_SA_KEY` and `DNP3CTL_FILE_PASSWORD`.
+
+## Tested against
+
+The library underneath, go-dnp3, runs its interop suite as master and as outstation against Step Function I/O dnp3, opendnp3, DSC go-dnp3 and dnp3py in the containers of [dnp3-interop](/docs/protocols/dnp3/testing/) v0.4.1. dnp3ctl's own tests run every command against its simulated outstation over TCP, TLS, UDP and a serial stream. If dnp3ctl has trouble with a device, [open an issue](https://github.com/otfabric/dnp3ctl/issues) with the `--debug` trace.
+
+<LinkCard title="dnp3ctl on GitHub" description="README, docs/server-config.md, docs/json-output.md, docs/exitcodes.md, SECURITY.md" href="https://github.com/otfabric/dnp3ctl" />

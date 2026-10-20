@@ -20,7 +20,7 @@ const icons = Object.fromEntries((await getProtocols()).map((p) => [p.id, p.data
 const maps = ecosystemProtocols.map((p) => ({ protocol: p, ...layout(p.id) }));
 const all = ecosystem.implementations;
 const languages = [...new Set(all.flatMap((i) => i.languages))].sort((a, b) => a.localeCompare(b));
-const families = ['Permissive', 'Weak copyleft', 'Copyleft', 'Commercial'];
+const families = ['Permissive', 'Weak copyleft', 'Copyleft', 'Source-available', 'Commercial'];
 const statuses = ['active', 'slowing', 'quiet', 'archived', 'deprecated', 'discontinued'];
 const short = (s: string, n = 24) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const hubText = (h: { type: keyof typeof typeLabels; count: number }) => `${typeLabels[h.type].split(' ')[0]} · ${h.count}`;
@@ -56,7 +56,7 @@ const schema = [
 
 <BaseLayout
 	title="OT protocol ecosystem map"
-	description={`Who implements Modbus, OPC UA, BACnet, IEC 104, IEC 61850, Siemens S7, OpenADR and OCPP: ${stats.implementations} open-source and commercial stacks with language, licence, roles and latest release.`}
+	description={`Who implements Modbus, OPC UA, BACnet, IEC 104, IEC 61850, Siemens S7, OpenADR, OCPP and DNP3: ${stats.implementations} open-source and commercial stacks with language, licence, roles and latest release.`}
 	image="/ecosystem-card.png"
 	imageAlt="The OT protocol ecosystem map: protocols in the middle, implementations around them"
 	pageType="CollectionPage"

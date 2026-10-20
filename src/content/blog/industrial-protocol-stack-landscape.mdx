@@ -1,8 +1,8 @@
 ---
 title: The industrial protocol stack landscape
-description: Who implements Modbus, OPC UA, BACnet, IEC 104, IEC 61850, Siemens S7, OpenADR and OCPP? 100 open-source and commercial stacks, verified against their own release channels, and an interactive map to explore them.
+description: Who implements Modbus, OPC UA, BACnet, IEC 104, IEC 61850, Siemens S7, OpenADR, OCPP and DNP3? 117 open-source and commercial stacks, verified against their own release channels, and an interactive map to explore them.
 date: 2026-10-18
-updated: 2026-10-19
+updated: 2026-10-20
 authors: [OT Fabric]
 tags: [ecosystem, research, open-source]
 featured: true
@@ -17,7 +17,7 @@ import Callout from '../../components/Callout.astro';
 
 Nobody connects a plant, a substation or a building with one library. Every integration leans on stacks written by other people: a C library in a gateway, a Python tool on a laptop, a Java server in a SCADA system, a vendor SDK inside a controller. OT Fabric only makes sense as part of that ecosystem, which is why each of our protocols ships with an interop suite that tests against the established implementations.
 
-So we mapped the ecosystem. This post is the research: eight protocol families, 100 implementations, and what we learned checking every one of them against its own release channel. The interactive version lets you pick a protocol, filter by language, licence and activity, and jump straight to the source.
+So we mapped the ecosystem. This post is the research: nine protocol families, 117 implementations, and what we learned checking every one of them against its own release channel. The interactive version lets you pick a protocol, filter by language, licence and activity, and jump straight to the source.
 
 <MapLink />
 
@@ -30,7 +30,7 @@ We sort every implementation into one of four groups, because a flat list of rep
 - **Commercial SDKs** are proprietary or dual-licensed developer libraries, including those without public source.
 - **Legacy and reference** code is historically important but superseded or no longer maintained.
 
-Each entry records its language, licence (as an SPDX expression, read from the licence file), protocol roles, documented capabilities, latest release, last commit, stars and forks, and the OT Fabric interop suite that exercises it, if any. Every entry also lists its sources and the date we last verified it.
+Each entry records its language, licence (as an SPDX expression, read from the licence file, or the licence's own name where it has no SPDX identifier), protocol roles, documented capabilities, latest release, last commit, stars and forks, and the OT Fabric interop suite that exercises it, if any. Every entry also lists its sources and the date we last verified it.
 
 <Callout title="Popularity is a property, not a ranking">
   Stars measure attention from software developers, not field deployments. A mature C stack with 200 stars may run in more devices than a library with several thousand. The map draws every implementation at the same size on purpose.
@@ -48,7 +48,7 @@ The first draft of this inventory took versions from GitHub Releases. Checking e
 - **tokio-modbus** (0.17.0), **simonvetter/modbus** (v1.6.4) and **NModbus** tag and publish without creating GitHub Releases.
 - The **EPRI OpenADR** reference code is BSD-3-Clause throughout; two licences had been left open.
 
-The registry now names the source of every version: GitHub, PyPI, npm, crates.io, NuGet, Maven Central, SourceForge or the Go module proxy.
+The registry now names the source of every version: GitHub, PyPI, npm, crates.io, NuGet, Maven Central, pub.dev, SourceForge, the Go module proxy or a vendor's release notes.
 
 ## Modbus
 
@@ -116,6 +116,14 @@ OpenLEADR covers both generations: Python for 2.0b, Rust for 3.1, where its READ
 
 The open-source side is broad, with libraries in Python, Java, Go, C++, Rust, JavaScript, C# and Kotlin. Five of them run in [ocpp-interop](https://github.com/otfabric/ocpp-interop): The Mobility House ocpp, ChargeTimeEU Java-OCA-OCPP, ocpp-go, EVerest libocpp and CitrineOS. libocpp's own repository is archived; it now lives inside EVerest, the LF Energy charging station stack. SteVe and OCPP.Core are complete CSMS products rather than libraries, and MicroOcpp brings the station side to microcontrollers. Commercial stacks are sold for both sides, though versions and platforms are rarely published.
 
+## DNP3
+
+**Mature, with few active open stacks.** DNP3 (IEEE 1815) has been the SCADA protocol of North American utilities for three decades, and the commercial side is well established: source code libraries from Triangle MicroWorks, FreyrSCADA and others run inside many RTUs and IEDs. The open-source side has thinned out.
+
+<LandscapeTable protocol="dnp3" />
+
+opendnp3, for a decade the default open-source stack, was archived in September 2022 at 3.1.2, and still sits under the Python bindings pydnp3, VOLTTRON's dnp3-python and the new yadnp3 fork. Step Function I/O's Rust library, with C, C++, .NET and Java bindings, is actively maintained, but its licence allows non-commercial, non-production use only, with a commercial licence for production: the map files it under its own licence family, source-available. The rest is young: DSC Systems' go-dnp3 (GPL-3.0) and cB-Sigma's dnp3 (Apache-2.0) are pure Go stacks from 2026, both with Secure Authentication, and dnp3py brings a pure Python master and outstation with a MESA DER profile. Four of them run in [dnp3-interop](https://github.com/otfabric/dnp3-interop): Step Function I/O, opendnp3, DSC go-dnp3 and dnp3py. The Triangle MicroWorks adapter is on hold until its licensed source has an agreed way into the builds.
+
 ## The picture across protocols
 
 | Protocol | Open source | Commercial SDKs | Primary references |
@@ -128,6 +136,7 @@ The open-source side is broad, with libraries in Python, Java, Go, C++, Rust, Ja
 | Siemens S7 | Mature for classic S7 | Established | Snap7, S7NetPlus, python-snap7, Apache PLC4X |
 | OpenADR | Smaller, evolving | Not transparent | OpenLEADR (Python and Rust), ElaadNL |
 | OCPP | Mature for 1.6J, maturing for 2.x | Established | The Mobility House ocpp, Java-OCA-OCPP, ocpp-go, EVerest libocpp, CitrineOS, SteVe |
+| DNP3 | Mature, few active open stacks | Very established | opendnp3 (archived), Step Function I/O dnp3 (source-available), DSC go-dnp3, dnp3py |
 
 These are judgements about maturity and visibility, not measured conformance, security or quality. Our interop suites are where we test behaviour; this map is where we record who is out there.
 

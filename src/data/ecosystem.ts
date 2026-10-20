@@ -90,6 +90,7 @@ export const maintenanceLabels: Record<string, string> = {
 /** Coarse licence family, used for filtering. The SPDX string stays the source of truth. */
 export function licenseFamily(license: string) {
 	if (license === 'Commercial') return 'Commercial';
+	if (/non-commercial/i.test(license)) return 'Source-available';
 	if (/WITH|LGPL|MPL|EPL/.test(license)) return 'Weak copyleft';
 	if (/GPL/.test(license)) return 'Copyleft';
 	return 'Permissive';
