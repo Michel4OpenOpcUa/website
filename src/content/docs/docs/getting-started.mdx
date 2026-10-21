@@ -1,19 +1,31 @@
 ---
 title: Getting started
-description: How the OT Fabric projects fit together, and the fastest way to talk to your first device.
+description: What the OT Fabric ecosystem covers, from protocol libraries and field tools to interop suites, network visibility and desktop apps, and the fastest way to talk to your first device.
 ---
 
 import { LinkCard, CardGrid, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
-OT Fabric is a set of small, independent projects. Each protocol has the same shape:
+OT Fabric is an open-source ecosystem for industrial connectivity and interoperability. It gives the people who build, operate and integrate industrial systems one consistent toolkit across the protocols that run factories, grids, buildings and EV charging: Modbus, SunSpec, OPC UA, BACnet/IP, IEC 60870-5-104, IEC 61850 / MMS, Siemens S7, OpenADR, OCPP and DNP3.
 
-| Layer | What it is | Example |
+Everything is MIT-licensed and public on GitHub, built by people and AI agents together, and the protocol stacks are proven against independent implementations, not only against their own tests.
+
+## What the ecosystem covers
+
+| Part | What it gives you | Examples |
 |---|---|---|
-| **Library** | A pure Go client (and usually server) for the protocol | `go-modbus` |
-| **CLI** | A command-line tool built on that library | `modbusctl` |
-| **Interop suite** | Dockerized reference stacks the library is tested against | `modbus-interop` |
+| **Protocol libraries** | Client and server implementations to embed in gateways, services and products. Pure Go, no cgo | [go-modbus](/projects/go-modbus/), [go-opcua](/projects/go-opcua/), [go-ocpp](/projects/go-ocpp/), [go-dnp3](/projects/go-dnp3/) |
+| **Command-line tools** | One tool per protocol to discover, read, write, monitor, simulate and diagnose devices in the field, with JSON output for scripts and CI | [modbusctl](/projects/modbusctl/), [opcuactl](/projects/opcuactl/), [ocppctl](/projects/ocppctl/), [dnp3ctl](/projects/dnp3ctl/) |
+| **Interoperability suites** | Independent reference stacks in containers behind one contract, so any implementation, ours or yours, can be tested against the established ones | [modbus-interop](/projects/modbus-interop/), [ocpp-interop](/projects/ocpp-interop/), [dnp3-interop](/projects/dnp3-interop/) |
+| **Network visibility** | What is connected to an OT network, what changed, and which protocols it speaks | [LAN Tracker](/projects/lan-tracker/), [go-otfp](/projects/go-otfp/) |
+| **Desktop apps** | Graphical tools for engineers, integrators and commissioning teams | [SunSpec Explorer](/projects/sunspec-explorer/), [Modbus Trace Explorer](/projects/modbus-trace-explorer/) |
+| **Captures and simulation** | Record real devices, serve them again as virtual devices, and read packet traces offline | [MBCAP](/projects/go-modbus-capture/), [modbus-simulator](/projects/modbus-simulator/), [go-modbus-trace](/projects/go-modbus-trace/) |
+| **Ecosystem map** | An open, source-backed registry of more than a hundred open-source and commercial protocol stacks, with licence, roles and latest release | [Ecosystem map](/ecosystem/) |
 
-Shared transports such as [go-serial](https://github.com/otfabric/go-serial), [go-tpkt](https://github.com/otfabric/go-tpkt) and [go-cotp](https://github.com/otfabric/go-cotp) sit underneath, and [go-otfp](https://github.com/otfabric/go-otfp) tells you which protocols a device speaks in the first place.
+Shared building blocks such as [go-serial](/projects/go-serial/), [go-tpkt](/projects/go-tpkt/) and [go-cotp](/projects/go-cotp/) sit underneath. Each protocol ships the same way: a library, a command-line tool where field work needs one, an interop suite where independent stacks exist, and documentation that explains how the protocol works before it explains the code.
+
+### Where it is heading
+
+The roadmap is full coverage of the OT protocols that matter, **IT-to-OT gateways and data connectors** that move industrial data safely into IT, cloud and analytics systems, and **OT MCP servers** that let AI agents discover, read and work with industrial devices under the same safety rules as a person. [About OT Fabric](/about/) has the why.
 
 ## Pick your path
 
@@ -35,6 +47,18 @@ Shared transports such as [go-serial](https://github.com/otfabric/go-serial), [g
 
     Each protocol page has a short, complete example to start from.
   </TabItem>
+  <TabItem label="I want to test my own stack">
+    The interop suites do not depend on OT Fabric code, so any implementation in any language can use them. Start a reference server from its image, point your client at it, and ask each image what it supports:
+
+    ```sh
+    docker run --rm ghcr.io/otfabric/modbus-interop-libmodbus:<tag> print-capabilities
+    ```
+
+    Each protocol's *Testing and interop* page lists the images, fixtures and commands.
+  </TabItem>
+  <TabItem label="I want to see my network">
+    [LAN Tracker](/projects/lan-tracker/) keeps a history of what is connected to your OT networks: which MAC held which IP and when, names, DHCP leases, reachability and duplicate addresses. It is passive by default. Download it from its [GitHub Releases](https://github.com/otfabric/lan-tracker/releases).
+  </TabItem>
 </Tabs>
 
 <Aside type="caution" title="Use on equipment you are authorized to test">
@@ -45,5 +69,6 @@ These tools send real requests to real equipment. Start with read-only commands,
 
 <CardGrid>
   <LinkCard title="Protocols" description="How each protocol works, with quickstarts for the library and the CLI." href="/docs/protocols/" />
-  <LinkCard title="Project catalog" description="Every library, CLI, building block and interop suite." href="/projects/" />
+  <LinkCard title="Project catalog" description="Every library, CLI, app, interop suite and building block." href="/projects/" />
+  <LinkCard title="Ecosystem map" description="Who else implements each protocol, with licence, roles and latest release." href="/ecosystem/" />
 </CardGrid>
