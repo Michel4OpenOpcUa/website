@@ -1,7 +1,8 @@
 ---
 title: Introducing OT Fabric
-description: Open-source protocol libraries and tools for industrial data, built by people and AI agents together.
+description: OT Fabric brings open-source DNA and IT best practices to industrial connectivity, for people and AI agents alike. The OT toolset you always wished you had in your pocket, built by people and AI agents together.
 date: 2026-10-12
+updated: 2026-10-21
 authors: [OT Fabric]
 tags: [announcement, roadmap]
 featured: true
@@ -10,15 +11,32 @@ cover:
   image: ../../assets/blog/protocol-stack.svg
 ---
 
-Industrial data is trapped behind legacy protocols, vendor boundaries and one-off integrations. OT Fabric is our answer: an open, tested foundation for talking to the devices that run factories, grids and buildings.
+Industrial data is trapped behind legacy protocols, vendor boundaries and one-off integrations. OT Fabric is our answer: an open, tested foundation for talking to the devices that run factories, grids, buildings and charging networks. Built for people and AI, by people and AI. The OT toolset you always wished you had in your pocket.
+
+## Why OT needs open-source DNA
+
+Over the last twenty years, IT changed how software is built. Open source became the default foundation. Code, tests and issues moved into public repositories, and continuous integration, containers, semantic versioning and APIs turned "it works on my machine" into something anyone can check.
+
+Much of OT has not had that shift yet. Protocol stacks are often closed SDKs licensed per seat or per device. Field tools are tied to one vendor and one Windows laptop. The knowledge of how a protocol really behaves sits in paywalled specifications and in the heads of a few engineers, and integrations are rebuilt from scratch for every site. Industrial equipment is built to last for decades, and that is a strength. But the software around it should not be stuck in the same decade.
+
+That gap is a huge opportunity, and OT Fabric brings the IT habits that close it:
+
+- **Open code and open tests.** MIT-licensed by default, public on GitHub, with every result reproducible on your own machine.
+- **Proof against others, not only ourselves.** Every protocol stack is tested against independent implementations in [public interop suites](/blog/why-every-protocol-gets-an-interop-suite/).
+- **Releases you can depend on.** Semantic versioning, changelogs, checksummed binaries and container images pinned by digest.
+- **Automation built in.** JSON output and stable exit codes on every CLI, so field checks become scripts and scripts become CI jobs.
+- **Documentation that explains.** Each protocol guide explains how the protocol works before it explains the code.
+- **An open map of the field.** The [ecosystem map](/ecosystem/) lists who else implements each protocol, including commercial vendors, because a healthy ecosystem is bigger than one project.
 
 ## What is available today
 
-Seven protocols, each with the same three parts, as the diagram above shows:
+Ten protocols: Modbus, SunSpec, OPC UA, BACnet/IP, IEC 60870-5-104, IEC 61850 / MMS, Siemens S7, OpenADR, OCPP and DNP3. Each has the same core, as the diagram above shows:
 
-- **A pure Go library**, with no cgo and, for most protocols, no dependencies outside the standard library.
+- **A protocol library** with client and server support, written in pure Go with no cgo and, for most protocols, no dependencies outside the standard library.
 - **A command-line tool** for commissioning, troubleshooting and scripting, with JSON output and stable exit codes.
 - **An interoperability suite** that runs the library against independent implementations in containers.
+
+Around that core sit [LAN Tracker](/projects/lan-tracker/) and [go-otfp](/projects/go-otfp/) for network visibility, the [SunSpec Explorer](/projects/sunspec-explorer/) and [Modbus Trace Explorer](/projects/modbus-trace-explorer/) desktop apps, and tools to capture real devices and serve them again as simulators. The [project catalog](/projects/) has all of it.
 
 Reading four holding registers from a Modbus TCP device looks like this:
 
@@ -36,14 +54,26 @@ Or, without writing any code:
 modbusctl client poll --ip 192.168.1.10 --start 100 --count 4
 ```
 
-## Built by people and AI agents
+## The OT toolset in your pocket
 
-OT Fabric is built by engineers and AI coding agents working together. Engineers bring the protocol knowledge and own every decision; agents bring speed and breadth. What keeps that honest is the same bar for everything we ship: public code, public tests, and interop suites that check it against other implementations.
+Picture a commissioning day. You arrive at a site with a laptop and a list of devices, half of them undocumented. With OT Fabric, everything you need fits in one folder: one static binary per protocol for Linux (including ARM), macOS and Windows. You need no licence dongle, no vendor installer and no internet connection on site.
+
+You find out what is on the network and which protocols it speaks. You identify a device, scan which registers or points answer, and poll the values you care about. When something looks wrong, you record the device to a capture file. Back at the office, you serve that capture as a simulated device and reproduce the problem without driving back. The same commands then run unchanged in a CI pipeline against a simulator.
+
+## For people and AI, by people and AI
+
+Software development is moving into an AI-first era. Coding agents already write a growing share of new code, and the next step is close behind: agents that read telemetry, inspect devices and help operate systems. Industrial systems will get there too, and when they do, they need tools that agents can use safely and people can trust.
+
+**Built for people.** Readable documentation, field tools with clear output, desktop apps for engineers who would rather not use a terminal, and safe defaults throughout: read before write, and writes that you have to ask for explicitly.
+
+**Built for AI.** Every CLI speaks structured JSON with stable exit codes, so an agent can call it and understand the answer. The documentation is published in plain text for language models, at [llms.txt](/llms.txt) and one bundle per protocol. Next on the roadmap are OT MCP servers, which give agents a structured way to discover, read and work with industrial devices, with the same guard rails a person has.
+
+**Built by people and AI.** OT Fabric is built by engineers and AI coding agents working together. Engineers bring the protocol knowledge, set direction and own every decision. Agents bring speed and breadth. The AGENTS.md in our repositories holds both to the same rules, such as: never invent protocol behaviour, never mark a feature implemented because its types compile, and never skip or weaken a failing test. What keeps that honest is the same bar for everything we ship: public code, public tests, and interop suites that check it against other implementations.
 
 ## Where we go next
 
-- Full coverage of all relevant OT protocols
-- IT2OT gateways and data connectors
-- OT MCP servers, so AI agents can discover, read and work with industrial devices safely
+- **Full coverage of all relevant OT protocols**, so any industrial device can be reached with the same open, tested toolkit.
+- **IT-to-OT gateways and data connectors** that move OT data safely into the IT, cloud and analytics systems that need it.
+- **OT MCP servers**, so AI agents can discover, read and work with industrial devices safely.
 
-Browse the [project catalog](/projects/), start with a [protocol guide](/protocols/), or open an issue on [GitHub](https://github.com/otfabric).
+Browse the [project catalog](/projects/), start with the [getting started guide](/docs/getting-started/), or open an issue on [GitHub](https://github.com/otfabric). If you build energy, automation or infrastructure software and you have wished for better tools, we would like to hear from you.
