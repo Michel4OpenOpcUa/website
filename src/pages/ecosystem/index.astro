@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { getProtocols } from '../../data/projects';
-import { absolute, breadcrumbs } from '../../data/seo';
+import { absolute, breadcrumbs, orgRef } from '../../data/seo';
 import {
 	ecosystem,
 	ecosystemProtocols,
@@ -39,17 +39,18 @@ const schema = [
 	breadcrumbs([{ name: 'Ecosystem map', path: '/ecosystem/' }]),
 	{
 		'@type': 'Dataset',
+		'@id': `${absolute('/ecosystem/')}#dataset`,
 		name: ecosystem.title,
-		description: 'An open, source-backed registry of open-source and commercial implementations of industrial protocol stacks.',
+		description: `An open, source-backed registry of ${stats.implementations} open-source and commercial implementations of industrial protocol stacks (${ecosystemProtocols.map((p) => p.name).join(', ')}), with language, licence, roles, capabilities, maintenance status and latest release, each checked at its publishing source.`,
 		url: absolute('/ecosystem/'),
 		dateModified: ecosystem.verified,
 		license: 'https://opensource.org/licenses/MIT',
 		isAccessibleForFree: true,
-		distribution: {
-			'@type': 'DataDownload',
-			encodingFormat: 'application/json',
-			contentUrl: 'https://github.com/otfabric/website/blob/main/src/data/ecosystem.json',
-		},
+		creator: orgRef,
+		publisher: orgRef,
+		keywords: ['industrial protocols', 'OT', 'protocol stacks', 'open source', ...ecosystemProtocols.map((p) => p.name)],
+		variableMeasured: ['protocol', 'implementation type', 'programming language', 'licence', 'roles', 'capabilities', 'latest release', 'maintenance status'],
+		distribution: { '@type': 'DataDownload', encodingFormat: 'application/json', contentUrl: absolute('/ecosystem.json') },
 	},
 ];
 ---

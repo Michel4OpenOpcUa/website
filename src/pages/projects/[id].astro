@@ -31,6 +31,34 @@ const releases =
 const media = projectMedia[project.id];
 const screenshotUrl = media?.screenshot && (await getImage({ src: media.screenshot.src, width: 1200, format: 'png' })).src;
 const url = absolute(`/projects/${project.id}/`);
+// Search terms for each kind of project, next to the protocol names.
+const categoryKeywords: Record<typeof data.category, string[]> = {
+	library: ['protocol library', 'client', 'server'],
+	cli: ['command-line tool', 'CLI'],
+	transport: ['transport layer'],
+	discovery: ['network visibility', 'network discovery', 'protocol fingerprinting'],
+	interop: ['interoperability testing', 'reference implementations', 'Docker'],
+	ui: ['desktop app'],
+	mcp: ['Model Context Protocol', 'AI agents'],
+	gateway: ['IT/OT integration', 'data connectors'],
+};
+// The browser and search title says what the project is: "go-modbus: Modbus library".
+const what: Record<string, string> = {
+	'go-modbus-capture': 'Modbus capture format (MBCAP)',
+	'go-modbus-trace': 'Modbus/TCP packet trace reader',
+	'go-mms': 'MMS (ISO 9506) library',
+	'modbus-simulator': 'Modbus device simulator',
+	'go-cotp': 'COTP (ISO 8073) transport',
+	'go-tpkt': 'TPKT (RFC 1006) framing',
+	'go-serial': 'RS-232 and RS-485 serial ports',
+	'go-otfp': 'OT protocol fingerprinting',
+	'lan-tracker': 'OT network visibility',
+	'modbus-trace-explorer': 'Modbus/TCP trace viewer',
+};
+const kind = { library: 'library', cli: 'command-line tool', interop: 'interop test suite', ui: 'desktop app' } as Record<string, string>;
+const topic = protocols.find((p) => p.id === data.protocols[0])?.data.name;
+const pageTitle = what[project.id] ?? (topic && kind[data.category] ? `${data.name}: ${topic} ${kind[data.category]}` : data.name);
+const fullName = pageTitle.startsWith(data.name) ? pageTitle : `${data.name}: ${pageTitle}`;
 const schema = [
 	breadcrumbs([
 		{ name: 'Projects', path: '/projects/' },
@@ -48,21 +76,26 @@ const schema = [
 		author: orgRef,
 		publisher: orgRef,
 		isAccessibleForFree: true,
-		keywords: ['OT', 'industrial automation', ...protocols.map((p) => p.data.name)].join(', '),
-		about: protocols.map((p) => ({ '@type': 'Thing', name: p.data.name, url: absolute(`/protocols/${p.id}/`) })),
+		keywords: ['OT', 'industrial automation', ...categoryKeywords[data.category], ...protocols.map((p) => p.data.name)].join(', '),
+		...(protocols.length && {
+			about: protocols.map((p) => ({ '@type': 'Thing', name: p.data.name, url: absolute(`/protocols/${p.id}/`) })),
+		}),
 		mainEntityOfPage: { '@id': `${url}#webpage` },
 	},
-	...(data.category === 'ui'
+	// Tools people download and run also describe themselves as applications.
+	...(releases
 		? [
 				{
 					'@type': 'SoftwareApplication',
+					'@id': `${url}#app`,
 					name: data.name,
 					description: data.description,
 					url,
-					applicationCategory: 'DeveloperApplication',
-					operatingSystem: 'macOS, Windows, Linux',
-					downloadUrl: `${repoUrl(data.repo!)}/releases/latest`,
+					applicationCategory: data.category === 'discovery' ? 'NetworkingApplication' : 'DeveloperApplication',
+					...(data.category === 'ui' && { operatingSystem: 'macOS, Windows, Linux' }),
+					downloadUrl: `${releases}/latest`,
 					offers: { '@type': 'Offer', price: 0, priceCurrency: 'USD' },
+					isAccessibleForFree: true,
 					...(screenshotUrl && { screenshot: absolute(screenshotUrl) }),
 					author: orgRef,
 					publisher: orgRef,
@@ -72,7 +105,7 @@ const schema = [
 ];
 ---
 
-<BaseLayout title={data.name} description={data.description} schema={schema}>
+<BaseLayout title={fullName} description={data.description} schema={schema}>
 	<PageHeader label={category.label} title={data.name} lead={data.description}>
 		<div class="actions">
 			<a class="ot-btn primary" href={repoUrl(data.repo!)}>View on GitHub</a>

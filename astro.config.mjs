@@ -3,8 +3,19 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import tailwindcss from '@tailwindcss/vite';
 import sitemap from '@astrojs/sitemap';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const site = 'https://otfabric.io';
+
+// Last-modified dates for the sitemap, where the content records one: blog posts
+// (updated, else date) and the ecosystem map (the registry's verification date).
+const lastmod = new Map();
+for (const file of readdirSync('./src/content/blog')) {
+  const frontmatter = readFileSync(`./src/content/blog/${file}`, 'utf8').split('\n---')[0];
+  const date = (frontmatter.match(/^updated:\s*(\S+)/m) ?? frontmatter.match(/^date:\s*(\S+)/m))?.[1];
+  if (date) lastmod.set(`${site}/blog/${file.replace(/\.mdx?$/, '')}/`, date);
+}
+lastmod.set(`${site}/ecosystem/`, JSON.parse(readFileSync('./src/data/ecosystem.json', 'utf8')).verified);
 const description =
   'Open-source protocol libraries and tools that break down OT data silos, built by people and AI agents together.';
 
@@ -86,7 +97,12 @@ export default defineConfig({
       customCss: ['./src/styles/global.css'],
     }),
 
-    sitemap(),
+    sitemap({
+      serialize(item) {
+        const date = lastmod.get(item.url);
+        return date ? { ...item, lastmod: new Date(date).toISOString() } : item;
+      },
+    }),
   ],
 
   vite: {

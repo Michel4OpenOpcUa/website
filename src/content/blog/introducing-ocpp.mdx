@@ -13,9 +13,19 @@ cover:
 import Callout from '../../components/Callout.astro';
 import MapLink from '../../components/ecosystem/MapLink.astro';
 
-Every public charger, most workplace chargers and a growing number of home chargers talk to a management system over OCPP, the Open Charge Point Protocol. It is how a charge point operator boots a station, authorizes a card, bills a session and limits power when a site reaches its grid connection limit. Chargers are among the largest flexible loads on the low-voltage grid, so OCPP is where EV charging meets energy management.
+Plug in at a public charger in Europe or North America, and the station very likely checks with a server over OCPP, the Open Charge Point Protocol, before any power flows. Published by the Open Charge Alliance, it is the protocol between a charging station and the CSMS, the management system of a charge point operator: how a station boots and authorizes a card, how a session is metered and billed, how firmware is updated, and how power is limited when a site reaches its grid connection limit. Chargers are among the largest flexible loads on the low-voltage grid, so OCPP is where EV charging meets energy management.
 
 Today OCPP becomes the ninth protocol in OT Fabric, with the same three pieces as every other: a library, a command-line tool and an interoperability suite.
+
+## Why OCPP, and why now
+
+OT Fabric is about connecting the devices that run energy and infrastructure, and the charger is fast becoming one of the most important of them:
+
+- **Charging is energy management.** A depot, a car park or an office with twenty chargers rarely has the grid capacity for twenty full-power sessions. OCPP's smart charging profiles let the CSMS share that capacity, follow a tariff or the solar production on site, and respond when the utility asks for less. That is the chain OT Fabric is built for: [OpenADR](/protocols/openadr/) from the utility or aggregator, OCPP to the chargers, and [SunSpec](/protocols/sunspec/) or [Modbus](/protocols/modbus/) to the meter, battery and inverter on the same site.
+- **Three versions in the field at once.** OCPP 1.6J runs on most installed chargers. 2.0.1 is a redesign that is not backward-compatible with it, adding a device model, security profiles and ISO 15118 certificate handling, and it is also published as IEC 63584. 2.1 extends 2.0.1 with bidirectional charging, DER control and local cost calculation. A CSMS has to serve all three, and a station vendor moving to 2.x still has a 1.6 fleet to support.
+- **From preference to requirement.** Funding programmes now write OCPP into their rules: the US NEVI standards for federally funded chargers, for example, require OCPP 2.0.1.
+
+The open-source field is broad, and our [research for the ecosystem map](#who-else-implements-ocpp) found more than twenty implementations. Few of them cover both the station and the CSMS side across all three versions, fewer do that under a permissive licence, and several well-known projects are archived. go-ocpp adds an MIT-licensed library for both roles and all three versions, with every message validated, tested against five of the established stacks.
 
 ## go-ocpp
 

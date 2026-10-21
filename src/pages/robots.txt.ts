@@ -12,8 +12,13 @@ const aiCrawlers = [
 	'PerplexityBot',
 	'Perplexity-User',
 	'Google-Extended',
+	'Applebot',
 	'Applebot-Extended',
 	'Bingbot',
+	'DuckAssistBot',
+	'MistralAI-User',
+	'Meta-ExternalAgent',
+	'Amazonbot',
 	'CCBot',
 ];
 

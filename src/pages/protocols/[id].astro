@@ -47,7 +47,7 @@ const schema = [
 ];
 ---
 
-<BaseLayout title={protocol.data.name} description={protocol.data.summary} schema={schema}>
+<BaseLayout title={`${protocol.data.name}: open-source library and tools`} description={protocol.data.summary} schema={schema}>
 	<PageHeader label={protocol.data.standard} title={protocol.data.name} lead={protocol.data.summary}>
 		<dl class="facts">
 			{protocol.data.facts.map((fact) => (

@@ -7,7 +7,7 @@ export const ogImage = {
 	src: '/og-image.png',
 	width: 1200,
 	height: 630,
-	alt: 'OT Fabric: unified data for industrial operations. Open-source protocol libraries and tools for Modbus, SunSpec, OPC UA, BACnet/IP, IEC 104, IEC 61850, Siemens S7 and OpenADR.',
+	alt: 'OT Fabric: unified data for industrial operations. Open-source protocol libraries and tools for Modbus, SunSpec, OPC UA, BACnet/IP, IEC 104, IEC 61850, Siemens S7, OpenADR, OCPP and DNP3.',
 };
 
 /** Meta description for the homepage: what OT Fabric is, with the protocols people search for. */
@@ -55,6 +55,15 @@ export const organization = {
 		'OpenADR',
 		'OCPP',
 		'DNP3',
+		'SCADA',
+		'Substation automation',
+		'Building automation',
+		'Distributed energy resources (DER)',
+		'Demand response',
+		'EV charging',
+		'OT network visibility',
+		'Packet capture analysis',
+		'Protocol interoperability testing',
 		'Model Context Protocol',
 	],
 };
